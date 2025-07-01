@@ -124,7 +124,7 @@ process_estonia_bsi <- function(input_file = "BSI_REPORT_2024_share.xlsx",
   # Create dataset IDs
   recoded_data <- recoded_data %>%
     dplyr::mutate(
-      record_id_bsi = paste0(HospitalId, "-", admit_date_time),
+      record_id_bsi = paste0(HospitalId),
       record_id_patient = paste0(PatientId, "-", admit_date_time)
     ) %>%
     dplyr::select(-admit_date_time, -sample_date_time)
@@ -430,7 +430,8 @@ process_estonia_bsi <- function(input_file = "BSI_REPORT_2024_share.xlsx",
            ,ReportingCountry
            ,Status
            ,Subject
-    )
+    ) %>%
+    distinct()
   
   return(ehrbsi)
 }

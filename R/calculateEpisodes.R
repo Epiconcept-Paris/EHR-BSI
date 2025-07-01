@@ -22,7 +22,7 @@ createBSIdf <- function(patient_df,
   iso_in_admission <- isolates_flagged %>%
     inner_join(patient_df %>%
                  select(AdmissionRecordId = RecordId,
-                        PatientId,
+                        PatientId, ParentId,
                         DateOfHospitalAdmission,
                         DateOfHospitalDischarge),
                by = c("ParentId" = "PatientId"),
@@ -74,7 +74,7 @@ createBSIdf <- function(patient_df,
       BSI_case   = if_else(is.na(BSI_case), FALSE, BSI_case),
       OnsetDate = as.Date(OnsetDate)          # drop time component
     ) %>% 
-    select(RecordId, PatientId, BSI_case, OnsetDate) %>%
+    select(RecordId, PatientId, ParentId, BSI_case, OnsetDate) %>%
     distinct()
 }
 
@@ -165,6 +165,7 @@ classifyEpisodeOrigin <- function(episodes_df,
   
   ## ── 2 · Merge admission info into the episode table ──────────────
   epi_full <- episodes_df %>%
+    select(-PatientId) %>%
     left_join(adm_tbl, by = "RecordId") %>%
     ## use EpisodeStartDate if it exists, otherwise OnsetDate
     mutate(Onset = coalesce(EpisodeStartDate, OnsetDate)) %>%
