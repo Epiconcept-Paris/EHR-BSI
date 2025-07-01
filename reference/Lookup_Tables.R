@@ -27,7 +27,7 @@ Malta_UnitSpecialty_Lookup <- data.table::data.table(
                  "SURORTR", "SURNEU", "SURENT", "SURPLAS", "ICUMED", "ICUMIX", 
                  "ICUSPEC", "ICUNEO", "PEDGEN", "LTC", "GOOBS", "GOBAB", "GOGYN", 
                  "O", "Other"),
-  short_code = c("MIX", "MED", "MED", "MED", "MED", "MED", 
+  generic_code = c("MIX", "MED", "MED", "MED", "MED", "MED", 
                  "SUR", "SUR", "SUR", "SUR", "SUR", "SUR", 
                  "SUR", "SUR", "SUR", "SUR", "ICU", "ICU", 
                  "ICU", "NEO", "PED", "LTC", "GO", "GO", "GO", 
@@ -36,8 +36,8 @@ Malta_UnitSpecialty_Lookup <- data.table::data.table(
 
 # Malta Outcome Mapping
 Malta_Outcome_Lookup <- data.table::data.table(
-  malta_outcome = c("VWDISC-DEC", "DISC-DECX", "CT-DECX"),
-  outcome_code = c("D", "D", "D")
+  malta_code = c("VWDISC-DEC", "DISC-DECX", "CT-DECX"),
+  generic_code = c("D", "D", "D")
 )
 
 # Malta Hospital Type Mapping
@@ -61,7 +61,7 @@ Estonia_ResRecode_Lookup <- data.table::data.table(
                      "Positiivne", "ESBL-A", "OXA-48 tüüpi", "ESBL-A positiivne", "ESBL-M positiivne",
                      "MRSA", "Beeta-laktamaas positiivne", "ESBL-M", "MDR", "ESBL-A/M", "PVL",
                      "OXA-48 tüüpi karbapenemaasi produtseeriv tüvi", "Laiendatud toimespektriga beetalaktamaasi A mitteprodutseeriv tüvi"),
-  standard_result = c("Positive", "Positive", "Negative", "Positive", "Positive", "Positive", "Positive",
+  generic_result = c("Positive", "Positive", "Negative", "Positive", "Positive", "Positive", "Positive",
                       "Positive", "Positive", "Positive", "Positive", "Positive", "Positive", "Positive",
                       "Positive", "Positive", "Negative")
 )
@@ -128,7 +128,7 @@ Estonia_Ab_ENG2HAI_Lookup <- data.table::data.table(
                    "Trimethoprim + sulfamethoxazole", "Amphotericin", "Amphotericin B", "Fluconazole",
                    "Itraconazole", "Voriconazole", "Posaconazole", "Ketoconazole", "Anidulafungin",
                    "Caspofungin", "Micafungin", "Flucytosine", "5-Fluorocytosine"),
-  hai_name = c("No antimircrobial susceptibility data available", "Amoxicillin/Clavulanic Acid",
+  generic_name = c("No antimircrobial susceptibility data available", "Amoxicillin/Clavulanic Acid",
                "Amoxicillin/Clavulanic Acid", "Amoxicillin/Clavulanic Acid", "Sulbactam",
                "Piperacillin/Tazobactam", "Ceftazidime/avibactam", "Ceftolazone/tazobactam",
                "Penicillin", "Penicillin", "Penicillin", "Ampicillin", "Amoxicillin", "Oxacillin",
@@ -149,6 +149,8 @@ Estonia_Ab_ENG2HAI_Lookup <- data.table::data.table(
                "Ketoconazole", "Anidulafungin", "Caspofungin", "Micafungin", "Flucytosine (5 - fluorocytosine)",
                "Flucytosine (5 - fluorocytosine)")
 )
+
+
 
 usethis::use_data(Name_Lookup, Specialty_Lookup, Malta_UnitSpecialty_Lookup, Malta_Outcome_Lookup, 
                   Malta_HospType_Lookup, Estonia_MecRes_Lookup, Estonia_ResRecode_Lookup, 

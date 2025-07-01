@@ -219,9 +219,9 @@ process_estonia_bsi <- function(input_file = "BSI_REPORT_2024_share.xlsx",
   
   # Create lookup vectors for easier use with dplyr::recode
   estonia_mecres_lookup <- setNames(Estonia_MecRes_Lookup$resistance_type, Estonia_MecRes_Lookup$resistance_value)
-  estonia_resrecode_lookup <- setNames(Estonia_ResRecode_Lookup$standard_result, Estonia_ResRecode_Lookup$estonia_result)
+  estonia_resrecode_lookup <- setNames(Estonia_ResRecode_Lookup$generic_result, Estonia_ResRecode_Lookup$estonia_result)
   estonia_est2eng_lookup <- setNames(Estonia_Ab_EST2ENG_Lookup$english_name, Estonia_Ab_EST2ENG_Lookup$estonia_name)
-  estonia_eng2hai_lookup <- setNames(Estonia_Ab_ENG2HAI_Lookup$hai_name, Estonia_Ab_ENG2HAI_Lookup$english_name)
+  estonia_eng2hai_lookup <- setNames(Estonia_Ab_ENG2HAI_Lookup$generic_name, Estonia_Ab_ENG2HAI_Lookup$english_name)
   
   res <- recoded_data %>%
     dplyr::filter(!is.na(sensitivityTest_noncdm) & sensitivityTest_noncdm != "") %>%
