@@ -1,4 +1,4 @@
-Package: EHRBSIConvertor
+Package: EHR-BSI
 Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
@@ -17,4 +17,5 @@ Imports:
     dplyr,
     readxl,
     stringr,
+    tidyr,
     epiuf

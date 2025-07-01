@@ -8,7 +8,7 @@ process_estonia_bsi(
   input_file = "BSI_REPORT_2024_share.xlsx",
   input_file_path = NULL,
   dictionary_path = NULL,
-  value_maps_path = "reference/raw_BSI_valueMaps.r",
+  value_maps_path = "reference/Lookup_Tables.r",
   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
   reporting_year = as.numeric(format(Sys.Date(), "\%Y")),
   episode_duration = 14,
@@ -53,4 +53,4 @@ result <- process_estonia_bsi(
   write_to_file_path = "Estonia/data/formatted"
 )
 }
-} 
+}
