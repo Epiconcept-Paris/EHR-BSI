@@ -41,12 +41,14 @@ eps_df <- defineEpisodes(bsi_df, episodeDuration = 14)
 
 cat("There were", length(unique(eps_df$EpisodeId)), "total BSIs (distinct episodes)")
 
-# ------- from where?
 
 # Classify each episode according to whether community or hospital acquired
 orig_df <- classifyEpisodeOrigin(eps_df, patient)
 
 
+
+
+#### CHECK NUMS -------------------
 
 # Basic df for calculating some stats
 calc_df <- orig_df %>%
@@ -63,6 +65,13 @@ cat("TOTAL BSI episodes: ", length(unique(orig_df$EpisodeId))," \n ",
     round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(orig_df$EpisodeId)))*100),1),"%)")
 
 
+#### CHECK NUMS -------------------
+
+
+#devtools::load_all()  # This loads your entire package properly
+
+
+
 # Aggregate to ehrbsi level
 aggregateResults <- orig_df %>%
   distinct() %>%
@@ -73,11 +82,10 @@ aggregateResults <- orig_df %>%
   pivot_wider(names_from = EpisodeClass,
               values_from = countEps,
               id_cols = ParentId) %>%
-  rename(NumCommunity_noncdm = CA
+  rename(NumberOfCABSIs = CA
          ,NumberOfHOHABSIs = `HO-HA`
          ,NumberOfImportedHABSIs=`IMP-HA`) %>%
-  mutate(NumberOfTotalBSIs = NumCommunity_noncdm + NumberOfHOHABSIs + NumberOfImportedHABSIs) %>%
-  select(-NumCommunity_noncdm)
+  mutate(NumberOfTotalBSIs = NA)
 
 
 
@@ -88,10 +96,70 @@ ehrbsi <- result$ehrbsi
 # Adding ParentId back to orig_df
 ehrbsi <- ehrbsi %>%
   select(-NumberOfTotalBSIs,-NumberOfHOHABSIs,-NumberOfImportedHABSIs) %>%
-  left_join(aggregateResults, by = c("RecordId"="ParentId"))
+  left_join(aggregateResults, by = c("RecordId"="ParentId")) %>%
+  select(RecordId
+         ,RecordType
+         ,RecordTypeVersion
+         ,Subject
+         ,Status
+         ,DataSource
+         ,ReportingCountry
+         ,DateUsedForStatistics
+         ,HospitalId
+         ,LaboratoryCode
+         ,GeoLocation
+         ,HospitalSize
+         ,HospitalType
+         ,ESurvBSI
+         ,AggregationLevel
+         ,EpisodeDuration
+         ,ClinicalTerminology
+         ,ClinicalTerminologySpec
+         ,MicrobiologicalTerminology
+         ,MicrobiologicalTerminologySpec
+         ,NumberOfBloodCultureSets
+         ,NumberOfHospitalDischarges
+         ,NumberOfHospitalPatientDays
+         ,ProportionPopulationCovered
+         ,NumberOfHOHABSIs
+         ,NumberOfImportedHABSIs
+         ,NumberOfCABSIs
+         ,NumberOfTotalBSIs
+         )
 
 
 # Overwrite default/empty table with final aggregate results
 saveRDS(ehrbsi, "1.EHRBSI.rds")
+
+
+
+
+library(openxlsx)
+
+### For demonstration
+# Read the RDS files
+ehrbsi   <- readRDS("1.EHRBSI.rds")
+patient  <- readRDS("2.EHRBSI$Patient.rds")
+isolate  <- readRDS("3.EHRBSI$Patient$Isolate.rds")
+res      <- readRDS("4.EHRBSI$Patient$Isolate$Res.rds")
+
+# Create a new workbook
+wb <- createWorkbook()
+
+# Add each data frame as a new worksheet
+addWorksheet(wb, "EHRBSI")
+writeData(wb, sheet = "EHRBSI", ehrbsi)
+
+addWorksheet(wb, "Patient")
+writeData(wb, sheet = "Patient", patient)
+
+addWorksheet(wb, "Isolate")
+writeData(wb, sheet = "Isolate", isolate)
+
+addWorksheet(wb, "Res")
+writeData(wb, sheet = "Res", res)
+
+# Save the workbook to the working directory
+saveWorkbook(wb, "EHRBSI_data2.xlsx", overwrite = TRUE)
 
 

@@ -125,7 +125,8 @@ process_estonia_bsi <- function(input_file = "BSI_REPORT_2024_share.xlsx",
   recoded_data <- recoded_data %>%
     dplyr::mutate(
       record_id_bsi = paste0(HospitalId),
-      record_id_patient = paste0(PatientId, "-", admit_date_time)
+      record_id_patient = paste0(PatientId, "-", admit_date_time),
+      record_id_isolate = paste0(IsolateId, "_", MicroorganismCode)
     ) %>%
     dplyr::select(-admit_date_time, -sample_date_time)
   
@@ -194,7 +195,7 @@ process_estonia_bsi <- function(input_file = "BSI_REPORT_2024_share.xlsx",
 
 .create_isolate_table <- function(recoded_data) {
   isolate <- recoded_data %>%
-  dplyr::mutate(RecordId = IsolateId,
+  dplyr::mutate(RecordId = record_id_isolate,
          ParentId = PatientId,
          LaboratoryCode = NA, # ^NOT INCLUDED IN DATA FOR SAFETY - LIIDIA^
          MicroorganismCodeSystem = "SNOMED-CT",
@@ -226,7 +227,7 @@ process_estonia_bsi <- function(input_file = "BSI_REPORT_2024_share.xlsx",
   res <- recoded_data %>%
     dplyr::filter(!is.na(sensitivityTest_noncdm) & sensitivityTest_noncdm != "") %>%
     dplyr::mutate(
-      RecordId = paste0(IsolateId, "_", MicroorganismCode),
+      RecordId = paste0(record_id_isolate, "_", sensitivityTest_noncdm),
       ParentId = IsolateId,
       ResultPCRmec = NA_character_,
       ResultPbp2aAggl = NA_character_, 
