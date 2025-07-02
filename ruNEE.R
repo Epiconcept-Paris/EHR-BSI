@@ -1,9 +1,11 @@
 
 
 
+devtools::load_all()  # This loads your entire package properly
+
 # Make the raw reporting template tables (pre-episode calc)
 result <- process_estonia_bsi(input_file = "BSI_REPORT_2024_share.xlsx",
-                                input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Estonia/data/raw/",
+                                input_file_path = "your/path/to_raw_data/here",
                                 dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
                                 value_maps_path = "reference/Lookup_Tables.r",
                                 metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
@@ -68,7 +70,7 @@ cat("TOTAL BSI episodes: ", length(unique(orig_df$EpisodeId))," \n ",
 #### CHECK NUMS -------------------
 
 
-#devtools::load_all()  # This loads your entire package properly
+
 
 
 

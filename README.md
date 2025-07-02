@@ -6,7 +6,11 @@ An R package for processing Electronic Health Record Bloodstream Infection (EHR-
 
 This package processes raw BSI surveillance data into standardised EHR-BSI format tables and performs episode calculations according to ECDC surveillance definitions.
 
-## Test Main Functions Using `ruNEE.R`
+## Test Main Functions Using 
+
+go to `ruNEE.R`
+make sure your file paths are correct for raw (input_file_path) and download the dicts into the ref folder
+
 
 ### Data Processing Functions
 
