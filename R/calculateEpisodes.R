@@ -1,14 +1,35 @@
 
+## helper ─ find all ≥2-positive CC windows inside the admission
+flag_cc_clusters <- function(dates) {
+  dates <- sort(as.Date(dates[!is.na(dates)]))   # keep only real dates
+  n     <- length(dates)
+  out   <- logical(n)
+  
+  i <- 1L
+  while (i < n) {
+    
+    if (dates[i + 1] - dates[i] <= 2) {          # 2nd culture within 3 days?
+      out[i] <- TRUE                             # → mark start of the cluster
+      
+      ## jump to first sample that is *outside* the 14-day episode window
+      nxt <- which(dates > dates[i] + 13)
+      if (length(nxt) == 0) break                # none found → we are done
+      i <- nxt[1]
+    } else {
+      i <- i + 1L
+    }
+  }
+  out
+}
 
 
 createBSIdf <- function(patient_df,
                         isolate_df,
                         commensal_df){
   
-  comm_codes <- unique(commensal_df$MicroorganismCode)
+  comm_codes <- unique(commensal_df$SNOMED.Code)
   
   isolates_flagged <- isolate_df %>%
-    rename(IsolateRecordId = RecordId) %>% 
     mutate(org_type = if_else(MicroorganismCode %in% comm_codes,
                               "CC", "RP"))
   
@@ -16,69 +37,42 @@ createBSIdf <- function(patient_df,
   ## 2.  Attach admission dates so we know which isolates belong where
   ## ------------------------------------------------------------------
   iso_in_admission <- isolates_flagged %>%
+    mutate(PatientId = ParentId) %>%
+    select(-ParentId) %>%
     inner_join(patient_df %>%
                  select(AdmissionRecordId = RecordId,
                         PatientId,
+                        HospitalId = ParentId,
                         DateOfHospitalAdmission,
                         DateOfHospitalDischarge),
-               by = c("ParentId" = "PatientId"),
+               by = "PatientId",
                relationship = "many-to-many"  ) %>%
     filter(DateOfSpecCollection >= DateOfHospitalAdmission,
            is.na(DateOfHospitalDischarge) |
              DateOfSpecCollection <= DateOfHospitalDischarge)
   
-  ## ------------------------------------------------------------------
-  ## 3A.  Rule-1 admissions  ─ recognised pathogen
-  ## ------------------------------------------------------------------
+  ## ---- RULE 1  – recognised pathogens (one pos = onset) ----------------
   rule1 <- iso_in_admission %>%
     filter(org_type == "RP") %>%
-    group_by(AdmissionRecordId, MicroorganismCode) %>%
-    summarise(onset_date_pathogen = min(DateOfSpecCollection),
-              .groups = "drop") %>%
-    ungroup()
+    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = DateOfSpecCollection,
+              MicroorganismCode, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
-  ## ------------------------------------------------------------------
-  ## 3B.  Rule-2 admissions  ─ ≥2 concordant CC within 3 calendar days
-  ## ------------------------------------------------------------------
-  rule2 <- iso_in_admission %>%                     # still inside createBSIdf()
-    filter(org_type == "CC") %>%
-    group_by(AdmissionRecordId, MicroorganismCode) %>%       # keep species
-    mutate(first_date = min(DateOfSpecCollection)) %>%       # day-1 of window
-    summarise(
-      n_distinct_samples = n_distinct(
-        IsolateId[ DateOfSpecCollection <= first_date + days(2) ] ), # use isolate ID to ensure separate cultures
-      onset_date_cc      = first(first_date),
-      .groups = "drop"
-    ) %>%
-    filter(n_distinct_samples >= 2)          
+  ## ---- RULE 2  – ≥2 concordant CC in 3 days ----------------------------
+  rule2 <- iso_in_admission %>%
+    filter(org_type == "CC", !is.na(DateOfSpecCollection)) %>%
+    arrange(PatientId, MicroorganismCode, DateOfSpecCollection) %>%
+    group_by(PatientId, MicroorganismCode) %>%
+    mutate(cluster_first = flag_cc_clusters(DateOfSpecCollection)) %>%
+    ungroup() %>%
+    filter(cluster_first) %>%
+    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = DateOfSpecCollection,
+              MicroorganismCode, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
-  ## ------------------------------------------------------------------
-  ## 4.  Combine the two rules to create overall BSI flag + onset
-  ## ------------------------------------------------------------------
-  bsi_combined <- full_join(rule1, rule2, 
-                            by = c("AdmissionRecordId", "MicroorganismCode")) %>%
-    group_by(AdmissionRecordId, MicroorganismCode) %>%
-    mutate(
-      OnsetDate = pmin(onset_date_pathogen, onset_date_cc, na.rm = TRUE),
-      BSI_case   = TRUE
-    ) %>%
-    select(AdmissionRecordId, MicroorganismCode, BSI_case, OnsetDate)
-  
-  ## ------------------------------------------------------------------
-  ## 5.  Add the results back to the patient/admission table
-  ## ------------------------------------------------------------------
-  
-  
-  bsi_df <- patient_df %>%
-    left_join(bsi_combined, by = c("RecordId" = "AdmissionRecordId")) %>%
-    mutate(
-      BSI_case   = if_else(is.na(BSI_case), FALSE, BSI_case),
-      OnsetDate = as.Date(OnsetDate)          # drop time component
-    ) %>% 
-    select(RecordId, PatientId, ParentId, BSI_case, MicroorganismCode, OnsetDate) %>%
+  bsi_core <- bind_rows(rule1, rule2) %>%
     distinct()
   
-  return(bsi_df)
+  
+  return(bsi_core)
 }
 
 
@@ -130,37 +124,27 @@ assign_episodes <- function(df_one_pt, episodeDuration) {
 }
 
 
-defineEpisodes <- function(bsi_df, episodeDuration = 14) {
-  
-  
-  # Take the df with defined BSI cases (based on one RP or two CCs)
-  onset_tbl <- bsi_df %>%
-    filter(BSI_case, !is.na(OnsetDate)) %>% 
-    select(PatientId, OnsetDate, MicroorganismCode, RecordId) %>%
-    arrange(PatientId, OnsetDate)
+defineEpisodes <- function(bsi_core, episodeDuration = 14) {
   
   
   # ----------------------------
   #  Apply the episode check for every patient
   # ----------------------------
-  epi_core <- onset_tbl %>% 
-    group_by(PatientId) %>%
-    group_modify(~assign_episodes(.x, episodeDuration)) %>% 
+  epi_core <- bsi_core %>%
+    arrange(PatientId, OnsetDate) %>%
+    group_by(PatientId) %>%      # ➊ count episodes across all admissions for each patient
+    group_modify(~assign_episodes(.x, episodeDuration)) %>%
     ungroup() %>%
-    mutate(EpisodeId = paste0(PatientId, "_E", sprintf("%03d", EpisodeNumber)))
+    mutate(EpisodeId = paste0(EpisodeStartDate, "-", PatientId, "-",
+                              sprintf("%01d", EpisodeNumber)))
   
+  epi_core <- epi_core %>% 
+    group_by(EpisodeId) %>% 
+    mutate(Polymicrobial = n_distinct(MicroorganismCode) > 1) %>% 
+    slice_head(n = 1) %>%           # or slice(1)
+    ungroup()
   
-  
-  episode_tbl <- epi_core %>% 
-    group_by(EpisodeId, PatientId, EpisodeStartDate) %>% 
-    summarise(
-      Polymicrobial = n_distinct(MicroorganismCode) > 1,
-      RecordId = first(RecordId),
-      .groups = "drop"
-    )
-  
-  
-  return(episode_tbl)
+  return(epi_core)
   
 }
 
@@ -171,7 +155,7 @@ defineEpisodes <- function(bsi_df, episodeDuration = 14) {
 ## patient_df   – original PATIENT table (must contain RecordId,
 ##                PatientId, DateOfHospitalAdmission, DateOfHospitalDischarge)
 ## --------------------------------------------------------------------
-classifyEpisodeOrigin <- function(episodes_df,
+classifyEpisodeOrigin <- function(epi_core,
                                   patient_df) {
   
   ## ── 1 · Admission & discharge dates per admission ────────────────
@@ -182,34 +166,39 @@ classifyEpisodeOrigin <- function(episodes_df,
   #          DischargeDate = DateOfHospitalDischarge) %>%
   #   distinct()
   
-  adm_tbl <- patient_df %>% 
-    ## collapse to ONE row per admission id
-    group_by(RecordId) %>% 
-    summarise(
-      PatientId     = first(PatientId),
-      ParentId     = first(ParentId),
-      AdmissionDate = min(DateOfHospitalAdmission,  na.rm = TRUE),
-      ## take the latest non-NA discharge; if all NA → keep NA
-      DischargeDate = { d <- DateOfHospitalDischarge[!is.na(DateOfHospitalDischarge)]
-      if (length(d) == 0) NA_real_ else max(d) },
-      .groups = "drop"
-    ) %>%
-    ungroup()
+  # adm_tbl <- patient_df %>% 
+  #   ## collapse to ONE row per admission id
+  #   group_by(PatientId) %>% 
+  #   summarise(
+  #     RecordId     = first(RecordId),
+  #     PatientId     = first(PatientId),
+  #     AdmissionDate = min(DateOfHospitalAdmission,  na.rm = TRUE),
+  #     ## take the latest non-NA discharge; if all NA → keep NA
+  #     DischargeDate = { d <- DateOfHospitalDischarge[!is.na(DateOfHospitalDischarge)]
+  #     if (length(d) == 0) NA_real_ else max(d) },
+  #     .groups = "drop"
+  #   ) %>%
+  #   ungroup()
   
   ## add the *previous* discharge date for each patient
-  adm_tbl <- adm_tbl %>%
-    arrange(PatientId, AdmissionDate) %>%
+  adm_tbl <- patient_df %>%
+    select(RecordId, PatientId, DateOfHospitalAdmission,DateOfHospitalDischarge) %>%
+    distinct() %>%
+    arrange(PatientId, DateOfHospitalAdmission,DateOfHospitalDischarge) %>%
     group_by(PatientId) %>%
-    mutate(PrevDischarge = lag(DischargeDate)) %>%
-    ungroup()
+    mutate(PrevDischarge = lag(DateOfHospitalDischarge)) %>%
+    ungroup() %>%
+    filter(!is.na(PrevDischarge)) %>%
+    select(RecordId, PatientId, PrevDischarge) %>%
+    distinct()
   
   ## ── 2 · Merge admission info into the episode table ──────────────
-  epi_full <- episodes_df %>%
+  epi_full <- epi_core %>%
     select(-PatientId) %>%
-    left_join(adm_tbl, by = "RecordId") %>%
+    left_join(adm_tbl, by = c("AdmissionRecordId"="RecordId")) %>%
     ## day-of-stay is counted with admission = day 1
     mutate(
-      DaysSinceAdmission = as.numeric(EpisodeStartDate - AdmissionDate, units = "days"),
+      DaysSinceAdmission = as.numeric(EpisodeStartDate - DateOfHospitalAdmission, units = "days"),
       DaysAfterPrevDisch = as.numeric(EpisodeStartDate - PrevDischarge,  units = "days")
     )
   
@@ -225,8 +214,9 @@ classifyEpisodeOrigin <- function(episodes_df,
     )
   
   ## ── 4 · Return the enriched table ────────────────────────────────
-  epi_full %>%
+  epi_full<- epi_full %>%
     select(-PrevDischarge, -DaysSinceAdmission, -DaysAfterPrevDisch) %>%
-    relocate(EpisodeClass, EpisodeOrigin, .after = EpisodeStartDate)
+    relocate(EpisodeClass, EpisodeOrigin, .after = EpisodeStartDate) %>%
+    distinct()
 }
 

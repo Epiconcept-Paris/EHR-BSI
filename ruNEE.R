@@ -1,11 +1,8 @@
-
-
-
 devtools::load_all()  # This loads your entire package properly
 
 # Make the raw reporting template tables (pre-episode calc)
 result <- process_estonia_bsi(input_file = "BSI_REPORT_2024_share.xlsx",
-                                input_file_path = "your/path/to_raw_data/here",
+                                input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Estonia/data/raw/",
                                 dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
                                 value_maps_path = "reference/Lookup_Tables.r",
                                 metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
@@ -34,7 +31,14 @@ commensal_df = read.csv("reference/CommonCommensals.csv")
 bsi_df <- createBSIdf(patient, isolate, commensal_df)
 
 
-cat("There were", length(unique(bsi_df$RecordId)), "total BSI admissions (not episodes)")
+bsi_df <- bsi_df %>% mutate(BSIisolates = paste0(AdmissionRecordId,OnsetDate,MicroorganismCode)) %>%
+  distinct()
+
+# In the case of Malta there are 1095 patient ids, with 1178 unique admissions
+# And given they have already checked for BSIs according to case def, we should expect 1179
+cat("There are", length(unique(bsi_df$PatientId)), "patients from which BSIs were isolated")
+cat("during", length(unique(bsi_df$AdmissionRecordId)), "unique admissions")
+cat("and", length(unique(bsi_df$BSIisolates)), "isolates with unique spec collection dates and/or isolated pathogens")
 
 
 # Define each of those bsi cases as a distinct episode or a continuation of an earlier one
@@ -76,18 +80,20 @@ cat("TOTAL BSI episodes: ", length(unique(orig_df$EpisodeId))," \n ",
 
 # Aggregate to ehrbsi level
 aggregateResults <- orig_df %>%
+  select(HospitalId, EpisodeClass, EpisodeId) %>%
   distinct() %>%
-  group_by(ParentId, EpisodeClass) %>%
+  group_by(HospitalId, EpisodeClass) %>%
   mutate(countEps = n()) %>%
-  select(ParentId, EpisodeClass, countEps) %>%
+  select(HospitalId, EpisodeClass, countEps) %>%
   distinct() %>%
   pivot_wider(names_from = EpisodeClass,
               values_from = countEps,
-              id_cols = ParentId) %>%
-  rename(NumberOfCABSIs = CA
+              id_cols = HospitalId) %>%
+  mutate(NumberOfCABSIs = CA
          ,NumberOfHOHABSIs = `HO-HA`
-         ,NumberOfImportedHABSIs=`IMP-HA`) %>%
-  mutate(NumberOfTotalBSIs = NA)
+         ,NumberOfImportedHABSIs=`IMP-HA`
+         ,NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
+  select(-CA,-`HO-HA`,-`IMP-HA`,)
 
 
 
@@ -98,7 +104,7 @@ ehrbsi <- result$ehrbsi
 # Adding ParentId back to orig_df
 ehrbsi <- ehrbsi %>%
   select(-NumberOfTotalBSIs,-NumberOfHOHABSIs,-NumberOfImportedHABSIs) %>%
-  left_join(aggregateResults, by = c("RecordId"="ParentId")) %>%
+  left_join(aggregateResults, by = c("RecordId"="HospitalId")) %>%
   select(RecordId
          ,RecordType
          ,RecordTypeVersion
