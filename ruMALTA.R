@@ -42,8 +42,13 @@ cat("and", length(unique(bsi_df$BSIisolates)), "isolates with unique onset dates
 # Define each of those bsi cases as a distinct episode or a continuation of an earlier one
 eps_df <- defineEpisodes(bsi_df, episodeDuration = 14)
 
+# Our count of 1173 is below Malta's (1401)
+# Potential reasons:
+# There are about 40 DISTINCT CC episodes according to Maltese excel, we will likely miss these
+# There are 130 polymicrobial episodes which might be double counted by Maltese ep calc processes,
+# based on a finding for one patient (003afc0c0b98d62563fe93fd6429d4a7f76647b2a38b80650ee075baf3d45db2) 
+# which indicated an uncovered edge case. See issue #3 in github for more info
 
-# There are about 40 CC episodes according to Maltese excel, we will be missing these
 cat("There were", length(unique(eps_df$EpisodeId)), "total BSIs (distinct episodes)")
 
 
@@ -64,34 +69,70 @@ calc_df <- orig_df %>%
 
 
 # Print stats
-cat("TOTAL BSI episodes: ", length(unique(orig_df$EpisodeId))," \n ", 
+cat("TOTAL BSI episodes: ", length(unique(calc_df$EpisodeId))," \n ", 
     "OF WHICH COMMUNITY-ACQUIRED: ", sum(calc_df$EpisodeOrigin=="Community"), "(",
-    round(((sum(calc_df$EpisodeOrigin=="Community")/length(unique(orig_df$EpisodeId)))*100),1),"%)"," \n ", 
+    round(((sum(calc_df$EpisodeOrigin=="Community")/length(unique(calc_df$EpisodeId)))*100),1),"%)"," \n ", 
     "VS HOSP-ACQUIRED: ", sum(calc_df$EpisodeOrigin=="Healthcare"), "(",
-    round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(orig_df$EpisodeId)))*100),1),"%)")
+    round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(calc_df$EpisodeId)))*100),1),"%)")
 
 
 #### CHECK NUMS -------------------
 
 
 
+# Get missing IDs
+# raw_folder <- "Malta/data/raw/"
+# 
+# # Define output folder
+# clean_folder <- "Malta/data/formatted/"
+
+
+# Load the dataset (xlsx)
+# raw_data <- read.csv("C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/BSI_REPORT_Malta.csv")
+# 
+# 
+# epIDs <- unique(eps_df$EpisodeId)
+# 
+# 
+# pIDs <- unique(eps_df$PatientId)
+# 
+# 
+# eps_df_test <- raw_data %>%
+#   select(PatientId, BsiEpisodeId, EpisodeStartDate) %>%
+#   filter(!is.na(PatientId)) %>%
+#   distinct() 
+# 
+# # 280 additional eps versus R package
+# additionalMTids <- eps_df_test %>%
+#   filter(BsiEpisodeId %notin% epIDs & PatientId %notin% pIDs)
+
 
 
 
 # Aggregate to ehrbsi level
 aggregateResults <- orig_df %>%
+  select(HospitalId, EpisodeClass, EpisodeId) %>%
   distinct() %>%
-  group_by(ParentId, EpisodeClass) %>%
+  group_by(HospitalId, EpisodeClass) %>%
   mutate(countEps = n()) %>%
-  select(ParentId, EpisodeClass, countEps) %>%
+  select(HospitalId, EpisodeClass, countEps) %>%
   distinct() %>%
   pivot_wider(names_from = EpisodeClass,
               values_from = countEps,
-              id_cols = ParentId) %>%
-  rename(NumberOfCABSIs = CA
-         ,NumberOfHOHABSIs = `HO-HA`
-         ,NumberOfImportedHABSIs=`IMP-HA`) %>%
-  mutate(NumberOfTotalBSIs = NA)
+              id_cols = HospitalId) %>%
+  mutate(NumberOfCABSIs = CA
+         ,NumberOfHOHABSIs = 
+           case_when(
+             is.na(`HO-HA`)~0,
+             TRUE~`HO-HA`
+             ),
+         ,NumberOfImportedHABSIs =           
+           case_when(
+           is.na(`IMP-HA`)~0,
+           TRUE~`IMP-HA`
+         ),
+         ,NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
+  select(-CA,-`HO-HA`,-`IMP-HA`,)
 
 
 
@@ -102,7 +143,7 @@ ehrbsi <- result$ehrbsi
 # Adding ParentId back to orig_df
 ehrbsi <- ehrbsi %>%
   select(-NumberOfTotalBSIs,-NumberOfHOHABSIs,-NumberOfImportedHABSIs) %>%
-  left_join(aggregateResults, by = c("RecordId"="ParentId")) %>%
+  left_join(aggregateResults, by = c("RecordId"="HospitalId")) %>%
   select(RecordId
          ,RecordType
          ,RecordTypeVersion
@@ -167,3 +208,4 @@ writeData(wb, sheet = "Res", res)
 
 # Save the workbook to the working directory
 saveWorkbook(wb, "EHRBSI_Malta_data.xlsx", overwrite = TRUE) 
+

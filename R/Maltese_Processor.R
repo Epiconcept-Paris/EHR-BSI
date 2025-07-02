@@ -162,10 +162,10 @@ process_malta_bsi <- function(input_file = "BSI_REPORT_Malta.csv",
           TRUE ~ NA
         )
       } else OutcomeOfCase,
-      HospitalType = if ("HospitalType_noncdm" %in% names(.) && !is.null(malta_hosptype_lookup)) {
+      HospitalType = if ("HospitalId" %in% names(.) && !is.null(malta_hosptype_lookup)) {
         dplyr::case_when(
-          HospitalType_noncdm %in% names(malta_hosptype_lookup) ~ malta_hosptype_lookup[HospitalType_noncdm],
-          is.na(HospitalType_noncdm) ~ NA,
+          HospitalId %in% names(malta_hosptype_lookup) ~ malta_hosptype_lookup[HospitalId],
+          is.na(HospitalId) ~ NA,
           TRUE ~ "NOT CODED"
         )
       } else HospitalType,
@@ -192,7 +192,7 @@ process_malta_bsi <- function(input_file = "BSI_REPORT_Malta.csv",
   # Create unique, relatable ID for each table's level
   recoded_data <- recoded_data %>% 
     dplyr::mutate(
-      record_id_bsi = paste0(HospitalId, "-", format(DateOfHospitalAdmission, "%d%m%Y")),
+      record_id_bsi = paste0(HospitalId),
       record_id_patient = paste0(PatientId, "-", format(DateOfHospitalAdmission, "%d%m%Y")),
       record_id_isolate = paste0(PatientId, "-", format(DateOfSpecCollection, "%d%m%Y"))
     )

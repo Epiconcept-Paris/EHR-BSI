@@ -42,7 +42,7 @@ Malta_Outcome_Lookup <- data.table::data.table(
 
 # Malta Hospital Type Mapping
 Malta_HospType_Lookup <- data.table::data.table(
-  malta_hosptype = c("GGH", "MDH", "OC"),
+  malta_hosptype = c("GO", "MDH", "OC"),
   hosptype_code = c("SEC", "TERT", "SPEC")
 )
 

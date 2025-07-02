@@ -64,11 +64,11 @@ calc_df <- orig_df %>%
 
 
 # Print stats
-cat("TOTAL BSI episodes: ", length(unique(orig_df$EpisodeId))," \n ", 
+cat("TOTAL BSI episodes: ", length(unique(calc_df$EpisodeId))," \n ", 
     "OF WHICH COMMUNITY-ACQUIRED: ", sum(calc_df$EpisodeOrigin=="Community"), "(",
-    round(((sum(calc_df$EpisodeOrigin=="Community")/length(unique(orig_df$EpisodeId)))*100),1),"%)"," \n ", 
+    round(((sum(calc_df$EpisodeOrigin=="Community")/length(unique(calc_df$EpisodeId)))*100),1),"%)"," \n ", 
     "VS HOSP-ACQUIRED: ", sum(calc_df$EpisodeOrigin=="Healthcare"), "(",
-    round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(orig_df$EpisodeId)))*100),1),"%)")
+    round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(calc_df$EpisodeId)))*100),1),"%)")
 
 
 #### CHECK NUMS -------------------
