@@ -2,7 +2,11 @@
 **.rds
 **.rproj
 **.rhistory
-**.xlsx
+# Ignore all .xlsx files
+*.xlsx
+# But do NOT ignore .xlsx and .csv files in the reference/ directory
+!reference/*.xlsx
+!reference/*.csv
 **.swp
 **.swo
 .Rproj.user

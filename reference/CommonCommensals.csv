@@ -1,0 +1,446 @@
+NHSN Code,NHSN Display Name,SNOMED Preferred Term,SNOMED Code
+ACTSP,Actinomyces,Actinomyces,40560008
+ACTBO,Actinomyces bovis,Actinomyces bovis,59806008
+ACTDENT,Actinomyces dentalis,Actinomyces dentalis,426330001
+ACTFUNK,Actinomyces funkei,Actinomyces funkei,419012004
+ACTGR,Actinomyces gerencseriae,Actinomyces gerencseriae,113416002
+ACTGRAE,Actinomyces graevenitzii,Actinomyces graevenitzii,113417006
+ACTIS,Actinomyces israelii,Actinomyces israelii,46369004
+ACTNA,Actinomyces naeslundii,Actinomyces naeslundii,8940004
+ACTORIC,Actinomyces oricola,Actinomyces oricola,425488009
+ACTORIS,Actinomyces oris,Actinomyces oris,447175005
+ACTRADI,Actinomyces radicidentis,Actinomyces radicidentis,427691003
+ACTUROG,Actinomyces urogenitalis,Actinomyces urogenitalis,409827009
+ACTVI,Actinomyces viscosus,Actinomyces viscosus,33529006
+AEGU,Aerococcus,Aerococcus,9008009
+AECH,Aerococcus christensenii,Aerococcus christensenii,409818008
+AESGN,Aerococcus sanguinicola,Aerococcus sanguinicola,427222006
+AEUR,Aerococcus urinae,Aerococcus urinae,243230001
+AEURQ,Aerococcus urinaeequi,Aerococcus urinaeequi,430979003
+AEURH,Aerococcus urinaehominis,Aerococcus urinaehominis,409819000
+AEVI,Aerococcus viridans,Aerococcus viridans,78803006
+ASNSP,"Alpha-hemolytic Streptococcus, not S pneumoniae",Alpha-hemolytic Streptococcus not Streptococcus pneumoniae,713921004
+ARCSP,Arcanobacterium,Arcanobacterium,51714009
+ARCHA,Arcanobacterium haemolyticum,Arcanobacterium haemolyticum,44723000
+ARCPLUR,Arcanobacterium pluranimalium,Arcanobacterium pluranimalium,428939003
+ARTSP,Arthrobacter,Arthrobacter,56214009
+ARTAGIL,Arthrobacter agilis,Arthrobacter agilis,113432004
+ARTASTR,Arthrobacter astrocyaneus,Arthrobacter astrocyaneus,113433009
+ARTCITR,Arthrobacter citreus,Arthrobacter citreus,44955005
+ARTCRYS,Arthrobacter crystallopoietes,Arthrobacter crystallopoietes,113435002
+ARTFLAV,Arthrobacter flavus,Arthrobacter flavus,429762004
+ARTGAND,Arthrobacter gandavensis,Arthrobacter gandavensis,428332000
+ARTGLOB,Arthrobacter globiformis,Arthrobacter globiformis,3840003
+ARTKORE,Arthrobacter koreensis,Arthrobacter koreensis,427847001
+ARTLUTE,Arthrobacter luteolus,Arthrobacter luteolus,127497007
+ARTMETH,Arthrobacter methylotrophus,Arthrobacter methylotrophus,428270003
+ARTNASI,Arthrobacter nasiphocae,Arthrobacter nasiphocae,428337006
+ARTORYZ,Arthrobacter oryzae,Arthrobacter oryzae,446485009
+ARTPASC,Arthrobacter pascens,Arthrobacter pascens,113442002
+ARTPSYC,Arthrobacter psychrolactophilus,Arthrobacter psychrolactophilus,428338001
+ARTRAMO,Arthrobacter ramosus,Arthrobacter ramosus,113444001
+ARTRHOM,Arthrobacter rhombi,Arthrobacter rhombi,428277000
+ARTROSE,Arthrobacter roseus,Arthrobacter roseus,429003002
+ARTRUSS,Arthrobacter russicus,Arthrobacter russicus,428049002
+ARTVISC,Arthrobacter viscosus,Arthrobacter viscosus,113447008
+ARTWOLU,Arthrobacter woluwensis,Arthrobacter woluwensis,113448003
+BAC,Bacillus,Bacillus,44762009
+BAEOL,Bacillus aeolius,Bacillus aeolius,428272006
+BAERI,Bacillus aerius,Bacillus aerius,446486005
+BALCA,Bacillus alcalophilus,Bacillus alcalophilus,90547001
+BALGI,Bacillus algicola,Bacillus algicola,428278005
+BAMYL,Bacillus amyloliquefaciens,Bacillus amyloliquefaciens,82289003
+BAQUI,Bacillus aquimaris,Bacillus aquimaris,423188000
+BARSE,Bacillus arseniciselenatis,Bacillus arseniciselenatis,429004008
+BASAH,Bacillus asahii,Bacillus asahii,429115001
+BATRO,Bacillus atrophaeus,Bacillus atrophaeus,113450006
+BAZOT,Bacillus azotoformans,Bacillus azotoformans,72997009
+BBADI,Bacillus badius,Bacillus badius,33457001
+BBATA,Bacillus bataviensis,Bacillus bataviensis,429246006
+BBENZ,Bacillus benzoevorans,Bacillus benzoevorans,39232002
+BBUTA,Bacillus butanolivorans,Bacillus butanolivorans,447039005
+BCARB,Bacillus carboniphilus,Bacillus carboniphilus,113451005
+BC,Bacillus cereus,Bacillus cereus,84408007
+BCERG,Bacillus cereus group,Bacillus cereus group,413618005
+BCHIT,Bacillus chittonlyticus,Bacillus chittonlyticus,113452003
+BACCIR,Bacillus circulans,Bacillus circulans,71812004
+BACCIRG,Bacillus circulans group,Bacillus circulans group,413619002
+BCLARK,Bacillus clarkii,Bacillus clarkii,113453008
+BCLAUS,Bacillus clausii,Bacillus clausii,113454002
+BCOHN,Bacillus cohnii,Bacillus cohnii,113455001
+BDECI,Bacillus decisifrondis,Bacillus decisifrondis,445081000
+BDECO,Bacillus decolorationis,Bacillus decolorationis,429116000
+BDIPS,Bacillus dipsosauri,Bacillus dipsosauri,113456000
+BEHIM,Bacillus ehimensis,Bacillus ehimensis,113457009
+BFARR,Bacillus farraginis,Bacillus farraginis,429348009
+BFAST,Bacillus fastidiosus,Bacillus fastidiosus,35784003
+BACFIR,Bacillus firmus,Bacillus firmus,13430008
+BFORD,Bacillus fordii,Bacillus fordii,417062004
+BFORT,Bacillus fortis,Bacillus fortis,427859002
+BFUMA,Bacillus fumarioli,Bacillus fumarioli,429118004
+BFUNI,Bacillus funiculus,Bacillus funiculus,428387004
+BGALA,Bacillus galactosidilyticus,Bacillus galactosidilyticus,427864003
+BGIBS,Bacillus gibsonii,Bacillus gibsonii,113460002
+BGORN,Bacillus gornadae,Bacillus gornadae,29100001
+BHALM,Bacillus halmapalus,Bacillus halmapalus,113462005
+BHALDF,Bacillus halodenitrificans,Bacillus halodenitrificans,113464006
+BHALDR,Bacillus halodurans,Bacillus halodurans,113465007
+BHORI,Bacillus horikoshii,Bacillus horikoshii,113467004
+BHORT,Bacillus horti,Bacillus horti,429138003
+BHUMI,Bacillus humi,Bacillus humi,429139006
+BHWAJ,Bacillus hwajinpoensis,Bacillus hwajinpoensis,429035002
+BIDRI,Bacillus idriensis,Bacillus idriensis,447040007
+BINDI,Bacillus indicus,Bacillus indicus,429145003
+BINFA,Bacillus infantis,Bacillus infantis,432698009
+BINFE,Bacillus infernus,Bacillus infernus,113468009
+BKAUS,Bacillus kaustophilus,Bacillus kaustophilus,113469001
+BKORL,Bacillus korlensis,Bacillus korlensis,447041006
+BKRUL,Bacillus krulwichiae,Bacillus krulwichiae,429126007
+BACLEN,Bacillus lentus,Bacillus lentus,3020006
+BACLIC,Bacillus licheniformis,Bacillus licheniformis,74867004
+BLUCI,Bacillus luciferensis,Bacillus luciferensis,429675009
+BMACR,Bacillus macroides,Bacillus macroides,413620008
+BMACY,Bacillus macyae,Bacillus macyae,429206000
+BMARS,Bacillus marisflavi,Bacillus marisflavi,424425003
+BMETH,Bacillus methanolicus,Bacillus methanolicus,113471001
+BMOJA,Bacillus mojavensis,Bacillus mojavensis,113472008
+BMURA,Bacillus muralis,Bacillus muralis,428576008
+BMYCO,Bacillus mycoides,Bacillus mycoides,33900003
+BNEAL,Bacillus nealsonii,Bacillus nealsonii,428577004
+BNIAC,Bacillus niacini,Bacillus niacini,429747001
+BNOVA,Bacillus novalis,Bacillus novalis,429212005
+BOKUH,Bacillus okuhidensis,Bacillus okuhidensis,429468004
+BOLER,Bacillus oleronius,Bacillus oleronius,113487003
+BPAST,Bacillus pasteurii,Bacillus pasteurii,43131009
+BPATA,Bacillus patagoniensis,Bacillus patagoniensis,428962001
+BPOCH,Bacillus pocheonensis,Bacillus pocheonensis,442283002
+BPSDL,Bacillus pseudalcaliphilus,Bacillus pseudalcaliphilus,113474009
+BPSDF,Bacillus pseudofirmus,Bacillus pseudofirmus,113475005
+BPSMY,Bacillus pseudomycoides,Bacillus pseudomycoides,429077002
+BPSYP,Bacillus psychrophilus,Bacillus psychrophilus,1810009
+BPSYS,Bacillus psychrosaccharolyticus,Bacillus psychrosaccharolyticus,113476006
+BPULV,Bacillus pulvifaciens,Bacillus pulvifaciens,112274002
+BACPUM,Bacillus pumilus,Bacillus pumilus,16580009
+BSALE,Bacillus salexigens,Bacillus salexigens,113478007
+BSALI,Bacillus saliphilus,Bacillus saliphilus,428588005
+BSELE,Bacillus selenitireducens,Bacillus selenitireducens,428966003
+BSHAC,Bacillus shackletonii,Bacillus shackletonii,429221006
+BSIMP,Bacillus simplex,Bacillus simplex,113479004
+BSIRA,Bacillus siralis,Bacillus siralis,428972003
+BACSM,Bacillus smithii,Bacillus smithii,84789000
+BSONO,Bacillus sonorensis,Bacillus sonorensis,429472000
+BSPOR,Bacillus sporothermodurans,Bacillus sporothermodurans,113480001
+BSU,Bacillus subtilis,Bacillus subtilis,83512007
+BACSUG,Bacillus subtilis group,Bacillus subtilis group,413621007
+BSSP,Bacillus subtilis spizizenii,Bacillus subtilis spizizenii,427760003
+BSS,Bacillus subtilis subtilis,Bacillus subtilis subtilis,427764007
+BTEQU,Bacillus tequilensis,Bacillus tequilensis,447069003
+BTHMN,Bacillus thermantarcticus,Bacillus thermantarcticus,429760007
+BTHMM,Bacillus thermoamylovorans,Bacillus thermoamylovorans,113481002
+BTHMC,Bacillus thermocatenulatus,Bacillus thermocatenulatus,113482009
+BTHMCL,Bacillus thermocloacae,Bacillus thermocloacae,113483004
+BACTHU,Bacillus thuringiensis,Bacillus thuringiensis,64840009
+BTUSC,Bacillus tusciae,Bacillus tusciae,34498004
+BVALL,Bacillus vallismortis,Bacillus vallismortis,113484005
+BVEDD,Bacillus vedderi,Bacillus vedderi,113485006
+BVELE,Bacillus velezensis,Bacillus velezensis,429488000
+BVIET,Bacillus vietnamensis,Bacillus vietnamensis,429229008
+BVIRE,Bacillus vireti,Bacillus vireti,429230003
+BWEIH,Bacillus weihenstephanensis,Bacillus weihenstephanensis,413622000
+BACNANT,"Bacillus, not B. anthracis",Bacillus species not Bacillus anthracis,413352001
+BREVISP,Brevibacillus,Brevibacillus,114114002
+BREVIAGRI,Brevibacillus agri,Brevibacillus agri,114115001
+BREBRE,Brevibacillus brevis,Brevibacillus brevis,114117009
+BREVICENT,Brevibacillus centrosporus,Brevibacillus centrosporus,114118004
+BRELAT,Brevibacillus laterosporus,Brevibacillus laterosporus,114121002
+BREVIPARA,Brevibacillus parabrevis,Brevibacillus parabrevis,114122009
+BRVSP,Brevibacterium,Brevibacterium,3603008
+BRVCAS,Brevibacterium casei,Brevibacterium casei,6405003
+BRVEPI,Brevibacterium epidermidis,Brevibacterium epidermidis,57301000
+BRVLINE,Brevibacterium linens,Brevibacterium linens,112278004
+BRVLUTE,Brevibacterium luteolum,Brevibacterium luteolum,409826000
+BRVMCBR,Brevibacterium mcbrellneri,Brevibacterium mcbrellneri,431099002
+BRVBRAVE,Brevibacterium ravenspurgense,Brevibacterium ravenspurgense,446348002
+BRVSANG,Brevibacterium sanguinis,Brevibacterium sanguinis,431681006
+CELLSP,Cellulomonas,Cellulomonas,114188006
+CELLHOMI,Cellulomonas hominis,Cellulomonas hominis,114196001
+CELLHUMI,Cellulomonas humilata,Cellulomonas humilata,431580002
+CELLUSP,Cellulosimicrobium,Cellulosimicrobium,409860007
+CELLUCELL,Cellulosimicrobium cellulans,Cellulosimicrobium cellulans,409862004
+CORGN,Corynebacterium,Corynebacterium,77086004
+CORACC,Corynebacterium accolens,Corynebacterium accolens,243254006
+CORA,Corynebacterium afermentans,Corynebacterium afermentans,113608003
+CORAMM,Corynebacterium ammoniagenes,Corynebacterium ammoniagenes,113607008
+CORAMY,Corynebacterium amycolatum,Corynebacterium amycolatum,113611002
+CORAPP,Corynebacterium appendicis,Corynebacterium appendicis,423659000
+CORAQL,Corynebacterium aquilae,Corynebacterium aquilae,424012003
+CORARG,Corynebacterium argentoratense,Corynebacterium argentoratense,417499006
+CORATY,Corynebacterium atypicum,Corynebacterium atypicum,424209005
+CORAR,Corynebacterium aurimucosum,Corynebacterium aurimucosum,385503009
+CORARS,Corynebacterium auris,Corynebacterium auris,413925000
+CORARSC,Corynebacterium auriscanis,Corynebacterium auriscanis,424389005
+CORBET,Corynebacterium beticola,Corynebacterium beticola,432270000
+CORBO,Corynebacterium bovis,Corynebacterium bovis,44885001
+CORCAL,Corynebacterium callunae,Corynebacterium callunae,88866008
+CORCAM,Corynebacterium camporealensis,Corynebacterium camporealensis,424560007
+CORCAP,Corynebacterium capitovis,Corynebacterium capitovis,424721008
+CORCAS,Corynebacterium casei,Corynebacterium casei,424906005
+CORCSP,Corynebacterium caspium,Corynebacterium caspium,422791000
+CORCIC,Corynebacterium ciconiae,Corynebacterium ciconiae,424459004
+CORCON,Corynebacterium confusum,Corynebacterium confusum,417134008
+CORCOY,Corynebacterium coyleae,Corynebacterium coyleae,116461008
+CORCY,Corynebacterium cystitidis,Corynebacterium cystitidis,50169005
+CORDUR,Corynebacterium durum,Corynebacterium durum,413926004
+COREFF,Corynebacterium efficiens,Corynebacterium efficiens,423379003
+CORFAL,Corynebacterium falsenii,Corynebacterium falsenii,116389005
+CORFEL,Corynebacterium felinum,Corynebacterium felinum,423568009
+CORFVS,Corynebacterium flavescens,Corynebacterium flavescens,47802009
+CORFRE,Corynebacterium freneyi,Corynebacterium freneyi,416914001
+CORGEN,Corynebacterium genitalium,Corynebacterium genitalium,243260006
+CORGLA,Corynebacterium glaucum,Corynebacterium glaucum,432808003
+CORGLU,Corynebacterium glucuronolyticum,Corynebacterium glucuronolyticum,413927008
+CORGL,Corynebacterium glutamicum,Corynebacterium glutamicum,89651003
+CORHAL,Corynebacterium halotolerans,Corynebacterium halotolerans,424529007
+CORIMI,Corynebacterium imitans,Corynebacterium imitans,413928003
+CORJK,Corynebacterium jeikeium,Corynebacterium jeikeium,63410006
+CORKRO,Corynebacterium kroppenstedtii,Corynebacterium kroppenstedtii,363777001
+CORKU,Corynebacterium kutscheri,Corynebacterium kutscheri,88575000
+CORLIP,Corynebacterium lipophiloflavum,Corynebacterium lipophiloflavum,416863001
+CORMAC,Corynebacterium macginleyi,Corynebacterium macginleyi,363772007
+CORMAN,Corynebacterium manihot,Corynebacterium manihot,243261005
+CORMSL,Corynebacterium massiliense,Corynebacterium massiliense,446285007
+CORMST,Corynebacterium mastitidis,Corynebacterium mastitidis,424709009
+CORMA,Corynebacterium matruchotii,Corynebacterium matruchotii,89922004
+CORMED,Corynebacterium mediolanum,Corynebacterium mediolanum,243262003
+CORMI,Corynebacterium minutissimum,Corynebacterium minutissimum,83594007
+CORMUC,Corynebacterium mucifaciens,Corynebacterium mucifaciens,413929006
+CORMRS,Corynebacterium murisepticum,Corynebacterium murisepticum,302583000
+CORMY,Corynebacterium mycetoides,Corynebacterium mycetoides,58879005
+CORNEP,Corynebacterium nephridii,Corynebacterium nephridii,243263008
+CORPHO,Corynebacterium phocae,Corynebacterium phocae,116462001
+CORPI,Corynebacterium pilosum,Corynebacterium pilosum,81368007
+CORPRO,Corynebacterium propinquum,Corynebacterium propinquum,113612009
+CORPD,Corynebacterium pseudodiphtheriticum,Corynebacterium pseudodiphtheriticum,12050008
+CORPST,Corynebacterium pseudogenitalium,Corynebacterium pseudogenitalium,243264002
+CORPS,Corynebacterium pseudotuberculosis,Corynebacterium pseudotuberculosis,55084001
+CORPSM,Corynebacterium pseudotuberculostearicum,Corynebacterium pseudotuberculostearicum,416570006
+CORPYRU,Corynebacterium pyruviciproducens,Corynebacterium pyruviciproducens,450383002
+CORRE,Corynebacterium renale,Corynebacterium renale,62000003
+CORRES,Corynebacterium resistens,Corynebacterium resistens,442804004
+CORRIE,Corynebacterium riegelii,Corynebacterium riegelii,131241009
+CORRUB,Corynebacterium rubrum,Corynebacterium rubrum,243265001
+CORSIM,Corynebacterium simulans,Corynebacterium simulans,416655000
+CORSIN,Corynebacterium singulare,Corynebacterium singulare,422898002
+CORSPI,Corynebacterium sphenisci,Corynebacterium sphenisci,422705004
+CORSPM,Corynebacterium spheniscorum,Corynebacterium spheniscorum,432362008
+CORST,Corynebacterium striatum,Corynebacterium striatum,63815007
+CORSUI,Corynebacterium suicordis,Corynebacterium suicordis,423784007
+CORSUN,Corynebacterium sundsvallense,Corynebacterium sundsvallense,425307003
+CORTEN,Corynebacterium tenuis,Corynebacterium tenuis,72243003
+CORTER,Corynebacterium terpenotabidum,Corynebacterium terpenotabidum,422496009
+CORTES,Corynebacterium testudinoris,Corynebacterium testudinoris,424212008
+CORTHO,Corynebacterium thomssenii,Corynebacterium thomssenii,416311000
+CORTUB,Corynebacterium tuberculostearicum,Corynebacterium tuberculostearicum,416356007
+CORTUSC,Corynebacterium tuscaniense,Corynebacterium tuscaniense,450409000
+CORUL,Corynebacterium ulcerans,Corynebacterium ulcerans,103428000
+CORUR,Corynebacterium urealyticum,Corynebacterium urealyticum,113613004
+CORURE,Corynebacterium ureicelerivorans,Corynebacterium ureicelerivorans,429443001
+CORVAR,Corynebacterium variabile,Corynebacterium variabile,11575001
+CORVIS,Corynebacterium viscosum,Corynebacterium viscosum,243266000
+CORVIT,Corynebacterium vitaeruminis,Corynebacterium vitaeruminis,116390001
+CORXE,Corynebacterium xerosis,Corynebacterium xerosis,27101006
+CORNCD,"Corynebacterium, not C. diphtheriae","Corynebacterium species, not Corynebacterium diphtheriae",413931002
+CORNCJ,"Corynebacterium, not C. jeikeium",Corynebacterium species not Corynebacterium jeikeium,413930001
+CORGPB,coryneform gram positive bacilli,Coryneform bacteria,116442009
+CUTISP,Cutibacterium,Cutibacterium,763051006
+PRPAC,Cutibacterium acnes,Cutibacterium acnes,39473003
+PROAV,Cutibacterium avidum,Cutibacterium avidum,47473006
+PROGR,Cutibacterium granulosum,Cutibacterium granulosum,87755005
+DERMASP,Dermabacter,Dermabacter,413976002
+DERMAHOM,Dermabacter hominis,Dermabacter hominis,413977006
+DERMSP,Dermacoccus,Dermacoccus,115142006
+DENISH,Dermacoccus nishinomiyaensis,Dermacoccus nishinomiyaensis,113776005
+DIPTH,Diphtheroids,Diphtheroids,54642001
+DIPTHAE,"Diphtheroids, aerobic",Aerobic diphtheroids,44661006
+DIPTHAN,"Diphtheroids, anaerobic",Anaerobic diphtheroids,26481006
+EXIGSP,Exiguobacterium,Exiguobacterium,114178005
+EXIGACET,Exiguobacterium acetylicum,Exiguobacterium acetylicum,114179002
+GORDSP,Gordonia,Gordonia,115143001
+GORDBRON,Gordonia bronchialis,Gordonia bronchialis,113646005
+GORDOTIT,Gordonia otitidis,Gordonia otitidis,443659007
+GORDPOLY,Gordonia polyisoprenivorans,Gordonia polyisoprenivorans,420096009
+GORDRUBR,Gordonia rubripertincta,Gordonia rubripertincta,113647001
+GORDSPUT,Gordonia sputi,Gordonia sputi,113648006
+GORDTERR,Gordonia terrae,Gordonia terrae,113649003
+JANISP,Janibacter,Janibacter,409828004
+JANIHOYL,Janibacter hoylei,Janibacter hoylei,698246003
+KOCSP,Kocuria,Kocuria,414328004
+KOCKRI,Kocuria kristinae,Kocuria kristinae,113772007
+KOCROS,Kocuria rosea,Kocuria rosea,113773002
+KOCVAR,Kocuria varians,Kocuria varians,113774008
+KYTSP,Kytococcus,Kytococcus,115141004
+KYSED,Kytococcus sedentarius,Kytococcus sedentarius,113775009
+LEIFSP,Leifsonia,Leifsonia,414590004
+LEIFAQUA,Leifsonia aquatica,Leifsonia aquatica,414591000
+LEIFXYLI,Leifsonia xyli,Leifsonia xyli,414596005
+MICRSP,Microbacterium,Microbacterium,114199008
+MICRARBO,Microbacterium arborescens,Microbacterium arborescens,414699006
+MICRHYDR,Microbacterium hydrocarbonoxydans,Microbacterium hydrocarbonoxydans,414707005
+MICRIMPE,Microbacterium imperiale,Microbacterium imperiale,114203008
+MICRLACT,Microbacterium lacticum,Microbacterium lacticum,114204002
+MICRLIQU,Microbacterium liquefaciens,Microbacterium liquefaciens,114063000
+MICRMARI,Microbacterium maritypicum,Microbacterium maritypicum,414710003
+MICROXYD,Microbacterium oxydans,Microbacterium oxydans,414713001
+MICRPARA,Microbacterium paraoxydans,Microbacterium paraoxydans,414714007
+MICRRESI,Microbacterium resistens,Microbacterium resistens,414716009
+MICG,Micrococcus,Micrococcus,52864008
+MICANT,Micrococcus antarcticus,Micrococcus antarcticus,416555005
+MICLUT,Micrococcus luteus,Micrococcus luteus,48299003
+MICLYL,Micrococcus lylae,Micrococcus lylae,61376003
+MICNIS,Micrococcus nishinomiyaensis,Micrococcus nishinomiyaensis,67084000
+OERSP,Oerskovia,Oerskovia,81194007
+PAESP,Paenibacillus,Paenibacillus,114086007
+PAEAGAR,Paenibacillus agaridevorans,Paenibacillus agaridevorans,429907003
+PAEALV,Paenibacillus alvei,Paenibacillus alvei,114088008
+BEDAP,Paenibacillus edaphicus,Paenibacillus edaphicus,8.501E+12
+PAELARV,Paenibacillus larvae,Paenibacillus larvae,114098002
+PAELENT,Paenibacillus lentimorbus,Paenibacillus lentimorbus,414989004
+PAEMAC,Paenibacillus macerans,Paenibacillus macerans,114101003
+PAEPABU,Paenibacillus pabuli,Paenibacillus pabuli,114103000
+PAEPOL,Paenibacillus polymyxa,Paenibacillus polymyxa,114105007
+PAEPOPI,Paenibacillus popilliae,Paenibacillus popilliae,414990008
+PAEPROV,Paenibacillus provencensis,Paenibacillus provencensis,438962008
+PAETHIA,Paenibacillus thiaminolyticus,Paenibacillus thiaminolyticus,114106008
+PAEURIN,Paenibacillus urinalis,Paenibacillus urinalis,445240003
+PAEVALI,Paenibacillus validus,Paenibacillus validus,114107004
+PRPG,Propionibacterium,Propionibacterium,34844008
+PRPAU,Propionibacterium australiense,Propionibacterium australiense,433037008
+PRPCY,Propionibacterium cyclohexanicum,Propionibacterium cyclohexanicum,113916009
+PRPF,Propionibacterium freudenreichii,Propionibacterium freudenreichii,23871008
+PRPPR,Propionibacterium prionicus,Propionibacterium prionicus,113919002
+PROPISP,Propioniferax,Propioniferax,114055001
+RHOSP,Rhodococcus,Rhodococcus,34534002
+RHOERYT,Rhodococcus erythropolis,Rhodococcus erythropolis,22478004
+RHOFASC,Rhodococcus fascians,Rhodococcus fascians,28901005
+RHOGLOB,Rhodococcus globerulus,Rhodococcus globerulus,44348004
+RHOGORD,Rhodococcus gordoniae,Rhodococcus gordoniae,430885009
+RHORHOD,Rhodococcus rhodochrous,Rhodococcus rhodochrous,54379008
+ROSE,Roseomonas,Roseomonas,115159001
+ROSECERV,Roseomonas cervicalis,Roseomonas cervicalis,113711006
+ROSEGILA,Roseomonas gilardii,Roseomonas gilardii,113710007
+ROSEMUCO,Roseomonas mucosa,Roseomonas mucosa,415351006
+ROTSP,Rothia,Rothia,90163001
+ROTAERI,Rothia aeria,Rothia aeria,417029007
+ROTDE,Rothia dentocariosa,Rothia dentocariosa,35379007
+ROTHMU,Rothia mucilaginosa,Rothia mucilaginosa,416544005
+RUMMSP,Rummeliibacillus,Rummeliibacillus,450458001
+RUMMPYCN,Rummeliibacillus pycnus,Rummeliibacillus pycnus,450459009
+STRBA,Small-colony-forming beta-hemolytic group A streptococci,Small-colony-forming beta-hemolytic group A streptococci,415534000
+STRBC,Small-colony-forming beta-hemolytic group C streptococci,Small-colony-forming beta-hemolytic group C streptococci,415535004
+STRBG,Small-colony-forming beta-hemolytic group G streptococci,Small-colony-forming beta-hemolytic group G streptococci,415536003
+SOLISP,Solibacillus,Solibacillus,699375003
+BSILV,Solibacillus silvestris,Solibacillus silvestris,429471007
+STAARL,Staphylococcus arlettae,Staphylococcus arlettae,72465001
+STAAR,Staphylococcus auricularis,Staphylococcus auricularis,45654003
+STACS,Staphylococcus capitis,Staphylococcus capitis,40347003
+STACC,Staphylococcus capitis capitis,Staphylococcus capitis ss capitis,113962001
+STACU,Staphylococcus capitis urealyticus,Staphylococcus capitis subspecies urealyticus,103492009
+STACAP,Staphylococcus caprae,Staphylococcus caprae,76969000
+STACAR,Staphylococcus carnosus,Staphylococcus carnosus,9784002
+STACRC,Staphylococcus carnosus carnosus,Staphylococcus carnosus carnosus,438905007
+STACUT,Staphylococcus carnosus utilis,Staphylococcus carnosus utilis,438733001
+STACHR,Staphylococcus chromogenes,Staphylococcus chromogenes,56629004
+STACO,Staphylococcus cohnii,Staphylococcus cohnii,66872005
+STASCO,Staphylococcus cohnii cohnii,Staphylococcus cohnii ss cohnii,113963006
+STASUR,Staphylococcus cohnii urealyticus,Staphylococcus cohnii subspecies urealyticus,103493004
+STACON,Staphylococcus condimenti,Staphylococcus condimenti,439185000
+SE,Staphylococcus epidermidis,Staphylococcus epidermidis,60875001
+STAEQ,Staphylococcus equorum,Staphylococcus equorum,28217008
+STAEE,Staphylococcus equorum equorum,Staphylococcus equorum equorum,438005005
+STAEL,Staphylococcus equorum linens,Staphylococcus equorum linens,438164005
+STAFE,Staphylococcus felis,Staphylococcus felis,113965004
+STAGA,Staphylococcus gallinarum,Staphylococcus gallinarum,8056006
+STAHA,Staphylococcus haemolyticus,Staphylococcus haemolyticus,83452006
+STAHO,Staphylococcus hominis,Staphylococcus hominis,44827007
+STAHOM,Staphylococcus hominis hominis,Staphylococcus hominis hominis,432505008
+STANOV,Staphylococcus hominis novobiosepticus,Staphylococcus hominis novobiosepticus,438202004
+STAKLO,Staphylococcus kloosii,Staphylococcus kloosii,53227003
+STALU,Staphylococcus lugdunensis,Staphylococcus lugdunensis,103494005
+STAMUS,Staphylococcus muscae,Staphylococcus muscae,113969005
+STANEP,Staphylococcus nepalensis,Staphylococcus nepalensis,438681002
+STAPAS,Staphylococcus pasteuri,Staphylococcus pasteuri,103495006
+STAPETT,Staphylococcus pettenkoferi,Staphylococcus pettenkoferi,428731005
+STAPIS,Staphylococcus piscifermentans,Staphylococcus piscifermentans,113970006
+STASL,Staphylococcus saccharolyticus,Staphylococcus saccharolyticus,41103009
+STASA,Staphylococcus saprophyticus,Staphylococcus saprophyticus,19743000
+STASB,Staphylococcus saprophyticus bovis,Staphylococcus saprophyticus ss bovis,113972003
+STASAP,Staphylococcus saprophyticus saprophyticus,Staphylococcus saprophyticus ss saprophyticus,113973008
+STASCH,Staphylococcus schleiferi schleiferi,Staphylococcus schleiferi subsp. schleiferi,103496007
+STASI,Staphylococcus simulans,Staphylococcus simulans,52122005
+STASU,Staphylococcus succinus,Staphylococcus succinus,438729008
+STASUC,Staphylococcus succinus casei,Staphylococcus succinus casei,440815004
+STASUS,Staphylococcus succinus succinus,Staphylococcus succinus succinus,441130000
+STAWA,Staphylococcus warneri,Staphylococcus warneri,63550006
+STAXY,Staphylococcus xylosus,Staphylococcus xylosus,32737005
+CNS,"Staphylococcus, coagulase negative","Staphylococcus, coagulase negative",116197008
+STRALAC,Streptococcus alactolyticus,Streptococcus alactolyticus,34228005
+STRVN,Streptococcus anginosus,Streptococcus anginosus,44304009
+STRANG,Streptococcus anginosus group,Streptococcus anginosus group,415597009
+STRAC,Streptococcus anginosus-constellatus,Streptococcus anginosus-constellatus,70160008
+STRAUS,Streptococcus australis,Streptococcus australis,415598004
+STRBOVI,Streptococcus bovis group,Streptococcus bovis group,415599007
+STRVC,Streptococcus constellatus,Streptococcus constellatus,76199005
+STRCC,Streptococcus constellatus constellatus,Streptococcus constellatus subspecies constellatus,415601009
+STRCP,Streptococcus constellatus pharyngis,Streptococcus constellatus subspecies pharyngis,415602002
+STRCRC,Streptococcus criceti,Streptococcus criceti,34838009
+STRCR,Streptococcus cristatus,Streptococcus cristatus,113980005
+STRDENT,Streptococcus dentisani,Streptococcus dentisani,708952006
+STRD,Streptococcus downei,Streptococcus downei,12704003
+STRDE,Streptococcus equinus,Streptococcus equinus,72646003
+STRF,Streptococcus ferus,Streptococcus ferus,10049004
+STRGALL,Streptococcus gallolyticus,Streptococcus gallolyticus,113985000
+STRGALGAL,Streptococcus gallolyticus gallolyticus,Streptococcus gallolyticus subspecies gallolyticus,421544007
+STRGALMAC,Streptococcus gallolyticus macedonicus,Streptococcus gallolyticus subspecies macedonicus,421004005
+STRGALPAS,Streptococcus gallolyticus pasteurianus,Streptococcus gallolyticus subspecies pasteurianus,421253004
+STRVG,Streptococcus gordonii,Streptococcus gordonii,113986004
+STRHYOV,Streptococcus hyovaginalis,Streptococcus hyovaginalis,113988003
+STRINFA,Streptococcus infantarius,Streptococcus infantarius,415603007
+STRINFINF,Streptococcus infantarius infantarius,Streptococcus infantarius subspecies infantarius,432506009
+STRINF,Streptococcus infantis,Streptococcus infantis,415604001
+SVI,Streptococcus intermedius,Streptococcus intermedius,62170002
+STRLUTE,Streptococcus lutetiensis,Streptococcus lutetiensis,415605000
+STRMACA,Streptococcus macacae,Streptococcus macacae,59717000
+STRVM,Streptococcus mitis,Streptococcus mitis,57997003
+STRMIT,Streptococcus mitis group,Streptococcus mitis group,127539005
+STRVT,Streptococcus mutans,Streptococcus mutans,214001
+STRMUG,Streptococcus mutans group,Streptococcus mutans group,127536003
+STROLIG,Streptococcus oligofermentans,Streptococcus oligofermentans,440296007
+STROR,Streptococcus oralis,Streptococcus oralis,19870004
+STRPA,Streptococcus parasanguinis,Streptococcus parasanguinis,113990002
+STRPER,Streptococcus peroris,Streptococcus peroris,416347004
+STRPSEU,Streptococcus pseudopneumoniae,Streptococcus pseudopneumoniae,420470004
+STRRT,Streptococcus ratti,Streptococcus ratti,10667007
+STRVS,Streptococcus salivarius,Streptococcus salivarius,39888004
+STRSAG,Streptococcus salivarius group,Streptococcus salivarius group,127537007
+STRSLV,Streptococcus salivarius salivarius,Streptococcus salivarius subsp. salivarius,84684000
+STRSAL,Streptococcus salivarius thermophilus,Streptococcus salivarius subsp. thermophilus,23310006
+SVS,Streptococcus sanguinis,Streptococcus sanguinis,113993000
+STRSG,Streptococcus sanguinis group,Streptococcus sanguinis group,115658008
+STRSINE,Streptococcus sinensis,Streptococcus sinensis,438909001
+STRSO,Streptococcus sobrinus,Streptococcus sobrinus,43777007
+STRTIGU,Streptococcus tigurinus,Streptococcus tigurinus,699479005
+STRVE,Streptococcus vestibularis,Streptococcus vestibularis,113998009
+GFS,"Streptococcus, group F","Streptococcus, group F",83503005
+TRUESP,Trueperella,Trueperella,704974007
+TRUEBERN,Trueperella bernardiae,Trueperella bernardiae,704975008
+ARCPY,Trueperella pyogenes,Trueperella pyogenes,258933002
+TSUKSP,Tsukamurella,Tsukamurella,115135006
+TSUKINCH,Tsukamurella inchonensis,Tsukamurella inchonensis,113509000
+TSUKPAUR,Tsukamurella paurometabola,Tsukamurella paurometabola,113510005
+TSUKPULM,Tsukamurella pulmonis,Tsukamurella pulmonis,113511009
+TSUKSTRA,Tsukamurella strandjordii,Tsukamurella strandjordii,417316004
+TSUKTYRO,Tsukamurella tyrosinosolvens,Tsukamurella tyrosinosolvens,113512002
+TURISP,Turicella,Turicella,415762009
+VIRSP,Virgibacillus,Virgibacillus,114108009
+VIRPAN,Virgibacillus pantothenticus,Virgibacillus pantothenticus,114109001
+SVU,Viridans group streptococci,"Streptococcus, viridans group",31703004
