@@ -274,11 +274,4 @@
   return(ehrbsi)
 }
 
-.write_malta_output_files <- function(result_list, output_path) {
-  # Write RDS files to the specified path
-  saveRDS(result_list$ehrbsi, file.path(output_path, "1.EHRBSI.rds"))
-  saveRDS(result_list$patient, file.path(output_path, "2.EHRBSI$Patient.rds"))
-  saveRDS(result_list$isolate, file.path(output_path, "3.EHRBSI$Patient$Isolate.rds"))
-  saveRDS(result_list$res, file.path(output_path, "4.EHRBSI$Patient$Isolate$Res.rds"))
-}
 

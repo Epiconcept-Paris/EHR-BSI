@@ -25,7 +25,7 @@
 #' }
 
 # Internal helper functions (not exported)
-.process_basic_cleaning <- function(raw_data, reporting_year) {
+.process_estonia_basic_cleaning <- function(raw_data, reporting_year) {
   # Validate required columns exist
   required_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", 
                     "HospitalId", "PatientId", "IsolateId")
@@ -78,7 +78,7 @@
   return(recoded_data)
 }
 
-.create_patient_table <- function(recoded_data) {
+.create_estonia_patient_table <- function(recoded_data) {
   patient <- recoded_data %>%
     dplyr::mutate(
       RecordId = record_id_patient,
@@ -121,7 +121,7 @@
   return(patient)
 }
 
-.create_isolate_table <- function(recoded_data) {
+.create_estonia_isolate_table <- function(recoded_data) {
   isolate <- recoded_data %>%
   dplyr::mutate(RecordId = record_id_isolate,
          ParentId = PatientId,
@@ -139,7 +139,7 @@
 
 }
 
-.create_res_table <- function(recoded_data, metadata_path = NULL) {
+.create_estonia_res_table <- function(recoded_data, metadata_path = NULL) {
   # Load required lookup tables from data folder
   load(file.path("data", "Estonia_MecRes_Lookup.rda"))
   load(file.path("data", "Estonia_ResRecode_Lookup.rda"))
@@ -303,7 +303,7 @@
   return(res)
 }
 
-.create_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
+.create_estonia_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
   ehrbsi <- recoded_data %>%
   dplyr::mutate(AggregationLevel = "HOSP",
          ClinicalTerminology = "ICD-10",
@@ -365,11 +365,5 @@
   return(ehrbsi)
 }
 
-.write_output_files <- function(result_list, output_path) {
-  # Write RDS files to the specified path
-  saveRDS(result_list$ehrbsi, file.path(output_path, "1.EHRBSI.rds"))
-  saveRDS(result_list$patient, file.path(output_path, "2.EHRBSI$Patient.rds"))
-  saveRDS(result_list$isolate, file.path(output_path, "3.EHRBSI$Patient$Isolate.rds"))
-  saveRDS(result_list$res, file.path(output_path, "4.EHRBSI$Patient$Isolate$Res.rds"))
-}
+
 

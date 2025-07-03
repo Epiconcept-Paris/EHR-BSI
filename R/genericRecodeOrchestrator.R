@@ -37,43 +37,6 @@
 #' )
 #' }
 
-# Usage Examples and Equivalencies
-# 
-# The following calls are equivalent:
-# 
-# # Using country-specific functions:
-# malta_result <- process_malta_bsi(
-#   input_file = "BSI_REPORT_Malta.csv",
-#   input_file_path = "Malta/data/raw",
-#   dictionary_path = "Malta/data/reference/dictionary_raw_BSI_Malta.xlsx",
-#   write_to_file = TRUE,
-#   write_to_file_path = "Malta/data/formatted"
-# )
-# 
-# estonia_result <- process_estonia_bsi(
-#   input_file = "BSI_REPORT_2024_share.xlsx",
-#   input_file_path = "Estonia/data/raw",
-#   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
-#   write_to_file = TRUE,
-#   write_to_file_path = "Estonia/data/formatted"
-# )
-# 
-# # Using generic function:
-# malta_result <- process_country_bsi(
-#   country = "MT",
-#   input_file_path = "Malta/data/raw",
-#   dictionary_path = "Malta/data/reference/dictionary_raw_BSI_Malta.xlsx",
-#   write_to_file = TRUE,
-#   write_to_file_path = "Malta/data/formatted"
-# )
-# 
-# estonia_result <- process_country_bsi(
-#   country = "EE",
-#   input_file_path = "Estonia/data/raw",
-#   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
-#   write_to_file = TRUE,
-#   write_to_file_path = "Estonia/data/formatted"
-# )
 # 
 # # The generic function automatically handles:
 # # - Setting appropriate default input file names
@@ -91,7 +54,8 @@ process_country_bsi <- function(country,
                                episode_duration = 14,
                                write_to_file = FALSE,
                                write_to_file_path = NULL,
-                               return_format = "list") {
+                               return_format = "list",
+                               calculate_episodes = TRUE) {
   
   # Validate country parameter
   if (!country %in% c("MT", "EE")) {
@@ -110,12 +74,12 @@ process_country_bsi <- function(country,
   if (is.null(dictionary_path)) {
     dictionary_path <- switch(country,
       "MT" = "reference/dictionary_raw_BSI_Malta.xlsx",
-      "EE" = NULL  # Estonia doesn't have a default dictionary
+      "EE" = "reference/dictionary_raw_BSI_Estonia.xlsx"
     )
   }
   
   # Set default metadata path for Estonia if not provided
-  if (country == "EE" && is.null(metadata_path)) {
+  if (is.null(metadata_path)) {
     metadata_path <- "reference/MetaDataSet_57 (2025-03-13).xlsx"
   }
   
@@ -136,7 +100,7 @@ process_country_bsi <- function(country,
     stop("Dictionary file not found: ", dictionary_path)
   }
   
-  if (country == "EE" && !is.null(metadata_path) && !file.exists(metadata_path)) {
+  if (!is.null(metadata_path) && !file.exists(metadata_path)) {
     stop("Metadata file not found: ", metadata_path)
   }
   
@@ -152,7 +116,7 @@ process_country_bsi <- function(country,
   
   # Load data based on file extension or country
   file_ext <- tools::file_ext(input_file)
-  if (file_ext %in% c("xlsx", "xls") || country == "EE") {
+  if (file_ext %in% c("xlsx", "xls")) {
     raw_data <- readxl::read_xlsx(file.path(input_file_path, input_file))
   } else {
     raw_data <- read.csv(file.path(input_file_path, input_file))
@@ -180,14 +144,23 @@ process_country_bsi <- function(country,
     ehrbsi <- .create_malta_ehrbsi_table(recoded_data, reporting_year, episode_duration)
     
   } else if (country == "EE") {
-    recoded_data <- .process_basic_cleaning(raw_data, reporting_year)
+    recoded_data <- .process_estonia_basic_cleaning(raw_data, reporting_year)
     
     # Create the four tables
-    patient <- .create_patient_table(recoded_data)
-    isolate <- .create_isolate_table(recoded_data)
-    res <- .create_res_table(recoded_data, metadata_path)
-    ehrbsi <- .create_ehrbsi_table(recoded_data, reporting_year, episode_duration)
+    patient <- .create_estonia_patient_table(recoded_data)
+    isolate <- .create_estonia_isolate_table(recoded_data)
+    res <- .create_estonia_res_table(recoded_data, metadata_path)
+    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, reporting_year, episode_duration)
   }
+  
+  if(calculate_episodes){
+    # Create a dataset with distinct episodes, dates of onset, origin of case etc
+    eps_df <- calculateEpisodes(patient, isolate, commensal_df, episodeDuration = 14)
+    
+    # Aggregate to ehrbsi level
+    ehrbsi <- aggregateEpisodes(eps_df,ehrbsi)
+  }
+  
   
   # Create output list
   result <- list(
@@ -197,13 +170,10 @@ process_country_bsi <- function(country,
     res = res
   )
   
+  
   # Write files if requested using country-specific function
   if (write_to_file) {
-    if (country == "MT") {
-      .write_malta_output_files(result, write_to_file_path)
-    } else if (country == "EE") {
-      .write_output_files(result, write_to_file_path)
-    }
+    saveReportingTemplate(result,country)
   }
   
   return(result)
