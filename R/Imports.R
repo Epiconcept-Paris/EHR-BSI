@@ -1,4 +1,4 @@
 #' @import data.table
-#' @importFrom dplyr %>%
+#' @import dplyr
 #' @importFrom tidyr pivot_wider
 NULL
