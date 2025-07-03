@@ -140,11 +140,11 @@
 }
 
 .create_estonia_res_table <- function(recoded_data, metadata_path = NULL) {
-  # Load required lookup tables from data folder
-  load(file.path("data", "Estonia_MecRes_Lookup.rda"))
-  load(file.path("data", "Estonia_ResRecode_Lookup.rda"))
-  load(file.path("data", "Estonia_Ab_EST2ENG_Lookup.rda"))
-  load(file.path("data", "Estonia_Ab_ENG2HAI_Lookup.rda"))
+  # Get required lookup tables from package data
+  Estonia_MecRes_Lookup <- copy(Estonia_MecRes_Lookup)
+  Estonia_ResRecode_Lookup <- copy(Estonia_ResRecode_Lookup)
+  Estonia_Ab_EST2ENG_Lookup <- copy(Estonia_Ab_EST2ENG_Lookup)
+  Estonia_Ab_ENG2HAI_Lookup <- copy(Estonia_Ab_ENG2HAI_Lookup)
   
   # Create lookup vectors for easier use with dplyr::recode
   estonia_mecres_lookup <- setNames(Estonia_MecRes_Lookup$resistance_type, Estonia_MecRes_Lookup$resistance_value)
@@ -304,9 +304,9 @@
 }
 
 .create_estonia_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
-  # Load required lookup tables from data folder
-  load(file.path("data", "Estonia_HospType_Lookup.rda"))
-  load(file.path("data", "Estonia_HospGeog_Lookup.rda"))
+  # Get required lookup tables from package data
+  Estonia_HospType_Lookup <- copy(Estonia_HospType_Lookup)
+  Estonia_HospGeog_Lookup <- copy(Estonia_HospGeog_Lookup)
   
   # Create lookup vectors for easier use with dplyr::recode
   estonia_hosptype_lookup <- setNames(Estonia_HospType_Lookup$hosptype_code, Estonia_HospType_Lookup$estonia_hosptype)

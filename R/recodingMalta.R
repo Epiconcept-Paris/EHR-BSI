@@ -55,24 +55,21 @@
     )
   }
   
-  # Load Malta lookup tables if they exist
-  malta_unit_lookup <- if (exists("Malta_UnitSpecialty_Lookup")) {
-    setNames(Malta_UnitSpecialty_Lookup$generic_code, Malta_UnitSpecialty_Lookup$malta_code)
-  } else NULL
+  # Get Malta lookup tables from package data
+  Malta_UnitSpecialty_Lookup <- copy(Malta_UnitSpecialty_Lookup)
+  Malta_Outcome_Lookup <- copy(Malta_Outcome_Lookup)
+  Malta_HospType_Lookup <- copy(Malta_HospType_Lookup)
   
-  malta_outcome_lookup <- if (exists("Malta_Outcome_Lookup")) {
-    setNames(Malta_Outcome_Lookup$generic_code, Malta_Outcome_Lookup$malta_code)
-  } else NULL
-  
-  malta_hosptype_lookup <- if (exists("Malta_HospType_Lookup")) {
-    setNames(Malta_HospType_Lookup$hosptype_code, Malta_HospType_Lookup$malta_hosptype)
-  } else NULL
+  # Create lookup vectors for easier use with dplyr::recode
+  malta_unit_lookup <- setNames(Malta_UnitSpecialty_Lookup$generic_code, Malta_UnitSpecialty_Lookup$malta_code)
+  malta_outcome_lookup <- setNames(Malta_Outcome_Lookup$generic_code, Malta_Outcome_Lookup$malta_code)
+  malta_hosptype_lookup <- setNames(Malta_HospType_Lookup$hosptype_code, Malta_HospType_Lookup$malta_hosptype)
 
   # Malta-specific recoding using temporary, non-CDM vars imported from raw
   recoded_data <- raw_data %>%
     dplyr::mutate(
       DateOfSpecCollection = if ("EpisodeStartDate_noncdm" %in% names(.)) EpisodeStartDate_noncdm else DateOfSpecCollection,
-      UnitSpecialtyShort = if ("UnitSpecialtyShort_noncdm" %in% names(.) && !is.null(malta_unit_lookup)) {
+      UnitSpecialtyShort = if ("UnitSpecialtyShort_noncdm" %in% names(.)) {
         dplyr::recode(UnitSpecialtyShort_noncdm, !!!malta_unit_lookup, .default = UnitSpecialtyShort_noncdm)
       } else UnitSpecialtyShort,
       patientType = if ("patientType_noncdm" %in% names(.)) {
@@ -84,14 +81,14 @@
           TRUE ~ NA
         )
       } else "INPAT",
-      OutcomeOfCase = if ("OutcomeOfCase_noncdm" %in% names(.) && !is.null(malta_outcome_lookup)) {
+      OutcomeOfCase = if ("OutcomeOfCase_noncdm" %in% names(.)) {
         dplyr::case_when(
           OutcomeOfCase_noncdm %in% names(malta_outcome_lookup) ~ malta_outcome_lookup[OutcomeOfCase_noncdm],
           OutcomeOfCase_noncdm != "" ~ "A", # anything else is 'ALIVE'
           TRUE ~ NA
         )
       } else OutcomeOfCase,
-      HospitalType = if ("HospitalId" %in% names(.) && !is.null(malta_hosptype_lookup)) {
+      HospitalType = if ("HospitalId" %in% names(.)) {
         dplyr::case_when(
           HospitalId %in% names(malta_hosptype_lookup) ~ malta_hosptype_lookup[HospitalId],
           is.na(HospitalId) ~ NA,
@@ -154,10 +151,9 @@
 }
 
 .create_malta_isolate_table <- function(recoded_data) {
-  # Load Malta pathogen lookup table if it exists
-  malta_pathogen_lookup <- if (exists("Malta_PathogenCode_Lookup")) {
-    setNames(Malta_PathogenCode_Lookup$microorganism_code, Malta_PathogenCode_Lookup$malta_pathogen_name)
-  } else NULL
+  # Get Malta pathogen lookup table from package data
+  Malta_PathogenCode_Lookup <- copy(Malta_PathogenCode_Lookup)
+  malta_pathogen_lookup <- setNames(Malta_PathogenCode_Lookup$microorganism_code, Malta_PathogenCode_Lookup$malta_pathogen_name)
   
   isolate <- recoded_data %>%
     dplyr::mutate(
@@ -165,7 +161,7 @@
       ParentId = PatientId,
       LaboratoryCode = NA, # Not included in extract
       Specimen = NA, # Not included in extract
-      MicroorganismCode = if (!is.null(malta_pathogen_lookup) && "MicroorganismCodeLabel" %in% names(.)) {
+      MicroorganismCode = if ("MicroorganismCodeLabel" %in% names(.)) {
         dplyr::case_when(
           MicroorganismCodeLabel %in% names(malta_pathogen_lookup) ~ malta_pathogen_lookup[MicroorganismCodeLabel],
           !is.na(MicroorganismCodeLabel) ~ paste0("UNMAPPED: ", MicroorganismCodeLabel),

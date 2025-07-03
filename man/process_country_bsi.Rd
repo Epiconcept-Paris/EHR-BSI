@@ -11,11 +11,12 @@ process_country_bsi(
   dictionary_path = NULL,
   value_maps_path = "reference/Lookup_Tables.r",
   metadata_path = NULL,
+  commensal_path = NULL,
   reporting_year = as.numeric(format(Sys.Date(), "\%Y")),
-  episode_duration = 14,
   write_to_file = FALSE,
   write_to_file_path = NULL,
   return_format = "list",
+  episode_duration = 14,
   calculate_episodes = TRUE
 )
 }
@@ -34,13 +35,13 @@ process_country_bsi(
 
 \item{reporting_year}{Year for the DateUsedForStatistics field, defaults to current year}
 
-\item{episode_duration}{Duration for episode calculation in days, defaults to 14}
-
 \item{write_to_file}{Whether to write output files to disk}
 
 \item{write_to_file_path}{Path for output files, defaults to working directory}
 
 \item{return_format}{Whether to return "list" (default) or "separate" objects}
+
+\item{episode_duration}{Duration for episode calculation in days, defaults to 14}
 }
 \value{
 Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
