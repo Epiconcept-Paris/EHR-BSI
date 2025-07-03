@@ -50,11 +50,12 @@ process_country_bsi <- function(country,
                                dictionary_path = NULL,
                                value_maps_path = "reference/Lookup_Tables.r",
                                metadata_path = NULL,
+                               commensal_path = NULL,
                                reporting_year = as.numeric(format(Sys.Date(), "%Y")),
-                               episode_duration = 14,
                                write_to_file = FALSE,
                                write_to_file_path = NULL,
                                return_format = "list",
+                               episode_duration = 14,
                                calculate_episodes = TRUE) {
   
   # Validate country parameter
@@ -78,9 +79,15 @@ process_country_bsi <- function(country,
     )
   }
   
-  # Set default metadata path for Estonia if not provided
+  # Set default metadata path if not provided
   if (is.null(metadata_path)) {
     metadata_path <- "reference/MetaDataSet_57 (2025-03-13).xlsx"
+  }
+  
+  
+  # Set default commensal path if not provided
+  if (is.null(commensal_path)) {
+    commensal_path <- "reference/CommonCommensals.csv"
   }
   
   # Parameter validation
@@ -103,6 +110,11 @@ process_country_bsi <- function(country,
   if (!is.null(metadata_path) && !file.exists(metadata_path)) {
     stop("Metadata file not found: ", metadata_path)
   }
+  
+  if (!is.null(commensal_path) && !file.exists(commensal_path)) {
+    stop("Commensals file not found: ", commensal_path)
+  }
+  
   
   # Load required libraries (should be in Imports)
   requireNamespace("dplyr", quietly = TRUE)
@@ -154,8 +166,19 @@ process_country_bsi <- function(country,
   }
   
   if(calculate_episodes){
+    
+    if (is.null(commensal_path) && file.exists(commensal_path)) {
+      # Load data based on file extension or country
+      file_ext <- tools::file_ext(commensal_path)
+      if (file_ext %in% c("xlsx", "xls")) {
+        commensal_df <- readxl::read_xlsx(commensal_path)
+      } else {
+        commensal_df <- read.csv(commensal_path)
+      }
+    }
+    
     # Create a dataset with distinct episodes, dates of onset, origin of case etc
-    eps_df <- calculateEpisodes(patient, isolate, commensal_df, episodeDuration = 14)
+    eps_df <- calculateEpisodes(patient, isolate, commensal_df, episode_duration)
     
     # Aggregate to ehrbsi level
     ehrbsi <- aggregateEpisodes(eps_df,ehrbsi)
