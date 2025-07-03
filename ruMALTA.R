@@ -1,15 +1,17 @@
 devtools::load_all()  # This loads your entire package properly
 
 # Make the raw reporting template tables (pre-episode calc)
-result <- process_malta_bsi(input_file = "BSI_REPORT_Malta.csv",
-                           input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/",
-                           dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
-                           value_maps_path = "reference/Lookup_Tables.r",
-                           reporting_year = as.numeric(format(Sys.Date(), "%Y")),
-                           episode_duration = 14,
-                           write_to_file = TRUE,
-                           write_to_file_path = NULL,
-                           return_format = "list")
+result <- process_country_bsi(
+  country = "MT",
+  input_file = "BSI_REPORT_Malta.csv",
+  input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/",
+  dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
+  metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
+  reporting_year = as.numeric(format(Sys.Date(), "%Y")),
+  episode_duration = 14,
+  write_to_file = TRUE,
+  return_format = "list"
+)
 
 
 
