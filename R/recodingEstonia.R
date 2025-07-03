@@ -1,38 +1,17 @@
 #' Process Estonia BSI data from raw format to EHR-BSI format
 #'
-#' @param input_file Name of the input Excel file, defaults to "BSI_REPORT_2024_share.xlsx"
-#' @param input_file_path Path to the input file, defaults to the working directory
-#' @param dictionary_path Path to the data dictionary Excel file
-#' @param value_maps_path Path to the value maps R script
-#' @param metadata_path Path to the metadata Excel file for antibiotic recoding
-#' @param reporting_year Year for the DateUsedForStatistics field, defaults to current year
-#' @param episode_duration Duration for episode calculation in days, defaults to 14
-#' @param write_to_file Whether to write output files to disk
-#' @param write_to_file_path Path for output files, defaults to working directory
-#' @param return_format Whether to return "list" (default) or "separate" objects
+#' @param raw_data Received from genericRecodeOrchestrator.R
 #'
 #' @return Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
 #' @export
 #'
-#' @examples
-#' \dontrun{
-#' result <- process_estonia_bsi(
-#'   input_file_path = "Estonia/data/raw",
-#'   dictionary_path = "Estonia/data/reference/dictionary_raw_BSI_Estonia.xlsx",
-#'   write_to_file = TRUE,
-#'   write_to_file_path = "Estonia/data/formatted"
-#' )
-#' }
 
 # Internal helper functions (not exported)
 .process_estonia_basic_cleaning <- function(raw_data, reporting_year) {
   # Validate required columns exist
   required_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", 
                     "HospitalId", "PatientId", "IsolateId")
-  missing_cols <- setdiff(required_cols, names(raw_data))
-  if (length(missing_cols) > 0) {
-    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
-  }
+  validate_required_columns(raw_data, required_cols, "Estonia BSI data")
   
   # Create date-time strings for IDs
   recoded_data <- raw_data %>%
@@ -49,7 +28,7 @@
       )
     )
   
-  # Create dataset IDs
+  # Create dataset IDs (Estonia uses time components, so manual creation needed)
   recoded_data <- recoded_data %>%
     dplyr::mutate(
       record_id_bsi = paste0(HospitalId),
@@ -59,49 +38,21 @@
     dplyr::select(-admit_date_time, -sample_date_time)
   
   # Recode dates
-  if (exists("getAnyDictionaryValue")) {
-    DateVariables <- getAnyDictionaryValue(varname = "date", search = "type", value = "generic_name")
-    recoded_data[, DateVariables] <- lapply(
-      recoded_data[, DateVariables], 
-      function(x) as.Date(x, format = "%d/%m/%Y %H:%M")
-    )
-  } else {
-    # Fallback if dictionary function not available
-    date_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge")
-    available_date_cols <- intersect(date_cols, names(recoded_data))
-    recoded_data[available_date_cols] <- lapply(
-      recoded_data[available_date_cols],
-      function(x) as.Date(x, format = "%d/%m/%Y %H:%M")
-    )
-  }
+  fallback_date_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge")
+  recoded_data <- parse_dates_with_fallback(recoded_data, fallback_date_cols, "%d/%m/%Y %H:%M")
   
   return(recoded_data)
 }
 
 .create_estonia_patient_table <- function(recoded_data) {
-  patient <- recoded_data %>%
+  # Create base patient table using shared function
+  patient <- create_standard_patient_table(recoded_data)
+  
+  # Add Estonia-specific fields and logic
+  patient <- patient %>%
     dplyr::mutate(
-      RecordId = record_id_patient,
-      ParentId = record_id_bsi,
-      UnitId = paste0(HospitalId, "_", UnitSpecialtyShort),
-      PatientSpecialty = NA_character_,
-      patientType = "INPAT",
-      OutcomeOfCase = NA_character_,
-      HospitalisationCode = NA_character_,
-      HospitalisationCodeLabel = NA_character_,
-      HospitalisationAdmissionCodeSystem = "ICD-10",
-      HospitalisationCodeSystemVersion = NA_character_,
-      HospitalisationAdmissionCodeSystemSpec = NA_character_
+      UnitId = paste0(HospitalId, "_", UnitSpecialtyShort)
     ) %>%
-    dplyr::select(
-      RecordId, ParentId, UnitId, UnitSpecialtyShort, PatientSpecialty, 
-      DateOfAdmissionCurrentWard, PatientId, Age, Sex, patientType,
-      DateOfHospitalAdmission, DateOfHospitalDischarge, OutcomeOfCase,
-      HospitalisationCode, HospitalisationCodeLabel,
-      HospitalisationAdmissionCodeSystem, HospitalisationCodeSystemVersion,
-      HospitalisationAdmissionCodeSystemSpec, HospitalId
-    ) %>%
-    dplyr::distinct() %>%
     dplyr::arrange(PatientId, DateOfHospitalAdmission) %>%
     dplyr::group_by(PatientId) %>%
     dplyr::mutate(
@@ -115,42 +66,30 @@
         TRUE ~ NA_character_
       )
     ) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-gap_days, -prev_HospitalId, -HospitalId)
+    dplyr::ungroup()
+  
+  # Finalize table with standard column selection
+  patient <- finalize_table(patient, get_standard_table_columns("patient"))
   
   return(patient)
 }
 
 .create_estonia_isolate_table <- function(recoded_data) {
-  isolate <- recoded_data %>%
-  dplyr::mutate(RecordId = record_id_isolate,
-         ParentId = PatientId,
-         LaboratoryCode = NA, # ^NOT INCLUDED IN DATA FOR SAFETY - LIIDIA^
-         MicroorganismCodeSystem = "SNOMED-CT",
-         MicroorganismCodeSystemSpec = NA, # always NA
-         MicroorganismCodeSystemVersion = NA #  ^Specific Question for Liidia^
-         ) %>%
-  dplyr::select(RecordId,  ParentId, DateOfSpecCollection, LaboratoryCode, IsolateId, Specimen,
-         MicroorganismCode, MicroorganismCodeLabel, MicroorganismCodeSystem, MicroorganismCodeSystemSpec,
-         MicroorganismCodeSystemVersion) %>%
-  dplyr::distinct()
-
+  # Create base isolate table using shared function
+  isolate <- create_standard_isolate_table(recoded_data)
+  
+  # Finalize table with standard column selection
+  isolate <- finalize_table(isolate, get_standard_table_columns("isolate"))
+  
   return(isolate)
-
 }
 
 .create_estonia_res_table <- function(recoded_data, metadata_path = NULL) {
-  # Get required lookup tables from package data
-  Estonia_MecRes_Lookup <- copy(Estonia_MecRes_Lookup)
-  Estonia_ResRecode_Lookup <- copy(Estonia_ResRecode_Lookup)
-  Estonia_Ab_EST2ENG_Lookup <- copy(Estonia_Ab_EST2ENG_Lookup)
-  Estonia_Ab_ENG2HAI_Lookup <- copy(Estonia_Ab_ENG2HAI_Lookup)
-  
-  # Create lookup vectors for easier use with dplyr::recode
-  estonia_mecres_lookup <- setNames(Estonia_MecRes_Lookup$resistance_type, Estonia_MecRes_Lookup$resistance_value)
-  estonia_resrecode_lookup <- setNames(Estonia_ResRecode_Lookup$generic_result, Estonia_ResRecode_Lookup$estonia_result)
-  estonia_est2eng_lookup <- setNames(Estonia_Ab_EST2ENG_Lookup$english_name, Estonia_Ab_EST2ENG_Lookup$estonia_name)
-  estonia_eng2hai_lookup <- setNames(Estonia_Ab_ENG2HAI_Lookup$generic_name, Estonia_Ab_ENG2HAI_Lookup$english_name)
+  # Create lookup vectors using shared function
+  estonia_mecres_lookup <- create_lookup_vector(Estonia_MecRes_Lookup, "resistance_type", "resistance_value")
+  estonia_resrecode_lookup <- create_lookup_vector(Estonia_ResRecode_Lookup, "generic_result", "estonia_result")
+  estonia_est2eng_lookup <- create_lookup_vector(Estonia_Ab_EST2ENG_Lookup, "english_name", "estonia_name")
+  estonia_eng2hai_lookup <- create_lookup_vector(Estonia_Ab_ENG2HAI_Lookup, "generic_name", "english_name")
   
   res <- recoded_data %>%
     dplyr::filter(!is.na(sensitivityTest_noncdm) & sensitivityTest_noncdm != "") %>%
@@ -237,7 +176,7 @@
       )
     ) %>%
     dplyr::mutate(
-      Result_noncdm = dplyr::recode(sensitivityResult_noncdm, !!!estonia_resrecode_lookup, .default = sensitivityResult_noncdm)
+      Result_noncdm = sensitivityResult_noncdm
     ) %>%
     tidyr::pivot_wider(
       id_cols = RecordId,
@@ -245,6 +184,12 @@
       values_from = Result_noncdm,
       values_fn = dplyr::first
     )
+  
+  # Apply resistance recoding to all result columns
+  result_cols <- setdiff(names(nonSensresults), "RecordId")
+  for (col in result_cols) {
+    nonSensresults <- recode_with_lookup(nonSensresults, col, estonia_resrecode_lookup)
+  }
   
   # Process antibiotic sensitivity results
   Sensresults <- res %>%
@@ -271,11 +216,8 @@
     dplyr::left_join(nonSensresults, by = "RecordId")
   
      # Translate antibiotic names
-   res <- res %>%
-     dplyr::mutate(
-       Antibiotic = dplyr::recode(Antibiotic, !!!estonia_est2eng_lookup, .default = Antibiotic),
-       Antibiotic = dplyr::recode(Antibiotic, !!!estonia_eng2hai_lookup, .default = Antibiotic)
-     )
+   res <- recode_with_lookup(res, "Antibiotic", estonia_est2eng_lookup)
+   res <- recode_with_lookup(res, "Antibiotic", estonia_eng2hai_lookup)
    
    # Recode antibiotic names to HAI short format
    if (!is.null(metadata_path)) {
@@ -297,78 +239,35 @@
       dplyr::starts_with("MIC"),
       dplyr::starts_with("Grad"),
       dplyr::everything()
-    ) %>%
-    dplyr::arrange(RecordId, Antibiotic)
+    )
+  
+  res <- finalize_table(res, arrange_cols = c("RecordId", "Antibiotic"))
   
   return(res)
 }
 
 .create_estonia_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
-  # Get required lookup tables from package data
-  Estonia_HospType_Lookup <- copy(Estonia_HospType_Lookup)
-  Estonia_HospGeog_Lookup <- copy(Estonia_HospGeog_Lookup)
+  # Create lookup vectors using shared function
+  estonia_hosptype_lookup <- create_lookup_vector(Estonia_HospType_Lookup, "hosptype_code", "estonia_hosptype")
+  estonia_geog_lookup <- create_lookup_vector(Estonia_HospGeog_Lookup, "nuts3_code", "estonia_hosptype")
   
-  # Create lookup vectors for easier use with dplyr::recode
-  estonia_hosptype_lookup <- setNames(Estonia_HospType_Lookup$hosptype_code, Estonia_HospType_Lookup$estonia_hosptype)
-  estonia_geog_lookup <- setNames(Estonia_HospGeog_Lookup$nuts3_code, Estonia_HospGeog_Lookup$estonia_hosptype)
+  # Create base EHRBSI table using shared function
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", reporting_year, episode_duration)
   
-  ehrbsi <- recoded_data %>%
-  dplyr::mutate(AggregationLevel = "HOSP",
-         ClinicalTerminology = "ICD-10",
-         ClinicalTerminologySpec = NA,
-         DataSource = "EE-EHRBSI",
-         DateUsedForStatistics = reporting_year, # HARD-CODED - Liidia says this dataset is 2024, need to make adaptive
-         EpisodeDuration = episode_duration, # selected as 'usual', episode function should adapt to this
-         ESurvBSI = 2, # level of automation? Full/semi/denom/manual/etc
-         GeoLocation = dplyr::recode(HospitalId, !!!estonia_geog_lookup, .default = NA_character_),
-         HospitalId = HospitalId,
-         HospitalSize = NA, # how many beds?
-         HospitalType = dplyr::recode(HospitalId, !!!estonia_hosptype_lookup, .default = HospitalType),
-         LaboratoryCode = NA, # will not be provided
-         MicrobiologicalTerminology = "SNOMED-CT",
-         MicrobiologicalTerminologySpec = NA,
-         NumberOfBloodCultureSets = NA, # Liidia - provide data for prev year # blood culture sets
-         NumberOfHOHABSIs = NA, # TO BE CALCULATED ONCE EPISODES CALC'D
-         NumberOfHospitalDischarges = NA,
-         NumberOfHospitalPatientDays = NA,
-         NumberOfImportedHABSIs = NA, # TO BE CALCULATED ONCE EPISODES CALC'D
-         NumberOfTotalBSIs = NA, # TO BE CALCULATED ONCE EPISODES CALC'D
-         ProportionPopulationCovered = 1, # Liidia reports 100% coverage
-         RecordId = record_id_bsi,
-         RecordType = "EHRBSI",
-         RecordTypeVersion = NA,
-         ReportingCountry = "EE",
-         Status = "New/Update",
-         Subject = "EHRBSI" ) %>%
-    dplyr::select(AggregationLevel
-           ,ClinicalTerminology
-           ,ClinicalTerminologySpec
-           ,DataSource
-           ,DateUsedForStatistics
-           ,EpisodeDuration
-           ,ESurvBSI
-           ,GeoLocation
-           ,HospitalId
-           ,HospitalSize
-           ,HospitalType
-           ,LaboratoryCode
-           ,MicrobiologicalTerminology
-           ,MicrobiologicalTerminologySpec
-           ,NumberOfBloodCultureSets
-           ,NumberOfHOHABSIs
-           ,NumberOfHospitalDischarges
-           ,NumberOfHospitalPatientDays
-           ,NumberOfImportedHABSIs
-           ,NumberOfTotalBSIs
-           ,ProportionPopulationCovered
-           ,RecordId
-           ,RecordType
-           ,RecordTypeVersion
-           ,ReportingCountry
-           ,Status
-           ,Subject
-    ) %>%
-    distinct()
+  # Add Estonia-specific fields
+  ehrbsi <- ehrbsi %>%
+    dplyr::mutate(
+      ClinicalTerminology = "ICD-10",
+      ClinicalTerminologySpec = NA_character_,
+      ESurvBSI = 2, # level of automation? Full/semi/denom/manual/etc
+      HospitalSize = NA_real_, # how many beds?
+      ProportionPopulationCovered = 1, # Liidia reports 100% coverage
+      GeoLocation = dplyr::recode(HospitalId, !!!estonia_geog_lookup, .default = NA_character_),
+      HospitalType = dplyr::recode(HospitalId, !!!estonia_hosptype_lookup, .default = HospitalType)
+    )
+  
+  # Finalize table with standard column selection
+  ehrbsi <- finalize_table(ehrbsi, get_standard_table_columns("ehrbsi"))
   
   return(ehrbsi)
 }

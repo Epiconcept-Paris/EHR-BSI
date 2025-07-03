@@ -1,37 +1,17 @@
 #' Process Malta BSI data from raw format to EHR-BSI format
 #'
-#' @param input_file Name of the input CSV file, defaults to "BSI_REPORT_Malta.csv"
-#' @param input_file_path Path to the input file, defaults to the working directory
-#' @param dictionary_path Path to the data dictionary Excel file
-#' @param value_maps_path Path to the value maps R script
-#' @param reporting_year Year for the DateUsedForStatistics field, defaults to current year
-#' @param episode_duration Duration for episode calculation in days, defaults to 14
-#' @param write_to_file Whether to write output files to disk
-#' @param write_to_file_path Path for output files, defaults to working directory
-#' @param return_format Whether to return "list" (default) or "separate" objects
+#' @param raw_data Received from genericRecodeOrchestrator.R
 #'
 #' @return Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
 #' @export
 #'
-#' @examples
-#' \dontrun{
-#' result <- process_malta_bsi(
-#'   input_file_path = "Malta/data/raw",
-#'   dictionary_path = "Malta/data/reference/dictionary_raw_BSI_Malta.xlsx",
-#'   write_to_file = TRUE,
-#'   write_to_file_path = "Malta/data/formatted"
-#' )
-#' }
 
 
 # Internal helper functions (not exported)
 .process_malta_basic_cleaning <- function(raw_data, reporting_year) {
   # Validate required columns exist
   required_cols <- c("HospitalId", "PatientId", "DateOfHospitalAdmission")
-  missing_cols <- setdiff(required_cols, names(raw_data))
-  if (length(missing_cols) > 0) {
-    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
-  }
+  validate_required_columns(raw_data, required_cols, "Malta BSI data")
   
   # Find columns ending with "_noncdm"
   noncdm_cols <- grep("_noncdm$", names(raw_data), value = TRUE)
@@ -42,36 +22,18 @@
   }
   
   # Recode all dates based on Malta's date formatting
-  if (exists("getAnyDictionaryValue")) {
-    DateVariables <- getAnyDictionaryValue(varname = "date", search = "type", value = "generic_name")
-    raw_data[, DateVariables] <- lapply(raw_data[, DateVariables], function(x) as.Date(x, format = "%d/%m/%Y"))
-  } else {
-    # Fallback if dictionary function not available
-    date_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge", "EpisodeStartDate_noncdm")
-    available_date_cols <- intersect(date_cols, names(raw_data))
-    raw_data[available_date_cols] <- lapply(
-      raw_data[available_date_cols],
-      function(x) as.Date(x, format = "%d/%m/%Y")
-    )
-  }
+  fallback_date_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge", "EpisodeStartDate_noncdm")
+  raw_data <- parse_dates_with_fallback(raw_data, fallback_date_cols, "%d/%m/%Y")
   
-  # Get Malta lookup tables from package data
-  Malta_UnitSpecialty_Lookup <- copy(Malta_UnitSpecialty_Lookup)
-  Malta_Outcome_Lookup <- copy(Malta_Outcome_Lookup)
-  Malta_HospType_Lookup <- copy(Malta_HospType_Lookup)
-  
-  # Create lookup vectors for easier use with dplyr::recode
-  malta_unit_lookup <- setNames(Malta_UnitSpecialty_Lookup$generic_code, Malta_UnitSpecialty_Lookup$malta_code)
-  malta_outcome_lookup <- setNames(Malta_Outcome_Lookup$generic_code, Malta_Outcome_Lookup$malta_code)
-  malta_hosptype_lookup <- setNames(Malta_HospType_Lookup$hosptype_code, Malta_HospType_Lookup$malta_hosptype)
+  # Create lookup vectors using shared function
+  malta_unit_lookup <- create_lookup_vector(Malta_UnitSpecialty_Lookup, "generic_code", "malta_code")
+  malta_outcome_lookup <- create_lookup_vector(Malta_Outcome_Lookup, "generic_code", "malta_code")
+  malta_hosptype_lookup <- create_lookup_vector(Malta_HospType_Lookup, "hosptype_code", "malta_hosptype")
 
   # Malta-specific recoding using temporary, non-CDM vars imported from raw
   recoded_data <- raw_data %>%
     dplyr::mutate(
       DateOfSpecCollection = if ("EpisodeStartDate_noncdm" %in% names(.)) EpisodeStartDate_noncdm else DateOfSpecCollection,
-      UnitSpecialtyShort = if ("UnitSpecialtyShort_noncdm" %in% names(.)) {
-        dplyr::recode(UnitSpecialtyShort_noncdm, !!!malta_unit_lookup, .default = UnitSpecialtyShort_noncdm)
-      } else UnitSpecialtyShort,
       patientType = if ("patientType_noncdm" %in% names(.)) {
         dplyr::case_when(
           patientType_noncdm == "TRUE" ~ "INPAT",
@@ -104,6 +66,13 @@
       } else PreviousAdmission
     )
   
+  # Apply Malta-specific lookup recoding using shared function
+  if ("UnitSpecialtyShort_noncdm" %in% names(recoded_data)) {
+    recoded_data <- recode_with_lookup(recoded_data, "UnitSpecialtyShort_noncdm", malta_unit_lookup)
+    recoded_data <- recoded_data %>%
+      dplyr::mutate(UnitSpecialtyShort = UnitSpecialtyShort_noncdm)
+  }
+  
   # Delete all non-CDM variables from the final dataset
   noncdm_cols_to_remove <- intersect(
     c("UnitSpecialtyShort_noncdm", "sourceLocation_noncdm", "OutcomeOfCase_noncdm", 
@@ -116,68 +85,58 @@
   }
   
   # Create unique, relatable ID for each table's level
-  recoded_data <- recoded_data %>% 
-    dplyr::mutate(
-      record_id_bsi = paste0(HospitalId),
-      record_id_patient = paste0(PatientId, "-", format(DateOfHospitalAdmission, "%d%m%Y")),
-      record_id_isolate = paste0(PatientId, "-", format(DateOfSpecCollection, "%d%m%Y"))
-    )
+  recoded_data <- create_hierarchical_record_ids(
+    recoded_data,
+    hospital_col = "HospitalId",
+    patient_col = "PatientId",
+    admission_date_col = "DateOfHospitalAdmission",
+    specimen_date_col = "DateOfSpecCollection"
+  )
   
   return(recoded_data)
 }
 
 .create_malta_patient_table <- function(recoded_data) {
-  patient <- recoded_data %>%
+  # Create base patient table using shared function with Malta-specific defaults
+  malta_defaults <- list(
+    HospitalisationAdmissionCodeSystem = "SNOMED-CT"
+  )
+  
+  patient <- create_standard_patient_table(recoded_data, country_defaults = malta_defaults)
+  
+  # Add Malta-specific fields
+  patient <- patient %>%
     dplyr::mutate(
-      RecordId = record_id_patient,
-      ParentId = record_id_bsi,
-      DateOfAdmissionCurrentWard = NA, # only have one admission date for overall record
-      HospitalisationCode = NA, # Needs to be coded using text/label
-      HospitalisationAdmissionCodeSystem = "SNOMED-CT", 
-      HospitalisationCodeSystemVersion = NA,  
-      HospitalisationAdmissionCodeSystemSpec = NA
-    ) %>%
-    dplyr::select(
-      RecordId, ParentId, UnitId, UnitSpecialtyShort, PatientSpecialty, DateOfAdmissionCurrentWard,
-      PatientId, Age, Sex, patientType, 
-      DateOfHospitalAdmission, DateOfHospitalDischarge, OutcomeOfCase, 
-      HospitalisationCode, HospitalisationCodeLabel,
-      HospitalisationAdmissionCodeSystem, HospitalisationCodeSystemVersion,
-      HospitalisationAdmissionCodeSystemSpec
-    ) %>%
-    dplyr::distinct()
+      DateOfAdmissionCurrentWard = NA_character_ # only have one admission date for overall record
+    )
+  
+  # Finalize table with standard column selection
+  patient <- finalize_table(patient, get_standard_table_columns("patient"))
   
   return(patient)
 }
 
 .create_malta_isolate_table <- function(recoded_data) {
-  # Get Malta pathogen lookup table from package data
-  Malta_PathogenCode_Lookup <- copy(Malta_PathogenCode_Lookup)
-  malta_pathogen_lookup <- setNames(Malta_PathogenCode_Lookup$microorganism_code, Malta_PathogenCode_Lookup$malta_pathogen_name)
+  # Create lookup vector using shared function
+  malta_pathogen_lookup <- create_lookup_vector(Malta_PathogenCode_Lookup, "microorganism_code", "malta_pathogen_name")
   
-  isolate <- recoded_data %>%
+  # Create base isolate table using shared function
+  isolate <- create_standard_isolate_table(recoded_data)
+  
+  # Add Malta-specific organism code mapping
+  isolate <- isolate %>%
     dplyr::mutate(
-      RecordId = record_id_isolate,
-      ParentId = PatientId,
-      LaboratoryCode = NA, # Not included in extract
-      Specimen = NA, # Not included in extract
       MicroorganismCode = if ("MicroorganismCodeLabel" %in% names(.)) {
         dplyr::case_when(
           MicroorganismCodeLabel %in% names(malta_pathogen_lookup) ~ malta_pathogen_lookup[MicroorganismCodeLabel],
           !is.na(MicroorganismCodeLabel) ~ paste0("UNMAPPED: ", MicroorganismCodeLabel),
           TRUE ~ NA_character_
         )
-      } else NA_character_,
-      MicroorganismCodeSystem = "SNOMED-CT",
-      MicroorganismCodeSystemSpec = NA, # always NA
-      MicroorganismCodeSystemVersion = NA # as above - to be decided
-    ) %>%
-    dplyr::select(
-      RecordId, ParentId, DateOfSpecCollection, LaboratoryCode, IsolateId, Specimen,
-      MicroorganismCode, MicroorganismCodeLabel, MicroorganismCodeSystem, MicroorganismCodeSystemSpec,
-      MicroorganismCodeSystemVersion
-    ) %>%
-    dplyr::distinct()
+      } else NA_character_
+    )
+  
+  # Finalize table with standard column selection
+  isolate <- finalize_table(isolate, get_standard_table_columns("isolate"))
   
   return(isolate)
 }
@@ -219,53 +178,32 @@
       ZoneSIR, ZoneValue, ZoneSusceptibilitySign, MICSusceptibilitySign, MICValue, MICSIR, 
       GradSusceptibilitySign, GradValue, GradSIR, ZoneTestDiskLoad, ReferenceGuidelinesSIR
     ) %>%
-    dplyr::filter(SIR != "") %>% # remove empty records, where no sensitivity result was reported for that antibiotic
-    dplyr::distinct()
+    dplyr::filter(SIR != "") # remove empty records, where no sensitivity result was reported for that antibiotic
+  
+  # Finalize table using shared function
+  res <- finalize_table(res)
   
   return(res)
 }
 
 .create_malta_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
-  ehrbsi <- recoded_data %>%
+  # Create base EHRBSI table using shared function
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, "MT", reporting_year, episode_duration)
+  
+  # Add Malta-specific fields
+  ehrbsi <- ehrbsi %>%
     dplyr::mutate(
-      AggregationLevel = "HOSP",
       ClinicalTerminology = "SNOMED-CT",
-      ClinicalTerminologySpec = NA,
-      DataSource = "MT-EHRBSI",
-      DateUsedForStatistics = reporting_year,
-      EpisodeDuration = episode_duration, # selected as 'usual', episode function should adapt to this
-      ESurvBSI = NA, # level of automation? Full/semi/denom/manual/etc
-      GeoLocation = NA, # Can we get NUT2?
-      HospitalId = HospitalId,
-      HospitalSize = NA, # how many beds?
+      ClinicalTerminologySpec = NA_character_,
+      ESurvBSI = NA_real_, # level of automation? Full/semi/denom/manual/etc
+      GeoLocation = NA_character_, # Can we get NUT2?
+      HospitalSize = NA_real_, # how many beds?
       HospitalType = HospitalType,
-      LaboratoryCode = NA, # will not be provided
-      MicrobiologicalTerminology = "SNOMED-CT",
-      MicrobiologicalTerminologySpec = NA,
-      NumberOfBloodCultureSets = NA, # Andrea - provide data for prev year #'s blood culture sets
-      NumberOfHOHABSIs = NA, # TO BE CALCULATED ONCE EPISODES CALC'D
-      NumberOfHospitalDischarges = NA,  # Ask for denoms
-      NumberOfHospitalPatientDays = NA, # Ask for denoms
-      NumberOfImportedHABSIs = NA, # TO BE CALCULATED ONCE EPISODES CALC'D
-      NumberOfTotalBSIs = NA, # TO BE CALCULATED ONCE EPISODES CALC'D
-      ProportionPopulationCovered = NA, # Request coverage estimate
-      RecordId = record_id_bsi,
-      RecordType = "EHRBSI",
-      RecordTypeVersion = NA,
-      ReportingCountry = "MT",
-      Status = "New/Update",
-      Subject = "EHRBSI"
-    ) %>%
-    dplyr::select(
-      AggregationLevel, ClinicalTerminology, ClinicalTerminologySpec, DataSource,
-      DateUsedForStatistics, EpisodeDuration, ESurvBSI, GeoLocation, HospitalId,
-      HospitalSize, HospitalType, LaboratoryCode, MicrobiologicalTerminology,
-      MicrobiologicalTerminologySpec, NumberOfBloodCultureSets, NumberOfHOHABSIs,
-      NumberOfHospitalDischarges, NumberOfHospitalPatientDays, NumberOfImportedHABSIs,
-      NumberOfTotalBSIs, ProportionPopulationCovered, RecordId, RecordType,
-      RecordTypeVersion, ReportingCountry, Status, Subject
-    ) %>%
-    dplyr::distinct()
+      ProportionPopulationCovered = NA_real_ # Request coverage estimate
+    )
+  
+  # Finalize table with standard column selection
+  ehrbsi <- finalize_table(ehrbsi, get_standard_table_columns("ehrbsi"))
   
   return(ehrbsi)
 }
