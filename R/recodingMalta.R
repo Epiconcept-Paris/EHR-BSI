@@ -22,78 +22,7 @@
 #'   write_to_file_path = "Malta/data/formatted"
 #' )
 #' }
-process_malta_bsi <- function(input_file = "BSI_REPORT_Malta.csv",
-                             input_file_path = NULL,
-                             dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
-                             value_maps_path = "reference/Lookup_Tables.r",
-                             reporting_year = as.numeric(format(Sys.Date(), "%Y")),
-                             episode_duration = 14,
-                             write_to_file = FALSE,
-                             write_to_file_path = NULL,
-                             return_format = "list") {
-  
-  # Parameter validation
-  if (is.null(input_file_path)) {
-    input_file_path <- getwd()
-  }
-  
-  if (is.null(write_to_file_path)) {
-    write_to_file_path <- getwd()
-  }
-  
-  if (!file.exists(file.path(input_file_path, input_file))) {
-    stop("Input file not found: ", file.path(input_file_path, input_file))
-  }
-  
-  if (!is.null(dictionary_path) && !file.exists(dictionary_path)) {
-    stop("Dictionary file not found: ", dictionary_path)
-  }
-  
-  # Load required libraries (should be in Imports)
-  requireNamespace("dplyr", quietly = TRUE)
-  requireNamespace("readxl", quietly = TRUE)
-  requireNamespace("stringr", quietly = TRUE)
-  requireNamespace("tidyverse", quietly = TRUE)
-  requireNamespace("epiuf", quietly = TRUE)
-  
-  # Load data
-  raw_data <- read.csv(file.path(input_file_path, input_file))
-  
-  # Load value maps if provided
-  if (file.exists(value_maps_path)) {
-    source(value_maps_path, local = TRUE)
-  }
-  
-  # Apply dictionary if provided
-  if (!is.null(dictionary_path)) {
-    epiuf::openDictionary(dictionary_path)
-    raw_data <- epiuf::applyDictionary(dictionary = NULL, raw_data)
-  }
-  
-  # Process the data using internal helper functions
-  recoded_data <- .process_malta_basic_cleaning(raw_data, reporting_year)
-  
-  # Create the four tables
-  patient <- .create_malta_patient_table(recoded_data)
-  isolate <- .create_malta_isolate_table(recoded_data)
-  res <- .create_malta_res_table(recoded_data)
-  ehrbsi <- .create_malta_ehrbsi_table(recoded_data, reporting_year, episode_duration)
-  
-  # Create output list
-  result <- list(
-    ehrbsi = ehrbsi,
-    patient = patient,
-    isolate = isolate,
-    res = res
-  )
-  
-  # Write files if requested
-  if (write_to_file) {
-    .write_malta_output_files(result, write_to_file_path)
-  }
-  
-  return(result)
-}
+
 
 # Internal helper functions (not exported)
 .process_malta_basic_cleaning <- function(raw_data, reporting_year) {
@@ -345,11 +274,4 @@ process_malta_bsi <- function(input_file = "BSI_REPORT_Malta.csv",
   return(ehrbsi)
 }
 
-.write_malta_output_files <- function(result_list, output_path) {
-  # Write RDS files to the specified path
-  saveRDS(result_list$ehrbsi, file.path(output_path, "1.EHRBSI.rds"))
-  saveRDS(result_list$patient, file.path(output_path, "2.EHRBSI$Patient.rds"))
-  saveRDS(result_list$isolate, file.path(output_path, "3.EHRBSI$Patient$Isolate.rds"))
-  saveRDS(result_list$res, file.path(output_path, "4.EHRBSI$Patient$Isolate$Res.rds"))
-}
 
