@@ -304,6 +304,14 @@
 }
 
 .create_estonia_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
+  # Load required lookup tables from data folder
+  load(file.path("data", "Estonia_HospType_Lookup.rda"))
+  load(file.path("data", "Estonia_HospGeog_Lookup.rda"))
+  
+  # Create lookup vectors for easier use with dplyr::recode
+  estonia_hosptype_lookup <- setNames(Estonia_HospType_Lookup$hosptype_code, Estonia_HospType_Lookup$estonia_hosptype)
+  estonia_geog_lookup <- setNames(Estonia_HospGeog_Lookup$nuts3_code, Estonia_HospGeog_Lookup$estonia_hosptype)
+  
   ehrbsi <- recoded_data %>%
   dplyr::mutate(AggregationLevel = "HOSP",
          ClinicalTerminology = "ICD-10",
@@ -312,10 +320,10 @@
          DateUsedForStatistics = reporting_year, # HARD-CODED - Liidia says this dataset is 2024, need to make adaptive
          EpisodeDuration = episode_duration, # selected as 'usual', episode function should adapt to this
          ESurvBSI = 2, # level of automation? Full/semi/denom/manual/etc
-         GeoLocation = NA, # Liidia can provide NUTS3
+         GeoLocation = dplyr::recode(HospitalId, !!!estonia_geog_lookup, .default = NA_character_),
          HospitalId = HospitalId,
          HospitalSize = NA, # how many beds?
-         HospitalType = HospitalType,
+         HospitalType = dplyr::recode(HospitalId, !!!estonia_hosptype_lookup, .default = HospitalType),
          LaboratoryCode = NA, # will not be provided
          MicrobiologicalTerminology = "SNOMED-CT",
          MicrobiologicalTerminologySpec = NA,
