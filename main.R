@@ -28,8 +28,8 @@ result <- process_country_bsi(
   input_file = "BSI_REPORT_2024_share.xlsx",
   input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Estonia/data/raw/",
   dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
-  metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
-  commensal_path = "reference/CommonCommensals.csv",
+  metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx", # or leave to default (same path)
+  commensal_path = "reference/CommonCommensals.csv", # or leave to default (same path)
   reporting_year = as.numeric(format(Sys.Date(), "%Y")),
   episode_duration = 14,
   write_to_file = TRUE,

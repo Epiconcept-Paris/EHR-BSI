@@ -18,16 +18,15 @@ The main workflow is demonstrated in `main.R`:
 # Load package
 devtools::load_all()
 
-# Load commensals reference data
-commensal_df = read.csv("reference/CommonCommensals.csv")
 
 # Process country data with integrated episode calculation
 result <- process_country_bsi(
-  country = "MT",  # or "EE" for Estonia
+  country = "MT",
   input_file = "BSI_REPORT_Malta.csv",
-  input_file_path = "path/to/your/data/",
+  input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/",
   dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
+  commensal_path = "reference/CommonCommensals.csv",
   reporting_year = as.numeric(format(Sys.Date(), "%Y")),
   episode_duration = 14,
   write_to_file = TRUE,
@@ -123,8 +122,6 @@ Aggregates episode counts back to the ehrbsi summary table.
 - `flag_cc_clusters()`: Identifies clusters of common commensal isolates for Rule 2 BSI cases
 
 ### Data Processing Helpers
-- `ID_Create()`: Creates relational identifiers between tables
-- `UNK_O_Handler()`: Handles unknown/other organism codes
 - Various country-specific cleaning and transformation functions
 
 ## Reference Files
