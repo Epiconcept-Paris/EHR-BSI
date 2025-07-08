@@ -234,7 +234,35 @@ Malta_PathogenCode_Lookup <- data.table::data.table(
                          "31703004", "TBC_3", "TBC_2", "TBC_1")
 )
 
+
+
+
+# Estonia Hospital Type Mapping
+Estonia_HospType_Lookup <- data.table::data.table(
+  estonia_hosptype = c("EE-34", "EE-26", "EE-23", "EE-22", "EE-25", "EE-28", "EE-24",
+                       "EE-30", "EE-33", "EE-31", "EE-008", "EE-29", "EE-35", "EE-36", 
+                       "EE-37", "EE-38", "EE-39", "EE-40", "EE-49", "EE-32", "EE-41", 
+                       "EE-47"),
+  hosptype_code = c("TERT", "TERT", "TERT", "SEC", "SEC", "SEC", "SEC", 
+                    "PRIM", "PRIM", "PRIM", "PRIM", "PRIM", "PRIM", "PRIM", 
+                    "PRIM", "PRIM", "PRIM", "PRIM", "PRIM", "PRIM", "PRIM", 
+                    "SPEC")
+)
+
+# Estonia Hospital Geography Mapping
+Estonia_HospGeog_Lookup <- data.table::data.table(
+  estonia_hosptype = c("EE-34", "EE-26", "EE-23", "EE-22", "EE-25", "EE-28", "EE-24",
+                       "EE-30", "EE-33", "EE-31", "EE-008", "EE-29", "EE-35", "EE-36", 
+                       "EE-37", "EE-38", "EE-39", "EE-40", "EE-49", "EE-32", "EE-41", 
+                       "EE-47"),
+  nuts3_code = c("EE001", "EE001", "EE008", "EE001", "EE00A", "EE004", "EE001",
+                 "EE009", "EE009", "EE00A", "EE008", "EE008", "EE008", "EE004",
+                 "EE004", "EE004", "EE009", "EE008", "EE001", "EE008", "EE008",
+                 "EE001")
+)
+
+
 usethis::use_data(Name_Lookup, Specialty_Lookup, Malta_UnitSpecialty_Lookup, Malta_Outcome_Lookup, 
                   Malta_HospType_Lookup, Malta_PathogenCode_Lookup, Estonia_MecRes_Lookup, Estonia_ResRecode_Lookup, 
-                  Estonia_Ab_EST2ENG_Lookup, Estonia_Ab_ENG2HAI_Lookup, 
+                  Estonia_Ab_EST2ENG_Lookup, Estonia_Ab_ENG2HAI_Lookup, Estonia_HospType_Lookup, Estonia_HospGeog_Lookup,
                   internal = FALSE, overwrite = TRUE)

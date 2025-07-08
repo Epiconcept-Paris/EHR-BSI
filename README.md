@@ -11,6 +11,10 @@ This package processes raw BSI surveillance data into standardised EHR-BSI forma
 The main workflow is demonstrated in `main.R`:
 
 ```r
+
+# Ensure epiuf installed
+#devtools::install_github("Epiconcept-Paris/STRAP-epiuf")
+
 # Load package
 devtools::load_all()
 

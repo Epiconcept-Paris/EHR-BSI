@@ -167,7 +167,7 @@ process_country_bsi <- function(country,
   
   if(calculate_episodes){
     
-    if (is.null(commensal_path) && file.exists(commensal_path)) {
+    if (!is.null(commensal_path) && file.exists(commensal_path)) {
       # Load data based on file extension or country
       file_ext <- tools::file_ext(commensal_path)
       if (file_ext %in% c("xlsx", "xls")) {

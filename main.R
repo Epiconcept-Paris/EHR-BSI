@@ -5,7 +5,7 @@ devtools::load_all()
 
 
 
-# Make the raw reporting template tables (pre-episode calc)
+# Make the raw reporting template tables for MALTA (inc episode calc)
 result <- process_country_bsi(
   country = "MT",
   input_file = "BSI_REPORT_Malta.csv",
@@ -22,7 +22,7 @@ result <- process_country_bsi(
 
 
 
-# Make the raw reporting template tables (pre-episode calc)
+# Make the raw reporting template tables for ESTONIA (inc episode calc)
 result <- process_country_bsi(
   country = "EE",
   input_file = "BSI_REPORT_2024_share.xlsx",
