@@ -23,7 +23,7 @@ devtools::load_all()
 result <- process_country_bsi(
   country = "MT",
   input_file = "BSI_REPORT_Malta.csv",
-  input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/",
+  input_file_path = "Malta/data/raw/",
   dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
   commensal_path = "reference/CommonCommensals.csv",
