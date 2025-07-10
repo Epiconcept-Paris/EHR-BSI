@@ -18,4 +18,11 @@ Imports:
     readxl,
     stringr,
     tidyr,
-    epiuf
+    epiuf,
+    ggplot2,
+    quarto,
+    devtools,
+    shiny,
+    openxlsx
+Suggests: 
+    testthat (>= 3.0.0)
