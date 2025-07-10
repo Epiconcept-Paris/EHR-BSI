@@ -21,6 +21,8 @@ Imports:
     epiuf,
     ggplot2,
     quarto,
-    devtools
+    devtools,
+    shiny,
+    openxlsx
 Suggests: 
     testthat (>= 3.0.0)

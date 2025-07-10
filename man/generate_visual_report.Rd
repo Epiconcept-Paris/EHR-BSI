@@ -14,16 +14,16 @@ generate_visual_report(
 \arguments{
 \item{data_list}{A list of data frames, typically the output from \code{process_country_bsi}.}
 
-\item{output_file}{The name for the output report file.}
+\item{output_file}{Not used in Shiny version (kept for compatibility).}
 
-\item{output_dir}{The directory where the report will be saved. Defaults to the current working directory.}
+\item{output_dir}{Not used in Shiny version (kept for compatibility).}
 
-\item{output_format}{The output format: "html" (default) or "pdf".}
+\item{output_format}{Not used in Shiny version (kept for compatibility).}
 }
 \value{
-The path to the generated report, invisibly.
+The Shiny app object, invisibly.
 }
 \description{
 This function scans the package for visual functions (prefixed with \code{visual_}),
-creates a Quarto document to execute them, and renders it into an HTML or PDF report.
+creates a Shiny app to display them interactively, and launches the app.
 }
