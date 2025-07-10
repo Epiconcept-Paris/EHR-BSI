@@ -151,16 +151,17 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Process raw data using process_country_bsi
           shiny::showNotification("Processing raw data...", type = "message", duration = NULL, id = "processing")
           
-          # Create temporary directory for processing
-          temp_dir <- tempdir()
-          temp_file <- file.path(temp_dir, input$data_file$name)
-          file.copy(file_path, temp_file)
+          # Read the uploaded data
+          if (file_ext %in% c("xlsx", "xls")) {
+            raw_data <- readxl::read_xlsx(file_path)
+          } else {
+            raw_data <- read.csv(file_path)
+          }
           
           # Process the data
           result <- process_country_bsi(
             country = input$country,
-            input_file = input$data_file$name,
-            input_file_path = temp_dir,
+            input_data = raw_data,
             dictionary_path = switch(input$country,
               "MT" = "reference/dictionary_raw_BSI_Malta.xlsx",
               "EE" = "reference/dictionary_raw_BSI_Estonia.xlsx"

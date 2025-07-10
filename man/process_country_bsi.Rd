@@ -6,8 +6,7 @@
 \usage{
 process_country_bsi(
   country,
-  input_file = NULL,
-  input_file_path = NULL,
+  input_data,
   dictionary_path = NULL,
   value_maps_path = "reference/Lookup_Tables.r",
   metadata_path = NULL,
@@ -23,15 +22,15 @@ process_country_bsi(
 \arguments{
 \item{country}{Country code ("MT" for Malta, "EE" for Estonia)}
 
-\item{input_file}{Name of the input file, defaults based on country}
-
-\item{input_file_path}{Path to the input file, defaults to the working directory}
+\item{input_data}{Data frame containing the raw BSI data to be processed}
 
 \item{dictionary_path}{Path to the data dictionary Excel file}
 
 \item{value_maps_path}{Path to the value maps R script}
 
 \item{metadata_path}{Path to the metadata Excel file for antibiotic recoding (Estonia only)}
+
+\item{commensal_path}{Path to the commensal organisms CSV file}
 
 \item{reporting_year}{Year for the DateUsedForStatistics field, defaults to current year}
 
@@ -42,6 +41,8 @@ process_country_bsi(
 \item{return_format}{Whether to return "list" (default) or "separate" objects}
 
 \item{episode_duration}{Duration for episode calculation in days, defaults to 14}
+
+\item{calculate_episodes}{Whether to calculate episodes and aggregate results}
 }
 \value{
 Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
@@ -51,20 +52,26 @@ Process BSI data from raw format to EHR-BSI format for multiple countries
 }
 \examples{
 \dontrun{
+# Load Malta data
+malta_data <- read.csv("Malta/data/raw/BSI_REPORT_Malta.csv")
+
 # Process Malta data
 result_malta <- process_country_bsi(
   country = "MT",
-  input_file_path = "Malta/data/raw",
-  dictionary_path = "Malta/data/reference/dictionary_raw_BSI_Malta.xlsx",
+  input_data = malta_data,
+  dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
   write_to_file = TRUE,
   write_to_file_path = "Malta/data/formatted"
 )
 
+# Load Estonia data
+estonia_data <- readxl::read_xlsx("Estonia/data/raw/BSI_REPORT_2024_share.xlsx")
+
 # Process Estonia data
 result_estonia <- process_country_bsi(
   country = "EE",
-  input_file_path = "Estonia/data/raw",
-  dictionary_path = "Estonia/data/reference/dictionary_raw_BSI_Estonia.xlsx",
+  input_data = estonia_data,
+  dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
   write_to_file = TRUE,
   write_to_file_path = "Estonia/data/formatted"

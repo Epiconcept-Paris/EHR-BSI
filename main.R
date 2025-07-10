@@ -5,11 +5,13 @@ devtools::load_all()
 
 
 
+# Load Malta data
+malta_data <- read.csv("path")
+
 # Make the raw reporting template tables for MALTA (inc episode calc)
 result <- process_country_bsi(
   country = "MT",
-  input_file = "BSI_REPORT_Malta.csv",
-  input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/",
+  input_data = malta_data,
   dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
   commensal_path = "reference/CommonCommensals.csv",
@@ -22,11 +24,13 @@ result <- process_country_bsi(
 
 
 
+# Load Estonia data
+estonia_data <- readxl::read_xlsx("path")
+
 # Make the raw reporting template tables for ESTONIA (inc episode calc)
 result <- process_country_bsi(
   country = "EE",
-  input_file = "BSI_REPORT_2024_share.xlsx",
-  input_file_path = "C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Estonia/data/raw/",
+  input_data = estonia_data,
   dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx", # or leave to default (same path)
   commensal_path = "reference/CommonCommensals.csv", # or leave to default (same path)
