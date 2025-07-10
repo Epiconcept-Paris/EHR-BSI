@@ -1,36 +1,43 @@
 #' Process BSI data from raw format to EHR-BSI format for multiple countries
 #'
 #' @param country Country code ("MT" for Malta, "EE" for Estonia)
-#' @param input_file Name of the input file, defaults based on country
-#' @param input_file_path Path to the input file, defaults to the working directory
+#' @param input_data Data frame containing the raw BSI data to be processed
 #' @param dictionary_path Path to the data dictionary Excel file
 #' @param value_maps_path Path to the value maps R script
 #' @param metadata_path Path to the metadata Excel file for antibiotic recoding (Estonia only)
+#' @param commensal_path Path to the commensal organisms CSV file
 #' @param reporting_year Year for the DateUsedForStatistics field, defaults to current year
 #' @param episode_duration Duration for episode calculation in days, defaults to 14
 #' @param write_to_file Whether to write output files to disk
 #' @param write_to_file_path Path for output files, defaults to working directory
 #' @param return_format Whether to return "list" (default) or "separate" objects
+#' @param calculate_episodes Whether to calculate episodes and aggregate results
 #'
 #' @return Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
 #' @export
 #'
 #' @examples
 #' \dontrun{
+#' # Load Malta data
+#' malta_data <- read.csv("Malta/data/raw/BSI_REPORT_Malta.csv")
+#' 
 #' # Process Malta data
 #' result_malta <- process_country_bsi(
 #'   country = "MT",
-#'   input_file_path = "Malta/data/raw",
-#'   dictionary_path = "Malta/data/reference/dictionary_raw_BSI_Malta.xlsx",
+#'   input_data = malta_data,
+#'   dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
 #'   write_to_file = TRUE,
 #'   write_to_file_path = "Malta/data/formatted"
 #' )
 #' 
+#' # Load Estonia data
+#' estonia_data <- readxl::read_xlsx("Estonia/data/raw/BSI_REPORT_2024_share.xlsx")
+#' 
 #' # Process Estonia data
 #' result_estonia <- process_country_bsi(
 #'   country = "EE",
-#'   input_file_path = "Estonia/data/raw",
-#'   dictionary_path = "Estonia/data/reference/dictionary_raw_BSI_Estonia.xlsx",
+#'   input_data = estonia_data,
+#'   dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
 #'   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
 #'   write_to_file = TRUE,
 #'   write_to_file_path = "Estonia/data/formatted"
@@ -45,8 +52,7 @@
 # # - Using the appropriate file writing functions
 
 process_country_bsi <- function(country,
-                               input_file = NULL,
-                               input_file_path = NULL,
+                               input_data,
                                dictionary_path = NULL,
                                value_maps_path = "reference/Lookup_Tables.r",
                                metadata_path = NULL,
@@ -63,12 +69,9 @@ process_country_bsi <- function(country,
     stop("Country must be either 'MT' (Malta) or 'EE' (Estonia)")
   }
   
-  # Set country-specific defaults
-  if (is.null(input_file)) {
-    input_file <- switch(country,
-      "MT" = "BSI_REPORT_Malta.csv",
-      "EE" = "BSI_REPORT_2024_share.xlsx"
-    )
+  # Validate input data
+  if (is.null(input_data)) {
+    stop("input_data must be a valid data frame or list of data frames")
   }
   
   # Set default dictionary path if not provided
@@ -84,25 +87,17 @@ process_country_bsi <- function(country,
     metadata_path <- "reference/MetaDataSet_57 (2025-03-13).xlsx"
   }
   
-  
   # Set default commensal path if not provided
   if (is.null(commensal_path)) {
     commensal_path <- "reference/CommonCommensals.csv"
   }
   
-  # Parameter validation
-  if (is.null(input_file_path)) {
-    input_file_path <- getwd()
-  }
-  
+  # Parameter validation for file paths
   if (is.null(write_to_file_path)) {
     write_to_file_path <- getwd()
   }
   
-  if (!file.exists(file.path(input_file_path, input_file))) {
-    stop("Input file not found: ", file.path(input_file_path, input_file))
-  }
-  
+  # Validate reference file paths
   if (!is.null(dictionary_path) && !file.exists(dictionary_path)) {
     stop("Dictionary file not found: ", dictionary_path)
   }
@@ -126,13 +121,8 @@ process_country_bsi <- function(country,
     requireNamespace("epiuf", quietly = TRUE)
   }
   
-  # Load data based on file extension or country
-  file_ext <- tools::file_ext(input_file)
-  if (file_ext %in% c("xlsx", "xls")) {
-    raw_data <- readxl::read_xlsx(file.path(input_file_path, input_file))
-  } else {
-    raw_data <- read.csv(file.path(input_file_path, input_file))
-  }
+  # Use input data directly
+  raw_data <- input_data
   
   # Load value maps if provided
   if (file.exists(value_maps_path)) {

@@ -4,15 +4,26 @@
 \alias{visual_bsi_dashboard}
 \title{Shiny-based Interactive BSI Dashboard}
 \usage{
-visual_bsi_dashboard(data)
+visual_bsi_dashboard(data = NULL)
 }
 \arguments{
-\item{data}{A list of data.frames. Expected to have an \code{ehrbsi} data.frame.}
+\item{data}{A list of data.frames. Expected to have an \code{ehrbsi} data.frame.
+Optional - if not provided, users can upload data through the app interface.}
 }
 \value{
 Launches a Shiny application.
 }
 \description{
 This function creates a Shiny app with full interactive controls for
-exploring BSI data with dropdowns, sliders, and filters.
+exploring BSI data with dropdowns, sliders, and filters. The app now includes
+data upload functionality for both raw BSI data and reporting templates.
+}
+\details{
+The app supports:
+\itemize{
+\item Upload raw BSI data (CSV/Excel) for processing with country-specific transformations
+\item Upload reporting template Excel files with EHRBSI, Patient, Isolate, and Res sheets
+\item Interactive visualization with customizable axes, colors, and filters
+\item Data table exploration and summary statistics
+}
 }
