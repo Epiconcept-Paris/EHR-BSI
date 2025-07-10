@@ -17,7 +17,6 @@
 #' }
 #' @import shiny
 #' @import ggplot2
-#' @import DT
 #' @import readxl
 #' @export
 visual_bsi_dashboard <- function(data = NULL) {
@@ -101,7 +100,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           condition = "output.data_available",
           shiny::tabsetPanel(
             shiny::tabPanel("Plot", shiny::plotOutput("main_plot", height = "600px")),
-            shiny::tabPanel("Data Table", DT::dataTableOutput("data_table")),
+            shiny::tabPanel("Data Table", shiny::dataTableOutput("data_table")),
             shiny::tabPanel("Summary", shiny::verbatimTextOutput("summary"))
           )
         )
@@ -289,10 +288,10 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
     
     # Data table
-    output$data_table <- DT::renderDataTable({
+    output$data_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$ehrbsi)
-      DT::datatable(filtered_data(), options = list(scrollX = TRUE))
-    })
+      filtered_data()
+    }, options = list(scrollX = TRUE))
     
     # Summary
     output$summary <- shiny::renderText({
