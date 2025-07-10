@@ -11,3 +11,6 @@
 **.swo
 .Rproj.user
 **.rda
+**.html
+**.pdf
+**.Rbuildignore
