@@ -43,5 +43,6 @@ devtools::document()
 devtools::load_all()
 
 # Full dashboard (launches in browser/viewer)
-visual_bsi_dashboard(result)
+#visual_bsi_dashboard(result)
+visual_bsi_dashboard()
 
