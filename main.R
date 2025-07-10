@@ -38,5 +38,14 @@ result <- process_country_bsi(
 )
 
 
+devtools::document()
+# Reload package for testing
+devtools::load_all()
+
+#generate_visual_report(result)
+
+generate_visual_report(result, output_format = "pdf")
+
+
 
 

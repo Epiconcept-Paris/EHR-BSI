@@ -7,39 +7,11 @@
 .process_estonia_basic_cleaning(raw_data, reporting_year)
 }
 \arguments{
-\item{reporting_year}{Year for the DateUsedForStatistics field, defaults to current year}
-
-\item{input_file}{Name of the input Excel file, defaults to "BSI_REPORT_2024_share.xlsx"}
-
-\item{input_file_path}{Path to the input file, defaults to the working directory}
-
-\item{dictionary_path}{Path to the data dictionary Excel file}
-
-\item{value_maps_path}{Path to the value maps R script}
-
-\item{metadata_path}{Path to the metadata Excel file for antibiotic recoding}
-
-\item{episode_duration}{Duration for episode calculation in days, defaults to 14}
-
-\item{write_to_file}{Whether to write output files to disk}
-
-\item{write_to_file_path}{Path for output files, defaults to working directory}
-
-\item{return_format}{Whether to return "list" (default) or "separate" objects}
+\item{raw_data}{Received from genericRecodeOrchestrator.R}
 }
 \value{
 Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
 }
 \description{
 Process Estonia BSI data from raw format to EHR-BSI format
-}
-\examples{
-\dontrun{
-result <- process_estonia_bsi(
-  input_file_path = "Estonia/data/raw",
-  dictionary_path = "Estonia/data/reference/dictionary_raw_BSI_Estonia.xlsx",
-  write_to_file = TRUE,
-  write_to_file_path = "Estonia/data/formatted"
-)
-}
 }
