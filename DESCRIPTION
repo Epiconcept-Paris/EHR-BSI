@@ -19,3 +19,5 @@ Imports:
     stringr,
     tidyr,
     epiuf
+Suggests: 
+    testthat (>= 3.0.0)
