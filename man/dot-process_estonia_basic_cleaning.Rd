@@ -15,3 +15,6 @@ Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate
 \description{
 Process Estonia BSI data from raw format to EHR-BSI format
 }
+\note{
+The reporting year is automatically derived from the admission dates in the data
+}

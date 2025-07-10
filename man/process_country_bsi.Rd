@@ -9,8 +9,6 @@ process_country_bsi(
   input_data,
   dictionary_path = NULL,
   value_maps_path = "reference/Lookup_Tables.r",
-  metadata_path = NULL,
-  commensal_path = NULL,
   reporting_year = as.numeric(format(Sys.Date(), "\%Y")),
   write_to_file = FALSE,
   write_to_file_path = NULL,
@@ -27,10 +25,6 @@ process_country_bsi(
 \item{dictionary_path}{Path to the data dictionary Excel file}
 
 \item{value_maps_path}{Path to the value maps R script}
-
-\item{metadata_path}{Path to the metadata Excel file for antibiotic recoding (Estonia only)}
-
-\item{commensal_path}{Path to the commensal organisms CSV file}
 
 \item{reporting_year}{Year for the DateUsedForStatistics field, defaults to current year}
 
@@ -59,7 +53,6 @@ malta_data <- read.csv("Malta/data/raw/BSI_REPORT_Malta.csv")
 result_malta <- process_country_bsi(
   country = "MT",
   input_data = malta_data,
-  dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
   write_to_file = TRUE,
   write_to_file_path = "Malta/data/formatted"
 )
@@ -71,8 +64,6 @@ estonia_data <- readxl::read_xlsx("Estonia/data/raw/BSI_REPORT_2024_share.xlsx")
 result_estonia <- process_country_bsi(
   country = "EE",
   input_data = estonia_data,
-  dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
-  metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
   write_to_file = TRUE,
   write_to_file_path = "Estonia/data/formatted"
 )

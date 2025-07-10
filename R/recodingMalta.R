@@ -187,6 +187,14 @@
 }
 
 .create_malta_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
+  
+
+    # Calculate reporting year from admission dates in the data
+  # Use the most recent year if data spans multiple years
+  # NOTE: MUST BE UPDATED, NEED REPORTING YEAR TO BE PASSED TO AGGREGATE FUNCTION
+  # THUS GIVING A NEW RECORD FOR EACH HOSP-YEAR INTHE DATA
+  reporting_year <- max(as.numeric(format(recoded_data$DateOfHospitalAdmission, "%Y")), na.rm = TRUE)
+  
   # Create base EHRBSI table using shared function
   ehrbsi <- create_base_ehrbsi_table(recoded_data, "MT", reporting_year, episode_duration)
   

@@ -161,13 +161,6 @@ visual_bsi_dashboard <- function(data = NULL) {
           result <- process_country_bsi(
             country = input$country,
             input_data = raw_data,
-            dictionary_path = switch(input$country,
-              "MT" = "reference/dictionary_raw_BSI_Malta.xlsx",
-              "EE" = "reference/dictionary_raw_BSI_Estonia.xlsx"
-            ),
-            metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
-            commensal_path = "reference/CommonCommensals.csv",
-            reporting_year = as.numeric(format(Sys.Date(), "%Y")),
             episode_duration = 14,
             write_to_file = FALSE,
             calculate_episodes = TRUE

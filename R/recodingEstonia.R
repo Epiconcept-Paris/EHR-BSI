@@ -1,6 +1,7 @@
 #' Process Estonia BSI data from raw format to EHR-BSI format
 #'
 #' @param raw_data Received from genericRecodeOrchestrator.R
+#' @note The reporting year is automatically derived from the admission dates in the data
 #'
 #' @return Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
 #' @export
@@ -250,6 +251,12 @@
   # Create lookup vectors using shared function
   estonia_hosptype_lookup <- create_lookup_vector(Estonia_HospType_Lookup, "hosptype_code", "estonia_hosptype")
   estonia_geog_lookup <- create_lookup_vector(Estonia_HospGeog_Lookup, "nuts3_code", "estonia_hosptype")
+  
+    # Calculate reporting year from admission dates in the data
+  # Use the most recent year if data spans multiple years
+  # NOTE: MUST BE UPDATED, NEED REPORTING YEAR TO BE PASSED TO AGGREGATE FUNCTION
+  # THUS GIVING A NEW RECORD FOR EACH HOSP-YEAR INTHE DATA
+  reporting_year <- max(as.numeric(format(recoded_data$DateOfHospitalAdmission, "%Y")), na.rm = TRUE)
   
   # Create base EHRBSI table using shared function
   ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", reporting_year, episode_duration)
