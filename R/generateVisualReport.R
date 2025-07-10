@@ -18,8 +18,8 @@ generate_visual_report <- function(data_list, output_file = NULL, output_dir = g
     output_file <- paste0("visual-report.", output_format)
   }
 
-  # Get the package name from the DESCRIPTION file
-  pkg_name <- "EHR-BSI" # As read from DESCRIPTION
+  # Get the package name (hardcoded for this package)
+  pkg_name <- "EHR-BSI"
 
   # Find all exported functions in the package that start with "visual_"
   all_exports <- ls(getNamespaceInfo(pkg_name, "exports"))
@@ -47,34 +47,11 @@ generate_visual_report <- function(data_list, output_file = NULL, output_dir = g
     "",
     "```{r setup, include=FALSE}",
     "# Load the package functions so they are available in the Quarto environment",
-    paste0("devtools::load_all('", getwd(), "')"),
+    paste0("devtools::load_all('", gsub("\\\\", "/", getwd()), "')"),
     "library(ggplot2)",
     "",
     "# Load data from temporary RDS file",
     paste0("data_list <- readRDS('", gsub("\\\\", "/", temp_data_file), "')"),
-    "",
-    "# Debug: Print data structure",
-    "cat('Data structure:\\n')",
-    "cat('Names:', names(data_list), '\\n')",
-    "cat('Length of data_list:', length(data_list), '\\n')",
-    "cat('Class of data_list:', class(data_list), '\\n')",
-    "",
-    "# Check each element",
-    "for(i in seq_along(data_list)) {",
-    "  cat('Element', i, 'name:', names(data_list)[i], '\\n')",
-    "  cat('Element', i, 'class:', class(data_list[[i]]), '\\n')",
-    "  if(is.data.frame(data_list[[i]])) {",
-    "    cat('Element', i, 'rows:', nrow(data_list[[i]]), '\\n')",
-    "  }",
-    "}",
-    "",
-    "if('ehrbsi' %in% names(data_list)) {",
-    "  cat('EHRBSI found!\\n')",
-    "  cat('EHRBSI rows:', nrow(data_list$ehrbsi), '\\n')",
-    "  cat('EHRBSI columns:', paste(names(data_list$ehrbsi), collapse=', '), '\\n')",
-    "} else {",
-    "  cat('EHRBSI NOT found in data_list\\n')",
-    "}",
     "```",
     ""
   )
@@ -88,16 +65,9 @@ generate_visual_report <- function(data_list, output_file = NULL, output_dir = g
     c(
       paste("##", plot_title),
       "```{r}",
-      "# Debug: About to call function",
-      paste0("cat('Calling function: ", func_name, "\\n')"),
-      "",
-      "# Call the function and store result",
+      "# Call the function and display result",
       paste0("plot_result <- `", pkg_name, "`:::", func_name, "(data_list)"),
       "",
-      "# Debug: Check if result is a ggplot",
-      "cat('Plot result class:', class(plot_result), '\\n')",
-      "",
-      "# Display the plot",
       "if(inherits(plot_result, 'ggplot')) {",
       "  print(plot_result)",
       "} else {",
@@ -110,7 +80,6 @@ generate_visual_report <- function(data_list, output_file = NULL, output_dir = g
 
   # Write to a temporary .qmd file
   temp_qmd <- tempfile(fileext = ".qmd")
-  
   qmd_content <- c(qmd_header, unlist(plot_chunks))
   writeLines(qmd_content, temp_qmd)
 
@@ -125,8 +94,8 @@ generate_visual_report <- function(data_list, output_file = NULL, output_dir = g
   unlink(temp_data_file)
   unlink(temp_qmd)
 
-  # on windows, quarto render may not move the file to the correct dir
-  if(file.exists(output_file) && !file.exists(output_path)){
+  # Move the file to the correct directory if needed (Quarto renders to current dir)
+  if(file.exists(output_file) && !file.exists(output_path) && output_dir != getwd()){
     file.rename(output_file, output_path)
   }
 
