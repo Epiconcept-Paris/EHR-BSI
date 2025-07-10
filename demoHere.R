@@ -1,12 +1,28 @@
 
 
-# Reload package for testing
+# Load package for testing
 devtools::load_all()
 
 
 
+### Run the shiny app (all functionality in one place)
+# 1. Upload your data by clicking 'Raw', select country name, choose raw dataset from local files
+# 2. Click 'Process'
+# 3. Explore ehrbsi aggregate dataset in visuals (in development)
+visual_bsi_dashboard()
+
+
+
+
+### Or: Run transformation & episode calculation scripts only -----
+###     this will also output an xlsx reporting template for ------
+###     your data after converting to reporting template format ---
+
+
+# MALTA --
+
 # Load Malta data
-malta_data <- read.csv("path")
+malta_data <- read.csv("path_to_your_data")
 
 # Make the raw reporting template tables for MALTA (inc episode calc)
 result <- process_country_bsi(
@@ -22,10 +38,10 @@ result <- process_country_bsi(
   calculate_episodes = TRUE
 )
 
-
+# ESTONIA --
 
 # Load Estonia data
-estonia_data <- readxl::read_xlsx("path")
+estonia_data <- readxl::read_xlsx("path_to_your_data")
 
 # Make the raw reporting template tables for ESTONIA (inc episode calc)
 result <- process_country_bsi(
@@ -40,13 +56,4 @@ result <- process_country_bsi(
   return_format = "list",
   calculate_episodes = TRUE
 )
-
-
-
-devtools::document()
-devtools::load_all()
-
-# Full dashboard (launches in browser/viewer)
-#visual_bsi_dashboard(result)
-visual_bsi_dashboard()
 
