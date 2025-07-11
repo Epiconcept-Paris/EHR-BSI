@@ -1,8 +1,9 @@
 
 
 # Load package for testing
+source("reference/Lookup_Tables.r")
 devtools::load_all()
-
+devtools::document()
 
 
 ### Run the shiny app (all functionality in one place)
