@@ -51,7 +51,6 @@ process_country_bsi <- function(country,
                                input_data,
                                dictionary_path = NULL,
                                value_maps_path = "reference/Lookup_Tables.r",
-                               reporting_year = as.numeric(format(Sys.Date(), "%Y")),
                                write_to_file = FALSE,
                                write_to_file_path = NULL,
                                return_format = "list",
@@ -127,22 +126,22 @@ process_country_bsi <- function(country,
   
   # Process the data using country-specific internal helper functions
   if (country == "MT") {
-    recoded_data <- .process_malta_basic_cleaning(raw_data, reporting_year)
+    recoded_data <- .process_malta_basic_cleaning(raw_data)
     
     # Create the four tables
     patient <- .create_malta_patient_table(recoded_data)
     isolate <- .create_malta_isolate_table(recoded_data)
     res <- .create_malta_res_table(recoded_data)
-    ehrbsi <- .create_malta_ehrbsi_table(recoded_data, reporting_year, episode_duration)
+    ehrbsi <- .create_malta_ehrbsi_table(recoded_data, episode_duration)
     
   } else if (country == "EE") {
-    recoded_data <- .process_estonia_basic_cleaning(raw_data, reporting_year)
+    recoded_data <- .process_estonia_basic_cleaning(raw_data)
     
     # Create the four tables
     patient <- .create_estonia_patient_table(recoded_data)
     isolate <- .create_estonia_isolate_table(recoded_data)
     res <- .create_estonia_res_table(recoded_data, metadata_path)
-    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, reporting_year, episode_duration)
+    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, episode_duration)
   }
   
   if(calculate_episodes){

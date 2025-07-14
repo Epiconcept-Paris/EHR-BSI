@@ -8,7 +8,7 @@
 #'
 
 # Internal helper functions (not exported)
-.process_estonia_basic_cleaning <- function(raw_data, reporting_year) {
+.process_estonia_basic_cleaning <- function(raw_data) {
   # Validate required columns exist
   required_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", 
                     "HospitalId", "PatientId", "IsolateId")
@@ -22,6 +22,7 @@
         format(DateOfSpecCollection, "%d%m%Y"), "_",
         format(DateOfSpecCollection, "%H_%M")
       ),
+      sample_date_year = format(DateOfSpecCollection, "%Y"),
       DateOfHospitalAdmission = as.POSIXct(DateOfHospitalAdmission, format = "%d/%m/%Y %H:%M"),
       admit_date_time = paste0(
         format(DateOfHospitalAdmission, "%d%m%Y"), "_",
@@ -32,7 +33,7 @@
   # Create dataset IDs (Estonia uses time components, so manual creation needed)
   recoded_data <- recoded_data %>%
     dplyr::mutate(
-      record_id_bsi = paste0(HospitalId),
+      record_id_bsi = paste0(HospitalId, "-", sample_date_year),
       record_id_patient = paste0(PatientId, "-", admit_date_time),
       record_id_isolate = paste0(IsolateId, "_", MicroorganismCode)
     ) %>%
@@ -247,19 +248,14 @@
   return(res)
 }
 
-.create_estonia_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
+.create_estonia_ehrbsi_table <- function(recoded_data, episode_duration) {
   # Create lookup vectors using shared function
   estonia_hosptype_lookup <- create_lookup_vector(Estonia_HospType_Lookup, "hosptype_code", "estonia_hosptype")
   estonia_geog_lookup <- create_lookup_vector(Estonia_HospGeog_Lookup, "nuts3_code", "estonia_hosptype")
   
-    # Calculate reporting year from admission dates in the data
-  # Use the most recent year if data spans multiple years
-  # NOTE: MUST BE UPDATED, NEED REPORTING YEAR TO BE PASSED TO AGGREGATE FUNCTION
-  # THUS GIVING A NEW RECORD FOR EACH HOSP-YEAR INTHE DATA
-  reporting_year <- max(as.numeric(format(recoded_data$DateOfHospitalAdmission, "%Y")), na.rm = TRUE)
   
   # Create base EHRBSI table using shared function
-  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", reporting_year, episode_duration)
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", episode_duration)
   
   # Add Estonia-specific fields
   ehrbsi <- ehrbsi %>%

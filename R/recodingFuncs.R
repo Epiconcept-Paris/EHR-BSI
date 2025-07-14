@@ -71,13 +71,13 @@ create_lookup_vector <- function(lookup_table, value_col, key_col) {
 #' @param record_id_col Name of column containing record IDs
 #'
 #' @return Data frame with base EHRBSI structure
-create_base_ehrbsi_table <- function(data, country_code, reporting_year, 
+create_base_ehrbsi_table <- function(data, country_code,
                                    episode_duration, record_id_col = "record_id_bsi") {
   base_ehrbsi <- data %>%
     dplyr::mutate(
       AggregationLevel = "HOSP",
       DataSource = paste0(country_code, "-EHRBSI"),
-      DateUsedForStatistics = reporting_year,
+      DateUsedForStatistics = format(DateOfSpecCollection, "%Y"),
       EpisodeDuration = episode_duration,
       HospitalId = HospitalId,
       LaboratoryCode = NA_character_,
@@ -145,11 +145,12 @@ create_hierarchical_record_ids <- function(data, hospital_col = "HospitalId",
                                          admission_date_col = "DateOfHospitalAdmission",
                                          specimen_date_col = "DateOfSpecCollection",
                                          isolate_col = "IsolateId",
-                                         organism_col = "MicroorganismCode") {
+                                         organism_col = "MicroorganismCode",
+                                         record_id_bsi_col = "record_id_bsi") {
   
   result <- data %>%
     dplyr::mutate(
-      record_id_bsi = .data[[hospital_col]]
+      record_id_bsi = .data[[record_id_bsi_col]]
     )
   
   # Create patient record ID with admission date

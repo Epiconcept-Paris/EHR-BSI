@@ -4,7 +4,7 @@
 \alias{.process_malta_basic_cleaning}
 \title{Process Malta BSI data from raw format to EHR-BSI format}
 \usage{
-.process_malta_basic_cleaning(raw_data, reporting_year)
+.process_malta_basic_cleaning(raw_data)
 }
 \arguments{
 \item{raw_data}{Received from genericRecodeOrchestrator.R}

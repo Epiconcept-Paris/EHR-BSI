@@ -7,7 +7,6 @@
 create_base_ehrbsi_table(
   data,
   country_code,
-  reporting_year,
   episode_duration,
   record_id_col = "record_id_bsi"
 )
@@ -17,11 +16,11 @@ create_base_ehrbsi_table(
 
 \item{country_code}{Two-letter country code (e.g., "EE", "MT")}
 
-\item{reporting_year}{Year for DateUsedForStatistics}
-
 \item{episode_duration}{Episode duration in days}
 
 \item{record_id_col}{Name of column containing record IDs}
+
+\item{reporting_year}{Year for DateUsedForStatistics}
 }
 \value{
 Data frame with base EHRBSI structure

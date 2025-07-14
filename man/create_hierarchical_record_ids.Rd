@@ -11,7 +11,8 @@ create_hierarchical_record_ids(
   admission_date_col = "DateOfHospitalAdmission",
   specimen_date_col = "DateOfSpecCollection",
   isolate_col = "IsolateId",
-  organism_col = "MicroorganismCode"
+  organism_col = "MicroorganismCode",
+  record_id_bsi_col = "record_id_bsi"
 )
 }
 \arguments{
