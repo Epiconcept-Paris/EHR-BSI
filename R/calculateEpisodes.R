@@ -96,13 +96,15 @@ calculateEpisodes <- function(patient_df,
         !is.na(DaysAfterPrevDisch)  & DaysAfterPrevDisch  <= 2            ~ "IMP-HA",
         TRUE                                                             ~ "CA"
       ),
-      EpisodeOrigin = if_else(EpisodeClass == "CA", "Community", "Healthcare")
+      EpisodeOrigin = if_else(EpisodeClass == "CA", "Community", "Healthcare"),
+      # Add episodeYear extracted from EpisodeStartDate
+      episodeYear = as.numeric(format(EpisodeStartDate, "%Y"))
     )
   
   ## ── 4 · Return the enriched table ────────────────────────────────
   epi_full<- epi_full %>%
     select(-PrevDischarge, -DaysSinceAdmission, -DaysAfterPrevDisch) %>%
-    relocate(EpisodeClass, EpisodeOrigin, .after = EpisodeStartDate) %>%
+    relocate(EpisodeClass, EpisodeOrigin, episodeYear, .after = EpisodeStartDate) %>%
     distinct()
   
   
@@ -128,33 +130,37 @@ calculateEpisodes <- function(patient_df,
 
 
 aggregateEpisodes <- function(eps_df, ehrbsi) {
-  # Aggregate to ehrbsi level
+  # Aggregate to ehrbsi level, now including episodeYear as a grouping variable
   aggregateResults <- eps_df %>%
-    select(HospitalId, EpisodeClass, EpisodeId) %>%
+    select(HospitalId, EpisodeClass, EpisodeId, episodeYear) %>%
     distinct() %>%
+    #mutate(RecordId = paste0(HospitalId,"-",episodeYear)) %>%
     group_by(HospitalId, EpisodeClass) %>%
     mutate(countEps = n()) %>%
     select(HospitalId, EpisodeClass, countEps) %>%
     distinct() %>%
     pivot_wider(names_from = EpisodeClass,
                 values_from = countEps,
-                id_cols = HospitalId) %>%
-    mutate(NumberOfCABSIs = CA
-           ,NumberOfHOHABSIs = 
+                id_cols = c(HospitalId)) %>%
+    mutate(NumberOfCABSIs = case_when(
+             is.na(CA) ~ 0,
+             TRUE ~ CA
+           ),
+           NumberOfHOHABSIs = 
              case_when(
                is.na(`HO-HA`)~0,
                TRUE~`HO-HA`
              ),
-           ,NumberOfImportedHABSIs =           
+           NumberOfImportedHABSIs =           
              case_when(
                is.na(`IMP-HA`)~0,
                TRUE~`IMP-HA`
              ),
-           ,NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-    select(-CA,-`HO-HA`,-`IMP-HA`,)
+           NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
+    select(-CA,-`HO-HA`,-`IMP-HA`)
   
   
-  # Adding ParentId back to orig_df
+  # Adding ParentId back to orig_df, now joining on both HospitalId and year
   ehrbsi <- ehrbsi %>%
     select(-NumberOfTotalBSIs,-NumberOfHOHABSIs,-NumberOfImportedHABSIs) %>%
     left_join(aggregateResults, by = c("RecordId"="HospitalId")) %>%

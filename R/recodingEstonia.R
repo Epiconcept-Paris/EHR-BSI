@@ -1,13 +1,14 @@
 #' Process Estonia BSI data from raw format to EHR-BSI format
 #'
 #' @param raw_data Received from genericRecodeOrchestrator.R
+#' @note The reporting year is automatically derived from the admission dates in the data
 #'
 #' @return Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate, res
 #' @export
 #'
 
 # Internal helper functions (not exported)
-.process_estonia_basic_cleaning <- function(raw_data, reporting_year) {
+.process_estonia_basic_cleaning <- function(raw_data) {
   # Validate required columns exist
   required_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", 
                     "HospitalId", "PatientId", "IsolateId")
@@ -21,6 +22,7 @@
         format(DateOfSpecCollection, "%d%m%Y"), "_",
         format(DateOfSpecCollection, "%H_%M")
       ),
+      sample_date_year = format(DateOfSpecCollection, "%Y"),
       DateOfHospitalAdmission = as.POSIXct(DateOfHospitalAdmission, format = "%d/%m/%Y %H:%M"),
       admit_date_time = paste0(
         format(DateOfHospitalAdmission, "%d%m%Y"), "_",
@@ -31,7 +33,7 @@
   # Create dataset IDs (Estonia uses time components, so manual creation needed)
   recoded_data <- recoded_data %>%
     dplyr::mutate(
-      record_id_bsi = paste0(HospitalId),
+      record_id_bsi = paste0(HospitalId, "-", sample_date_year),
       record_id_patient = paste0(PatientId, "-", admit_date_time),
       record_id_isolate = paste0(IsolateId, "_", MicroorganismCode)
     ) %>%
@@ -246,13 +248,14 @@
   return(res)
 }
 
-.create_estonia_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
+.create_estonia_ehrbsi_table <- function(recoded_data, episode_duration) {
   # Create lookup vectors using shared function
   estonia_hosptype_lookup <- create_lookup_vector(Estonia_HospType_Lookup, "hosptype_code", "estonia_hosptype")
   estonia_geog_lookup <- create_lookup_vector(Estonia_HospGeog_Lookup, "nuts3_code", "estonia_hosptype")
   
+  
   # Create base EHRBSI table using shared function
-  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", reporting_year, episode_duration)
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", episode_duration)
   
   # Add Estonia-specific fields
   ehrbsi <- ehrbsi %>%

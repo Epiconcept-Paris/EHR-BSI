@@ -8,7 +8,7 @@
 
 
 # Internal helper functions (not exported)
-.process_malta_basic_cleaning <- function(raw_data, reporting_year) {
+.process_malta_basic_cleaning <- function(raw_data) {
   # Validate required columns exist
   required_cols <- c("HospitalId", "PatientId", "DateOfHospitalAdmission")
   validate_required_columns(raw_data, required_cols, "Malta BSI data")
@@ -34,6 +34,8 @@
   recoded_data <- raw_data %>%
     dplyr::mutate(
       DateOfSpecCollection = if ("EpisodeStartDate_noncdm" %in% names(.)) EpisodeStartDate_noncdm else DateOfSpecCollection,
+      sample_date_year = format(as.POSIXct(DateOfSpecCollection, format = "%d/%m/%Y %H:%M"), "%Y"),
+      record_id_bsi = paste0(HospitalId, "-", sample_date_year),
       patientType = if ("patientType_noncdm" %in% names(.)) {
         dplyr::case_when(
           patientType_noncdm == "TRUE" ~ "INPAT",
@@ -87,7 +89,7 @@
   # Create unique, relatable ID for each table's level
   recoded_data <- create_hierarchical_record_ids(
     recoded_data,
-    hospital_col = "HospitalId",
+    record_id_bsi_col = "record_id_bsi",
     patient_col = "PatientId",
     admission_date_col = "DateOfHospitalAdmission",
     specimen_date_col = "DateOfSpecCollection"
@@ -186,9 +188,10 @@
   return(res)
 }
 
-.create_malta_ehrbsi_table <- function(recoded_data, reporting_year, episode_duration) {
+.create_malta_ehrbsi_table <- function(recoded_data, episode_duration) {
+  
   # Create base EHRBSI table using shared function
-  ehrbsi <- create_base_ehrbsi_table(recoded_data, "MT", reporting_year, episode_duration)
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, "MT", episode_duration, record_id_col = "record_id_bsi")
   
   # Add Malta-specific fields
   ehrbsi <- ehrbsi %>%

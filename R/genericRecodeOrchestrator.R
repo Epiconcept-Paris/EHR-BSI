@@ -4,8 +4,6 @@
 #' @param input_data Data frame containing the raw BSI data to be processed
 #' @param dictionary_path Path to the data dictionary Excel file
 #' @param value_maps_path Path to the value maps R script
-#' @param metadata_path Path to the metadata Excel file for antibiotic recoding (Estonia only)
-#' @param commensal_path Path to the commensal organisms CSV file
 #' @param reporting_year Year for the DateUsedForStatistics field, defaults to current year
 #' @param episode_duration Duration for episode calculation in days, defaults to 14
 #' @param write_to_file Whether to write output files to disk
@@ -25,7 +23,6 @@
 #' result_malta <- process_country_bsi(
 #'   country = "MT",
 #'   input_data = malta_data,
-#'   dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
 #'   write_to_file = TRUE,
 #'   write_to_file_path = "Malta/data/formatted"
 #' )
@@ -37,8 +34,6 @@
 #' result_estonia <- process_country_bsi(
 #'   country = "EE",
 #'   input_data = estonia_data,
-#'   dictionary_path = "reference/dictionary_raw_BSI_Estonia.xlsx",
-#'   metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
 #'   write_to_file = TRUE,
 #'   write_to_file_path = "Estonia/data/formatted"
 #' )
@@ -46,7 +41,8 @@
 
 # 
 # # The generic function automatically handles:
-# # - Setting appropriate default input file names
+# # - Country-specific dictionary loading from reference/dictionaries/
+# # - Fixed metadata and commensal file paths in reference/
 # # - Loading CSV for Malta, Excel for Estonia
 # # - Calling the correct internal helper functions
 # # - Using the appropriate file writing functions
@@ -55,9 +51,6 @@ process_country_bsi <- function(country,
                                input_data,
                                dictionary_path = NULL,
                                value_maps_path = "reference/Lookup_Tables.r",
-                               metadata_path = NULL,
-                               commensal_path = NULL,
-                               reporting_year = as.numeric(format(Sys.Date(), "%Y")),
                                write_to_file = FALSE,
                                write_to_file_path = NULL,
                                return_format = "list",
@@ -76,21 +69,17 @@ process_country_bsi <- function(country,
   
   # Set default dictionary path if not provided
   if (is.null(dictionary_path)) {
-    dictionary_path <- switch(country,
-      "MT" = "reference/dictionary_raw_BSI_Malta.xlsx",
-      "EE" = "reference/dictionary_raw_BSI_Estonia.xlsx"
-    )
+    dictionary_path <- file.path("reference", "dictionaries", paste0(country, ".xlsx"))
+    
+    # Check if country dictionary exists
+    if (!file.exists(dictionary_path)) {
+      stop("No country dictionary in 'reference/dictionaries' for ", country, " country")
+    }
   }
   
-  # Set default metadata path if not provided
-  if (is.null(metadata_path)) {
-    metadata_path <- "reference/MetaDataSet_57 (2025-03-13).xlsx"
-  }
-  
-  # Set default commensal path if not provided
-  if (is.null(commensal_path)) {
-    commensal_path <- "reference/CommonCommensals.csv"
-  }
+  # Set fixed metadata and commensal paths
+  metadata_path <- "reference/Metadata.xlsx"
+  commensal_path <- "reference/CommonCommensals.csv"
   
   # Parameter validation for file paths
   if (is.null(write_to_file_path)) {
@@ -102,11 +91,11 @@ process_country_bsi <- function(country,
     stop("Dictionary file not found: ", dictionary_path)
   }
   
-  if (!is.null(metadata_path) && !file.exists(metadata_path)) {
+  if (!file.exists(metadata_path)) {
     stop("Metadata file not found: ", metadata_path)
   }
   
-  if (!is.null(commensal_path) && !file.exists(commensal_path)) {
+  if (!file.exists(commensal_path)) {
     stop("Commensals file not found: ", commensal_path)
   }
   
@@ -137,34 +126,32 @@ process_country_bsi <- function(country,
   
   # Process the data using country-specific internal helper functions
   if (country == "MT") {
-    recoded_data <- .process_malta_basic_cleaning(raw_data, reporting_year)
+    recoded_data <- .process_malta_basic_cleaning(raw_data)
     
     # Create the four tables
     patient <- .create_malta_patient_table(recoded_data)
     isolate <- .create_malta_isolate_table(recoded_data)
     res <- .create_malta_res_table(recoded_data)
-    ehrbsi <- .create_malta_ehrbsi_table(recoded_data, reporting_year, episode_duration)
+    ehrbsi <- .create_malta_ehrbsi_table(recoded_data, episode_duration)
     
   } else if (country == "EE") {
-    recoded_data <- .process_estonia_basic_cleaning(raw_data, reporting_year)
+    recoded_data <- .process_estonia_basic_cleaning(raw_data)
     
     # Create the four tables
     patient <- .create_estonia_patient_table(recoded_data)
     isolate <- .create_estonia_isolate_table(recoded_data)
     res <- .create_estonia_res_table(recoded_data, metadata_path)
-    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, reporting_year, episode_duration)
+    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, episode_duration)
   }
   
   if(calculate_episodes){
     
-    if (!is.null(commensal_path) && file.exists(commensal_path)) {
-      # Load data based on file extension or country
-      file_ext <- tools::file_ext(commensal_path)
-      if (file_ext %in% c("xlsx", "xls")) {
-        commensal_df <- readxl::read_xlsx(commensal_path)
-      } else {
-        commensal_df <- read.csv(commensal_path)
-      }
+    # Load commensal data based on file extension
+    file_ext <- tools::file_ext(commensal_path)
+    if (file_ext %in% c("xlsx", "xls")) {
+      commensal_df <- readxl::read_xlsx(commensal_path)
+    } else {
+      commensal_df <- read.csv(commensal_path)
     }
     
     # Create a dataset with distinct episodes, dates of onset, origin of case etc

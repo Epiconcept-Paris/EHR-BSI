@@ -4,7 +4,7 @@
 \alias{.process_estonia_basic_cleaning}
 \title{Process Estonia BSI data from raw format to EHR-BSI format}
 \usage{
-.process_estonia_basic_cleaning(raw_data, reporting_year)
+.process_estonia_basic_cleaning(raw_data)
 }
 \arguments{
 \item{raw_data}{Received from genericRecodeOrchestrator.R}
@@ -14,4 +14,7 @@ Returns a list containing the four EHR-BSI data tables: ehrbsi, patient, isolate
 }
 \description{
 Process Estonia BSI data from raw format to EHR-BSI format
+}
+\note{
+The reporting year is automatically derived from the admission dates in the data
 }
