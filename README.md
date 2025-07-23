@@ -22,17 +22,13 @@ devtools::load_all()
 # Process country data with integrated episode calculation
 result <- process_country_bsi(
   country = "MT",
-  input_file = "BSI_REPORT_Malta.csv",
-  input_file_path = "Malta/data/raw/",
-  dictionary_path = "reference/dictionary_raw_BSI_Malta.xlsx",
-  metadata_path = "reference/MetaDataSet_57 (2025-03-13).xlsx",
-  commensal_path = "reference/CommonCommensals.csv",
-  reporting_year = as.numeric(format(Sys.Date(), "%Y")),
+  input_data = malta_data,
   episode_duration = 14,
   write_to_file = TRUE,
   return_format = "list",
   calculate_episodes = TRUE
 )
+
 ```
 
 ## Main Functions
