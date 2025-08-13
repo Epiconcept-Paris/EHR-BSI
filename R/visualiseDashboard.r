@@ -67,21 +67,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                              choices = c(), selected = c(), multiple = TRUE)
         ),
         
-        # Advanced filters - Pathogens
-        shiny::conditionalPanel(
-          condition = "output.organisms_available",
-          shiny::hr(),
-          shiny::h4("Pathogen Filters"),
-          shiny::selectInput("organism_selector", "Organisms:", choices = c(), selected = c(), multiple = TRUE)
-        ),
-        
-        # Advanced filters - Antibiograms
-        shiny::conditionalPanel(
-          condition = "output.antibiotics_available",
-          shiny::hr(),
-          shiny::h4("Antibiotic Filters"),
-          shiny::selectInput("antibiotic_selector", "Antibiotics:", choices = c(), selected = c(), multiple = TRUE)
-        )
+
       ),
       
       shiny::mainPanel(
@@ -289,7 +275,44 @@ visual_bsi_dashboard <- function(data = NULL) {
               "Context",
               shiny::conditionalPanel(
                 condition = "output.context_available",
-                shiny::plotOutput("context_specialty", height = "450px")
+                shiny::div(
+                  shiny::h3("Specialty Analysis"),
+                  
+                  # Specialty table section
+                  shiny::div(
+                    shiny::h4("Specialty"),
+                    shiny::dataTableOutput("specialty_table")
+                  ),
+                  
+                  shiny::hr(),
+                  
+                  # Pie charts section
+                  shiny::div(
+                    shiny::h4("Number of Specialities per Patient and Episode"),
+                    shiny::div(
+                      style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
+                      shiny::div(
+                        style = "flex: 1; min-width: 400px;",
+                        shiny::h6("Per Patient", style = "text-align: center;"),
+                        shiny::plotOutput("specialty_pie_patient", height = "350px")
+                      ),
+                      shiny::div(
+                        style = "flex: 1; min-width: 400px;",
+                        shiny::h6("Per Episode", style = "text-align: center;"),
+                        shiny::plotOutput("specialty_pie_episode", height = "350px")
+                      )
+                    )
+                  ),
+                  
+                  shiny::hr(),
+                  
+                  # Pathogen distribution section
+                  shiny::div(
+                    shiny::h4("Top 20 Pathogen Distribution by Specialty"),
+                    shiny::p("Only Specialities with at least 10 episode with the top 20 pathogens get plotted."),
+                    shiny::plotOutput("pathogen_specialty_distribution", height = "600px")
+                  )
+                )
               ),
               shiny::conditionalPanel(
                 condition = "!output.context_available",
@@ -300,14 +323,14 @@ visual_bsi_dashboard <- function(data = NULL) {
             shiny::tabPanel(
               "Antibiograms",
               shiny::conditionalPanel(
-                condition = "output.antibiotics_available",
+                condition = "output.antibiograms_available",
                 shiny::tabsetPanel(
                   shiny::tabPanel("By isolates", shiny::dataTableOutput("ab_iso_table")),
                   shiny::tabPanel("By episodes", shiny::dataTableOutput("ab_epi_table"))
                 )
               ),
               shiny::conditionalPanel(
-                condition = "!output.antibiotics_available",
+                condition = "!output.antibiograms_available",
                 shiny::p("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
               )
             ),
@@ -404,17 +427,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
     shiny::outputOptions(output, "antibiograms_available", suspendWhenHidden = FALSE)
     
-      # Antibiotics filter available when resistance data present
-      output$antibiotics_available <- shiny::reactive({
-        !is.null(values$current_data) && !is.null(values$current_data$res)
-      })
-      shiny::outputOptions(output, "antibiotics_available", suspendWhenHidden = FALSE)
 
-      # Organisms available (isolate present)
-      output$organisms_available <- shiny::reactive({
-        !is.null(values$current_data) && !is.null(values$current_data$isolate)
-      })
-      shiny::outputOptions(output, "organisms_available", suspendWhenHidden = FALSE)
 
     # Context available (ward/specialty present)
     output$context_available <- shiny::reactive({
@@ -493,7 +506,32 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
     })
 
-    # Reactive: isolates joined with episodes
+    # Reactive: filtered patient data based on hospital/year filters
+    filtered_patient_data <- shiny::reactive({
+      shiny::req(values$current_data)
+      if (is.null(values$current_data$patient)) return(NULL)
+      
+      pat <- values$current_data$patient
+      
+      # If no episodes or no filters selected, return all patient data
+      if (is.null(values$episodes)) return(pat)
+      
+      # Get filtered episodes
+      ep <- episodes_tbl()
+      if (nrow(ep) == 0) return(data.frame()) # No episodes match filters
+      
+      # Get unique admission IDs from filtered episodes
+      if ("AdmissionRecordId" %in% names(ep)) {
+        filtered_admission_ids <- unique(ep$AdmissionRecordId)
+        # Filter patient data to only include admissions that appear in filtered episodes
+        pat_filtered <- pat[pat$RecordId %in% filtered_admission_ids, , drop = FALSE]
+        return(pat_filtered)
+      }
+      
+      return(pat) # Fallback to all patient data if can't filter
+    })
+
+    # Reactive: isolates joined with episodes (filtered by hospital/year filters)
     isolate_with_episode <- shiny::reactive({
       shiny::req(values$current_data)
       if (is.null(values$episodes)) return(NULL)
@@ -517,8 +555,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         (is.na(merged$DateOfHospitalDischarge) | merged$DateOfSpecCollection <= merged$DateOfHospitalDischarge)
       merged <- merged[which(in_admission), , drop = FALSE]
       if (nrow(merged) == 0) return(merged)
-      # join with episodes by AdmissionRecordId
-      epi <- values$episodes
+      # join with FILTERED episodes by AdmissionRecordId (this applies hospital/year filters)
+      epi <- episodes_tbl()  # Use filtered episodes instead of values$episodes
       keep_epi <- epi[, intersect(c("EpisodeId", "AdmissionRecordId", "EpisodeStartDate", "EpisodeClass", "EpisodeOrigin", "episodeYear"), names(epi)), drop = FALSE]
       merged <- merge(merged, keep_epi, by = "AdmissionRecordId", all.x = TRUE)
       # restrict to isolates falling within episode 14-day window
@@ -534,44 +572,7 @@ visual_bsi_dashboard <- function(data = NULL) {
 
 
 
-    # Update organism selector when isolates or episodes change
-    shiny::observe({
-      # Prefer organisms from isolates joined to episodes when available
-      iso_epi <- isolate_with_episode()
-      organisms_vector <- NULL
-      if (!is.null(iso_epi) && nrow(iso_epi) > 0 && "organism_label" %in% names(iso_epi)) {
-        organisms_vector <- iso_epi$organism_label
-      } else if (!is.null(values$current_data) && !is.null(values$current_data$isolate)) {
-        iso <- values$current_data$isolate
-        if ("MicroorganismCodeLabel" %in% names(iso)) {
-          organisms_vector <- iso$MicroorganismCodeLabel
-        } else if ("MicroorganismCode" %in% names(iso)) {
-          organisms_vector <- iso$MicroorganismCode
-        }
-      }
-      if (is.null(organisms_vector)) return()
-      orgs <- sort(unique(as.character(organisms_vector)))
-      orgs <- orgs[!is.na(orgs) & nzchar(orgs)]
-      if (length(orgs) == 0) return()
-      # EARS-Net focus list for default selection
-      ears_focus <- c(
-        "Escherichia coli", "Staphylococcus aureus", "Klebsiella pneumoniae",
-        "Enterococcus faecalis", "Enterococcus faecium", "Pseudomonas aeruginosa",
-        "Streptococcus pneumoniae", "Acinetobacter spp.", "Acinetobacter species", "Acinetobacter"
-      )
-      default_sel <- intersect(ears_focus, orgs)
-      if (length(default_sel) == 0) {
-        # fallback to top 10 overall
-        top_tab <- sort(table(organisms_vector), decreasing = TRUE)
-        default_sel <- names(top_tab)[seq_len(min(10L, length(top_tab)))]
-      }
-      # Preserve current selection if still valid; otherwise use defaults
-      previous_selection <- input$organism_selector
-      if (is.null(previous_selection)) previous_selection <- character(0)
-      preserved <- intersect(previous_selection, orgs)
-      selected_values <- if (length(preserved) > 0) preserved else default_sel
-      shiny::updateSelectInput(session, "organism_selector", choices = orgs, selected = selected_values)
-    })
+
 
     # Reactive: resistance with context (fallback to isolate-only when episodes missing)
     res_with_context <- shiny::reactive({
@@ -639,27 +640,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       merged
     })
 
-    # Update antibiotic selector when resistance data or context changes (fallback to raw res)
-    shiny::observe({
-      shiny::req(values$current_data)
-      abs <- character(0)
-      rctx <- res_with_context()
-      if (!is.null(rctx) && nrow(rctx) > 0 && "antibiotic_name" %in% names(rctx)) {
-        abs <- sort(unique(as.character(rctx$antibiotic_name)))
-      } else if (!is.null(values$current_data$res)) {
-        res_raw <- values$current_data$res
-        if ("Antibiotic" %in% names(res_raw)) {
-          abs <- sort(unique(as.character(res_raw$Antibiotic)))
-        } else if ("sensitivityTest_noncdm" %in% names(res_raw)) {
-          abs <- sort(unique(as.character(res_raw$sensitivityTest_noncdm)))
-        } else if ("AntibioticName" %in% names(res_raw)) {
-          abs <- sort(unique(as.character(res_raw$AntibioticName)))
-        }
-      }
-      abs <- abs[!is.na(abs) & nzchar(abs)]
-      if (length(abs) == 0) return()
-      shiny::updateSelectInput(session, "antibiotic_selector", choices = abs, selected = abs)
-    })
+
     
     # Process uploaded data
     shiny::observeEvent(input$process_data, {
@@ -1284,13 +1265,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       dat <- dat[!is.na(dat$OriginGroup), , drop = FALSE]
       if (!("organism_label" %in% names(dat))) dat$organism_label <- dat$MicroorganismCode
-      # filter by UI selections
-      if (!is.null(input$organism_selector) && length(input$organism_selector) > 0) {
-        dat <- dat[dat$organism_label %in% input$organism_selector, , drop = FALSE]
-      }
-      if (!is.null(input$antibiotic_selector) && length(input$antibiotic_selector) > 0) {
-        dat <- dat[dat$antibiotic_name %in% input$antibiotic_selector, , drop = FALSE]
-      }
+      # Note: Organism and antibiotic filtering removed per user request
       if (nrow(dat) == 0) return(data.frame())
       # aggregate counts
       dat$is_resistant <- dat$sir_value == "R"
@@ -1363,10 +1338,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       build_ab_table(rctx_dedup)
     }, options = list(scrollX = TRUE))
 
-    # Context: specialty distribution
+    # Context: specialty distribution (legacy - keeping for potential use)
     output$context_specialty <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
       col <- if ("UnitSpecialtyShort" %in% names(pat)) "UnitSpecialtyShort" else if ("PatientSpecialty" %in% names(pat)) "PatientSpecialty" else NULL
       if (is.null(col)) return(ggplot2::ggplot() + ggplot2::theme_void())
       vec <- pat[[col]]
@@ -1384,6 +1359,430 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::labs(x = NULL, y = "Count")
     })
 
+    # Helper function to get specialty column
+    get_specialty_column <- function(pat) {
+      if ("UnitSpecialtyShort" %in% names(pat)) return("UnitSpecialtyShort")
+      if ("PatientSpecialty" %in% names(pat)) return("PatientSpecialty")
+      return(NULL)
+    }
+
+    # Context: Specialty table with HA/CA/Unknown breakdown
+    output$specialty_table <- shiny::renderDataTable({
+      shiny::req(values$current_data, values$current_data$patient)
+      
+      # Get filtered episodes with specialty information
+      ep <- episodes_tbl()
+      if (is.null(ep) || nrow(ep) == 0) return(data.frame())
+      
+      pat <- filtered_patient_data()
+      specialty_col <- get_specialty_column(pat)
+      if (is.null(specialty_col)) return(data.frame())
+      
+      # Join episodes with patient data to get specialty information
+      if ("AdmissionRecordId" %in% names(ep) && "RecordId" %in% names(pat)) {
+        ep_with_specialty <- merge(ep, pat[, c("RecordId", specialty_col)], 
+                                  by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+      } else {
+        return(data.frame())
+      }
+      
+      if (nrow(ep_with_specialty) == 0) return(data.frame())
+      
+      # Clean specialty names
+      ep_with_specialty$specialty_clean <- ep_with_specialty[[specialty_col]]
+      ep_with_specialty$specialty_clean[is.na(ep_with_specialty$specialty_clean) | 
+                                       ep_with_specialty$specialty_clean == ""] <- "-"
+      
+      # Create episode class groups
+      ep_with_specialty$EpisodeGroup <- "Unknown"
+      if ("EpisodeClass" %in% names(ep_with_specialty)) {
+        ep_with_specialty$EpisodeGroup <- ifelse(
+          ep_with_specialty$EpisodeClass %in% c("HO-HA", "IMP-HA"), "HA",
+          ifelse(ep_with_specialty$EpisodeClass == "CA", "CA", "Unknown")
+        )
+      }
+      
+      # Aggregate by specialty and episode group
+      agg_data <- aggregate(EpisodeId ~ specialty_clean + EpisodeGroup, 
+                           data = ep_with_specialty, FUN = length)
+      names(agg_data) <- c("Specialty", "EpisodeGroup", "Count")
+      
+      # Pivot to wide format
+      specialty_summary <- data.frame(
+        Specialty = unique(agg_data$Specialty),
+        stringsAsFactors = FALSE
+      )
+      
+      for (group in c("HA", "CA", "Unknown")) {
+        group_data <- agg_data[agg_data$EpisodeGroup == group, ]
+        specialty_summary[[group]] <- sapply(specialty_summary$Specialty, function(s) {
+          idx <- which(group_data$Specialty == s)
+          if (length(idx) > 0) group_data$Count[idx] else 0
+        })
+      }
+      
+      # Calculate total episodes per specialty
+      specialty_summary$`Total episodes` <- specialty_summary$HA + 
+                                          specialty_summary$CA + 
+                                          specialty_summary$Unknown
+      
+      # Sort by total episodes descending
+      specialty_summary <- specialty_summary[order(specialty_summary$`Total episodes`, decreasing = TRUE), ]
+      
+      specialty_summary
+    }, options = list(
+      pageLength = 10, 
+      scrollX = TRUE,
+      searching = TRUE,
+      ordering = TRUE,
+      dom = 'ftp'
+    ))
+
+    # Context: Number of specialties per patient pie chart
+    output$specialty_pie_patient <- shiny::renderPlot({
+      shiny::req(values$current_data, values$current_data$patient)
+      
+      pat <- filtered_patient_data()
+      specialty_col <- get_specialty_column(pat)
+      if (is.null(specialty_col) || !("PatientId" %in% names(pat))) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      # Count unique specialties per patient
+      pat_clean <- pat[!is.na(pat[[specialty_col]]) & pat[[specialty_col]] != "", ]
+      if (nrow(pat_clean) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      # Count specialties per patient
+      specialty_counts <- aggregate(get(specialty_col) ~ PatientId, data = pat_clean, 
+                                  FUN = function(x) length(unique(x)))
+      names(specialty_counts) <- c("PatientId", "NumSpecialties")
+      
+      # Create summary of specialty distribution
+      spec_summary <- table(specialty_counts$NumSpecialties)
+      total_patients <- sum(spec_summary)
+      
+      pie_data <- data.frame(
+        NumSpecialties = paste(names(spec_summary), ifelse(names(spec_summary) == "1", "Speciality", "Specialities")),
+        Count = as.numeric(spec_summary),
+        Percentage = round(as.numeric(spec_summary) / total_patients * 100, 1),
+        stringsAsFactors = FALSE
+      )
+      
+      # Define colors similar to the reference
+      colors <- c("1 Speciality" = "#87CEEB", "2 Specialities" = "#4682B4", "3 Specialities" = "#2E4B8B")
+      
+      ggplot2::ggplot(pie_data, ggplot2::aes(x = "", y = Count, fill = NumSpecialties)) +
+        ggplot2::geom_bar(stat = "identity", width = 1) +
+        ggplot2::coord_polar("y", start = 0) +
+        ggplot2::scale_fill_manual(values = colors[pie_data$NumSpecialties]) +
+        ggplot2::theme_void() +
+        ggplot2::theme(legend.position = "bottom") +
+        ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
+                          position = ggplot2::position_stack(vjust = 0.5),
+                          size = 3.5, fontface = "bold")
+    })
+
+    # Context: Number of specialties per episode pie chart
+    output$specialty_pie_episode <- shiny::renderPlot({
+      shiny::req(values$current_data, values$current_data$patient)
+      
+      # Get filtered episodes with specialty information
+      ep <- episodes_tbl()
+      if (is.null(ep) || nrow(ep) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      pat <- filtered_patient_data()
+      specialty_col <- get_specialty_column(pat)
+      if (is.null(specialty_col)) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      # Join episodes with patient data to get specialty information
+      if ("AdmissionRecordId" %in% names(ep) && "RecordId" %in% names(pat)) {
+        ep_with_specialty <- merge(ep, pat[, c("RecordId", specialty_col)], 
+                                  by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+      } else {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      if (nrow(ep_with_specialty) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      # Clean specialty data
+      ep_with_specialty$specialty_clean <- ep_with_specialty[[specialty_col]]
+      ep_with_specialty <- ep_with_specialty[!is.na(ep_with_specialty$specialty_clean) & 
+                                           ep_with_specialty$specialty_clean != "", ]
+      
+      if (nrow(ep_with_specialty) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      # Count unique specialties per episode (assuming 1 specialty per episode for this data)
+      # In practice, episodes are typically linked to one admission/specialty
+      specialty_counts <- aggregate(specialty_clean ~ EpisodeId, data = ep_with_specialty, 
+                                  FUN = function(x) length(unique(x)))
+      names(specialty_counts) <- c("EpisodeId", "NumSpecialties")
+      
+      # Create summary
+      spec_summary <- table(specialty_counts$NumSpecialties)
+      total_episodes <- sum(spec_summary)
+      
+      pie_data <- data.frame(
+        NumSpecialties = paste(names(spec_summary), ifelse(names(spec_summary) == "1", "Speciality", "Specialities")),
+        Count = as.numeric(spec_summary),
+        Percentage = round(as.numeric(spec_summary) / total_episodes * 100, 1),
+        stringsAsFactors = FALSE
+      )
+      
+      # Define colors
+      colors <- c("1 Speciality" = "#87CEEB", "2 Specialities" = "#4682B4", "3 Specialities" = "#2E4B8B")
+      
+      ggplot2::ggplot(pie_data, ggplot2::aes(x = "", y = Count, fill = NumSpecialties)) +
+        ggplot2::geom_bar(stat = "identity", width = 1) +
+        ggplot2::coord_polar("y", start = 0) +
+        ggplot2::scale_fill_manual(values = colors[pie_data$NumSpecialties]) +
+        ggplot2::theme_void() +
+        ggplot2::theme(legend.position = "bottom") +
+        ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
+                          position = ggplot2::position_stack(vjust = 0.5),
+                          size = 3.5, fontface = "bold")
+    })
+
+    # Context: Top 20 Pathogen Distribution by Specialty
+    output$pathogen_specialty_distribution <- shiny::renderPlot({
+      shiny::req(values$current_data)
+      
+      # Try multiple approaches to get pathogen-specialty data
+      iso_epi <- isolate_with_episode()
+      pat <- filtered_patient_data()
+      specialty_col <- get_specialty_column(pat)
+      
+      # Debug: Check what data we have
+      iso_available <- !is.null(iso_epi) && nrow(iso_epi) > 0
+      organism_col_available <- iso_available && "organism_label" %in% names(iso_epi)
+      specialty_available <- !is.null(specialty_col)
+      
+      # If isolate_with_episode fails, try direct approach with episodes and isolates
+      if (!organism_col_available) {
+        # Fallback: try to join episodes, isolates, and patients directly
+        ep <- episodes_tbl()
+        if (!is.null(ep) && nrow(ep) > 0 && !is.null(values$current_data$isolate)) {
+          iso <- values$current_data$isolate
+          
+          # Create organism label if needed
+          if ("MicroorganismCodeLabel" %in% names(iso)) {
+            iso$organism_label <- iso$MicroorganismCodeLabel
+          } else if ("MicroorganismCode" %in% names(iso)) {
+            iso$organism_label <- iso$MicroorganismCode
+          }
+          
+          if ("organism_label" %in% names(iso)) {
+            # Try to join isolates with episodes through patient admissions
+            if ("AdmissionRecordId" %in% names(ep) && "ParentId" %in% names(iso) && 
+                !is.null(pat) && "PatientId" %in% names(pat) && "RecordId" %in% names(pat)) {
+              
+              # Join isolates to patients first
+              iso_pat <- merge(iso, pat, by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+              # Then join to episodes
+              if ("RecordId" %in% names(iso_pat)) {
+                iso_epi <- merge(iso_pat, ep, by.x = "RecordId", by.y = "AdmissionRecordId", all.x = TRUE)
+                # Filter to only isolates that have episodes
+                iso_epi <- iso_epi[!is.na(iso_epi$EpisodeId), ]
+                organism_col_available <- nrow(iso_epi) > 0
+              }
+            }
+          }
+        }
+      }
+      
+      # Check if we now have pathogen data
+      if (!organism_col_available || is.null(iso_epi) || nrow(iso_epi) == 0) {
+        # Try one more fallback - just isolate data with specialty from patient data
+        if (!is.null(values$current_data$isolate) && !is.null(pat) && !is.null(specialty_col)) {
+          iso <- values$current_data$isolate
+          if ("MicroorganismCodeLabel" %in% names(iso)) {
+            iso$organism_label <- iso$MicroorganismCodeLabel
+          } else if ("MicroorganismCode" %in% names(iso)) {
+            iso$organism_label <- iso$MicroorganismCode
+          }
+          
+          if ("organism_label" %in% names(iso) && "ParentId" %in% names(iso) && "PatientId" %in% names(pat)) {
+            iso_specialty <- merge(iso, pat[, c("PatientId", specialty_col)], 
+                                  by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+            iso_specialty <- iso_specialty[!is.na(iso_specialty[[specialty_col]]), ]
+            
+            if (nrow(iso_specialty) > 0) {
+              # Proceed with this data
+              organism_col_available <- TRUE
+            }
+          }
+        }
+        
+        if (!organism_col_available) {
+          return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No pathogen data available", size = 6) +
+                 ggplot2::theme_void())
+        }
+      }
+      
+      if (!specialty_available) {
+        return(ggplot2::ggplot() + 
+               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No specialty data available", size = 6) +
+               ggplot2::theme_void())
+      }
+      
+      # Ensure specialty information is available in iso_epi (if not already set by fallback)
+      if (!exists("iso_specialty") || is.null(iso_specialty)) {
+        if (!(specialty_col %in% names(iso_epi))) {
+          # Join with patient data to get specialty if not already present
+          if ("AdmissionRecordId" %in% names(iso_epi) && "RecordId" %in% names(pat)) {
+            iso_specialty <- merge(iso_epi, pat[, c("RecordId", specialty_col)], 
+                                  by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+          } else if ("ParentId" %in% names(iso_epi) && "PatientId" %in% names(pat)) {
+            # Alternative join method
+            iso_specialty <- merge(iso_epi, pat[, c("PatientId", specialty_col)], 
+                                  by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+          } else {
+            return(ggplot2::ggplot() + 
+                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Cannot link pathogens to specialties", size = 6) +
+                   ggplot2::theme_void())
+          }
+        } else {
+          iso_specialty <- iso_epi
+        }
+      }
+      
+      if (nrow(iso_specialty) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      # Clean data
+      iso_specialty$specialty_clean <- iso_specialty[[specialty_col]]
+      iso_specialty$specialty_clean[is.na(iso_specialty$specialty_clean) | 
+                                   iso_specialty$specialty_clean == ""] <- "Interdisciplinary or unknown"
+      
+      # Get top 20 pathogens overall
+      pathogen_counts <- sort(table(iso_specialty$organism_label), decreasing = TRUE)
+      top_20_pathogens <- names(head(pathogen_counts, 20))
+      
+      # Filter to top 20 pathogens
+      iso_filtered <- iso_specialty[iso_specialty$organism_label %in% top_20_pathogens, ]
+      
+      # Count episodes per specialty to filter specialties with >= 10 episodes
+      # If EpisodeId is not available (fallback scenario), use isolate counts instead
+      if ("EpisodeId" %in% names(iso_filtered)) {
+        specialty_episode_counts <- aggregate(EpisodeId ~ specialty_clean, data = iso_filtered, 
+                                            FUN = function(x) length(unique(x)))
+        count_threshold <- 10
+      } else {
+        # Fallback: count isolates per specialty (use lower threshold)
+        specialty_episode_counts <- aggregate(organism_label ~ specialty_clean, data = iso_filtered, FUN = length)
+        names(specialty_episode_counts)[2] <- "EpisodeId"  # Keep same column name for consistency
+        count_threshold <- 5  # Lower threshold for isolate counts
+      }
+      
+      specialties_min_threshold <- specialty_episode_counts$specialty_clean[specialty_episode_counts$EpisodeId >= count_threshold]
+      
+      # Filter to specialties with >= threshold
+      iso_final <- iso_filtered[iso_filtered$specialty_clean %in% specialties_min_threshold, ]
+      
+      if (nrow(iso_final) == 0) {
+        return(ggplot2::ggplot() + 
+               ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                               label = "No specialties with ≥10 episodes found", size = 6) +
+               ggplot2::theme_void())
+      }
+      
+      # Count pathogen-specialty combinations
+      if ("EpisodeId" %in% names(iso_final)) {
+        pathogen_specialty_counts <- aggregate(EpisodeId ~ organism_label + specialty_clean, 
+                                             data = iso_final, FUN = length)
+      } else {
+        # Fallback: count isolates instead of episodes by creating a temporary ID column
+        iso_final$temp_id <- seq_len(nrow(iso_final))
+        pathogen_specialty_counts <- aggregate(temp_id ~ organism_label + specialty_clean, 
+                                             data = iso_final, FUN = length)
+        names(pathogen_specialty_counts)[names(pathogen_specialty_counts) == "temp_id"] <- "EpisodeId"
+      }
+      names(pathogen_specialty_counts) <- c("Pathogen", "Specialty", "Count")
+      
+      # Order specialties by total episode count
+      specialty_totals <- aggregate(Count ~ Specialty, data = pathogen_specialty_counts, FUN = sum)
+      specialty_order <- specialty_totals$Specialty[order(specialty_totals$Count, decreasing = TRUE)]
+      
+      # Create short pathogen names for display
+      pathogen_specialty_counts$PathogenShort <- gsub("([A-Z])[a-z]+ ([a-z]+)", "\\1. \\2", 
+                                                      pathogen_specialty_counts$Pathogen)
+      pathogen_specialty_counts$PathogenShort <- gsub("Staphylococcus", "S.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Enterococcus", "E.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Escherichia", "E.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Klebsiella", "K.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Candida", "Cand.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Pseudomonas", "P.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Enterobacter", "Enterob.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Proteus", "P.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Streptococcus", "Strep.", pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$PathogenShort <- gsub("Cutibacterium", "C.", pathogen_specialty_counts$PathogenShort)
+      
+      # Define colors for pathogens
+      pathogen_colors <- c(
+        "C. acnes" = "#000000", "E. faecium" = "#008B8B", "P. aeruginosa" = "#87CEEB", 
+        "S. epidermidis" = "#4F7942", "S. spp." = "#4682B4", "Cand. albicans" = "#8B0000", 
+        "Enterob. cloacae" = "#000080", "P. mirabilis" = "#483D8B", "S. haemolyticus" = "#B0C4DE",
+        "Strep. pneumoniae" = "#DAA520", "E. coli" = "#8B4513", "K. oxytoca" = "#FF69B4",
+        "S. aureus" = "#D2B48C", "S. hominis" = "#228B22", "Strep. pyogenes" = "#FF4500",
+        "E. faecalis" = "#9ACD32", "K. pneumoniae" = "#CD5C5C", "S. capitis" = "#008080",
+        "S. marcescens" = "#C0C0C0", "T. glabrata" = "#2F4F4F"
+      )
+      
+      # Assign colors to pathogens in the data
+      unique_pathogens <- unique(pathogen_specialty_counts$PathogenShort)
+      pathogen_specialty_counts$Color <- pathogen_colors[pathogen_specialty_counts$PathogenShort]
+      
+      # Set specialty order and create shorter specialty names
+      pathogen_specialty_counts$Specialty <- factor(pathogen_specialty_counts$Specialty, 
+                                                   levels = specialty_order)
+      
+      # Create shorter specialty names for x-axis
+      pathogen_specialty_counts$SpecialtyShort <- gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
+                                                      pathogen_specialty_counts$Specialty)
+      pathogen_specialty_counts$SpecialtyShort <- gsub("Internal Medicine", "Internal Medicine", 
+                                                      pathogen_specialty_counts$SpecialtyShort)
+      pathogen_specialty_counts$SpecialtyShort <- gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines", 
+                                                      pathogen_specialty_counts$SpecialtyShort)
+      pathogen_specialty_counts$SpecialtyShort <- gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", 
+                                                      pathogen_specialty_counts$SpecialtyShort)
+      
+      pathogen_specialty_counts$SpecialtyShort <- factor(pathogen_specialty_counts$SpecialtyShort, 
+                                                        levels = gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
+                                                                    gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines",
+                                                                       gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", specialty_order))))
+      
+      # Create the stacked bar chart
+      p <- ggplot2::ggplot(pathogen_specialty_counts, ggplot2::aes(x = SpecialtyShort, y = Count, fill = PathogenShort)) +
+        ggplot2::geom_bar(stat = "identity") +
+        ggplot2::scale_fill_manual(values = pathogen_colors, name = "Pathogen") +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 10),
+          legend.position = "bottom",
+          legend.text = ggplot2::element_text(size = 8),
+          panel.grid.minor = ggplot2::element_blank()
+        ) +
+        ggplot2::labs(
+          x = "Pathogen",
+          y = "Number of Episodes", 
+          title = NULL
+        ) +
+        ggplot2::guides(fill = ggplot2::guide_legend(ncol = 10, byrow = TRUE))
+      
+      return(p)
+    })
+
     # Demographics helper functions
     create_age_groups <- function(ages) {
       cut(ages, 
@@ -1395,8 +1794,8 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Demographics summary
     output$demographics_summary <- shiny::renderText({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
-      if (!all(c("Age", "Sex") %in% names(pat))) return("Demographics data not available")
+      pat <- filtered_patient_data()  # Use filtered patient data
+      if (is.null(pat) || !all(c("Age", "Sex") %in% names(pat))) return("Demographics data not available")
       
       total_patients <- nrow(pat)
       paste0("The pilot included blood cultures from ", 
@@ -1406,7 +1805,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Gender table
     output$gender_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Sex" %in% names(pat))) return(data.frame())
       
       # Clean and categorize gender data
@@ -1432,7 +1831,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Age table
     output$age_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Age" %in% names(pat))) return(data.frame())
       
       # Clean age data and create groups
@@ -1459,7 +1858,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Gender pie chart
     output$gender_pie <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Sex" %in% names(pat))) {
         return(ggplot2::ggplot() + ggplot2::theme_void())
       }
@@ -1497,7 +1896,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Age pie chart
     output$age_pie <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Age" %in% names(pat))) {
         return(ggplot2::ggplot() + ggplot2::theme_void())
       }
@@ -1544,7 +1943,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Age statistics
     output$age_stats <- shiny::renderText({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Age" %in% names(pat))) return("Age statistics not available")
       
       # Clean age data
@@ -1600,22 +1999,47 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Data tables for each sub-tab
     output$ehrbsi_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$ehrbsi)
-      values$current_data$ehrbsi
+      ehrbsi_data <- values$current_data$ehrbsi
+      
+      # Debug: Check if data exists before filtering
+      if (is.null(ehrbsi_data) || nrow(ehrbsi_data) == 0) {
+        return(data.frame(Message = "No EHRBSI data available"))
+      }
+      
+      # Temporarily disable filtering to test if data loads
+      # Just return the raw data for now
+      ehrbsi_data
     }, options = list(scrollX = TRUE))
     
     output$patient_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$patient)
-      values$current_data$patient
+      pat <- filtered_patient_data()  # Use filtered patient data
+      if (is.null(pat)) return(data.frame())
+      pat
     }, options = list(scrollX = TRUE))
     
     output$isolate_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$isolate)
-      values$current_data$isolate
+      # Use isolates that are linked to filtered episodes
+      iso_epi <- isolate_with_episode()
+      if (is.null(iso_epi) || nrow(iso_epi) == 0) {
+        # Fallback to all isolate data if no episode filtering available
+        return(values$current_data$isolate)
+      }
+      # Return the isolates that match filtered episodes
+      iso_epi
     }, options = list(scrollX = TRUE))
     
     output$res_table <- shiny::renderDataTable({
       shiny::req(values$current_data, values$current_data$res)
-      values$current_data$res
+      # Use resistance data that is linked to filtered episodes
+      rctx <- res_with_context()
+      if (is.null(rctx) || nrow(rctx) == 0) {
+        # Fallback to all resistance data if no episode filtering available
+        return(values$current_data$res)
+      }
+      # Return the resistance data that matches filtered episodes
+      rctx
     }, options = list(scrollX = TRUE))
     
     # Raw data summary
