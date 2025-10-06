@@ -2,13 +2,12 @@ calculateEpisodes <- function(patient_df,
                               isolate_df,
                               commensal_df, 
                               episodeDuration = 14){
-  
   comm_codes <- unique(commensal_df$SNOMED.Code)
   
   isolates_flagged <- isolate_df %>%
     mutate(org_type = if_else(MicroorganismCode %in% comm_codes,
                               "CC", "RP"))
-  
+
   ## ------------------------------------------------------------------
   ## 2.  Attach admission dates so we know which isolates belong where
   ## ------------------------------------------------------------------

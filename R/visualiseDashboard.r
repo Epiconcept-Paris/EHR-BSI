@@ -712,6 +712,18 @@ visual_bsi_dashboard <- function(data = NULL) {
               isolate <- readxl::read_xlsx(file_path, sheet = "Isolate")
               res <- readxl::read_xlsx(file_path, sheet = "Res")
               
+              ## setting right types for columns or adding default values to non mandatory columns
+              isolate[["DateOfSpecCollection"]] <- as.Date(isolate$DateOfSpecCollection)
+              patient[["DateOfHospitalAdmission"]] <- as.Date(patient$DateOfHospitalAdmission)	
+              if(!("DateOfHospitalDischarge" %in% names(patient)))
+                patient[["DateOfHospitalDischarge"]] <- NA
+              else
+                patient[["DateOfHospitalDischarge"]] <- as.Date(patient$DateOfHospitalDischarge)
+                           
+              ## assigning the patient id as patient record id on patients to ensure joins works properly
+              # TODO: Find a better fix to this by changing the join in compute_episodes
+	      patient <- patient %>% mutate(PatientId = RecordId)  
+	          
               values$current_data <- list(
                 ehrbsi = as.data.frame(ehrbsi),
                 patient = as.data.frame(patient),
