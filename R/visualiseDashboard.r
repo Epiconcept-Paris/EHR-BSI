@@ -58,6 +58,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::actionButton("process_data", "Process Data", 
                            class = "btn-primary"),
         
+        # Download button - only shows when data is available
+        shiny::conditionalPanel(
+          condition = "output.data_available",
+          shiny::downloadButton("download_data", "Download Reporting Template",
+                               class = "btn-success",
+                               style = "width: 100%; margin-top: 10px;")
+        ),
+        
         shiny::hr(),
         
         # Advanced filters - Episodes
@@ -400,7 +408,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       processing = FALSE,
       episodes = NULL,
       raw_data_stats = NULL,  # Store raw data statistics before processing
-      processed_data_stats = NULL  # Store processed data statistics after processing
+      processed_data_stats = NULL,  # Store processed data statistics after processing
+      country = NULL  # Store country code for download filename
     )
     
     # Check if data is available
@@ -690,6 +699,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
           
           values$current_data <- result
+          values$country <- input$country  # Store country code for download
           # Compute episodes if possible
           values$episodes <- compute_episodes_if_possible(result)
           
@@ -766,6 +776,16 @@ visual_bsi_dashboard <- function(data = NULL) {
                 patient_days = if ("NumberOfHospitalDischarges" %in% names(ehrbsi)) 
                   sum(ehrbsi$NumberOfHospitalDischarges, na.rm = TRUE) * 5 else 0
               )
+              
+              # Try to infer country from filename or default to "DATA"
+              filename <- input$data_file$name
+              if (grepl("^MT", filename, ignore.case = TRUE)) {
+                values$country <- "MT"
+              } else if (grepl("^EE", filename, ignore.case = TRUE)) {
+                values$country <- "EE"
+              } else {
+                values$country <- "DATA"
+              }
 
               shiny::removeNotification("processing")
               shiny::showNotification("Reporting template loaded successfully!", type = "message", duration = 3)
@@ -796,6 +816,56 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       values$processing <- FALSE
     })
+    
+    # Download handler for reporting template
+    output$download_data <- shiny::downloadHandler(
+      filename = function() {
+        # Use stored country code or default to "DATA"
+        country_code <- if (!is.null(values$country)) values$country else "DATA"
+        paste0(country_code, "_EHRBSI_FullReportingTemplate.xlsx")
+      },
+      content = function(file) {
+        shiny::req(values$current_data)
+        
+        # Show notification while preparing download
+        shiny::showNotification("Preparing download...", type = "message", duration = NULL, id = "download_prep")
+        
+        tryCatch({
+          # Create a new workbook using openxlsx
+          wb <- openxlsx::createWorkbook()
+          
+          # Add each data frame as a new worksheet
+          openxlsx::addWorksheet(wb, "EHRBSI")
+          openxlsx::writeData(wb, sheet = "EHRBSI", values$current_data$ehrbsi)
+          
+          if (!is.null(values$current_data$patient)) {
+            openxlsx::addWorksheet(wb, "Patient")
+            openxlsx::writeData(wb, sheet = "Patient", values$current_data$patient)
+          }
+          
+          if (!is.null(values$current_data$isolate)) {
+            openxlsx::addWorksheet(wb, "Isolate")
+            openxlsx::writeData(wb, sheet = "Isolate", values$current_data$isolate)
+          }
+          
+          if (!is.null(values$current_data$res)) {
+            openxlsx::addWorksheet(wb, "Res")
+            openxlsx::writeData(wb, sheet = "Res", values$current_data$res)
+          }
+          
+          # Save the workbook to the temporary file
+          openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
+          
+          shiny::removeNotification("download_prep")
+          shiny::showNotification("Download ready!", type = "message", duration = 2)
+          
+        }, error = function(e) {
+          shiny::removeNotification("download_prep")
+          error_msg <- paste("Error preparing download:", e$message)
+          shiny::showNotification(error_msg, type = "error", duration = 5)
+        })
+      }
+    )
     
     # If initial data provided to function, attempt to compute episodes
     shiny::observe({
