@@ -49,6 +49,12 @@ visual_bsi_dashboard <- function(data = NULL) {
                              selected = "EE")
         ),
         
+        shiny::numericInput("episode_duration", "Episode Duration (days):",
+                           value = 14,
+                           min = 1,
+                           max = 365,
+                           step = 1),
+        
         shiny::actionButton("process_data", "Process Data", 
                            class = "btn-primary"),
         
@@ -473,12 +479,14 @@ visual_bsi_dashboard <- function(data = NULL) {
       }, error = function(e) NULL)
       if (is.null(comm_df)) return(NULL)
       # Calculate episodes
+      # Use episode_duration from input, default to 14 if not available
+      epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
       eps <- tryCatch({
         calculateEpisodes(
           patient_df = cur$patient,
           isolate_df = cur$isolate,
           commensal_df = comm_df,
-          episodeDuration = 14
+          episodeDuration = epi_dur
         )
       }, error = function(e) NULL)
       return(eps)
@@ -671,10 +679,12 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
           
           # Process the data
+          # Use episode_duration from input, default to 14 if not available
+          epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
           result <- process_country_bsi(
             country = input$country,
             input_data = raw_data,
-            episode_duration = 14,
+            episode_duration = epi_dur,
             write_to_file = FALSE,
             calculate_episodes = TRUE
           )
