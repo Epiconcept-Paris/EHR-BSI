@@ -50,7 +50,7 @@
 process_country_bsi <- function(country,
                                input_data,
                                dictionary_path = NULL,
-                               value_maps_path = "reference/Lookup_Tables.r",
+                               value_maps_path = "reference/Lookup_Tables.R",
                                write_to_file = FALSE,
                                write_to_file_path = NULL,
                                return_format = "list",
