@@ -241,7 +241,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                         ),
                         shiny::div(
                           style = "flex: 1; min-width: 400px;",
-                          shiny::h6("Top 10 pathogen combinations in polymicrobial episodes", 
+                          shiny::h6("(Dummy data!!) Top 10 pathogen combinations in polymicrobial episodes", 
                                  style = "text-align: center;"),
                           shiny::plotOutput("pathogens_polymicrobial_combinations", height = "350px")
                         )
@@ -490,14 +490,14 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Calculate episodes
       # Use episode_duration from input, default to 14 if not available
       epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
-      eps <- tryCatch({
+      eps <- #tryCatch({
         calculateEpisodes(
           patient_df = cur$patient,
           isolate_df = cur$isolate,
           commensal_df = comm_df,
           episodeDuration = epi_dur
         )
-      }, error = function(e) NULL)
+      #}, error = function(e) NULL)
       return(eps)
     }
     
@@ -599,23 +599,24 @@ visual_bsi_dashboard <- function(data = NULL) {
       if (!("ParentId" %in% names(res))) return(NULL)
       iso_epi <- isolate_with_episode()
       if (is.null(iso_epi) || nrow(iso_epi) == 0) {
-        # Fall back to raw isolates join, without episode context
-        if (is.null(values$current_data$isolate)) return(NULL)
-        iso <- values$current_data$isolate
-        iso$IsolateRecordId <- iso$RecordId
-        # Join by isolate-level keys
-        merged_fallback <- NULL
-        if ("IsolateRecordId" %in% names(iso)) merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE)
-        if (is.null(merged_fallback) && "IsolateId" %in% names(iso)) merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateId", all.x = TRUE)
-        if (is.null(merged_fallback)) return(NULL)
-        # Carry organism label
-        if ("MicroorganismCodeLabel" %in% names(merged_fallback)) {
-          merged_fallback$organism_label <- merged_fallback$MicroorganismCodeLabel
-        } else if ("MicroorganismCode" %in% names(merged_fallback)) {
-          merged_fallback$organism_label <- merged_fallback$MicroorganismCode
-        }
-        # unify antibiotic and SIR fields below after join selection block
-        merged <- merged_fallback
+	stop("Cannot fine episode information")
+       # # Fall back to raw isolates join, without episode context
+       # if (is.null(values$current_data$isolate)) return(NULL)
+       # iso <- values$current_data$isolate
+       # iso$IsolateRecordId <- iso$RecordId
+       # # Join by isolate-level keys
+       # merged_fallback <- NULL
+       # if ("IsolateRecordId" %in% names(iso)) merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE)
+       # if (is.null(merged_fallback) && "IsolateId" %in% names(iso)) merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateId", all.x = TRUE)
+       # if (is.null(merged_fallback)) return(NULL)
+       # # Carry organism label
+       # if ("MicroorganismCodeLabel" %in% names(merged_fallback)) {
+       #   merged_fallback$organism_label <- merged_fallback$MicroorganismCodeLabel
+       # } else if ("MicroorganismCode" %in% names(merged_fallback)) {
+       #   merged_fallback$organism_label <- merged_fallback$MicroorganismCode
+       # }
+       # # unify antibiotic and SIR fields below after join selection block
+       # merged <- merged_fallback
       } else {
         # Robust join: try ParentId -> IsolateRecordId (Malta) and ParentId -> IsolateId (Estonia)
         merged_a <- if ("IsolateRecordId" %in% names(iso_epi)) merge(res, iso_epi, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE) else NULL
@@ -699,6 +700,8 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
           values$current_data <- result
           values$country <- input$country  # Store country code for download
+          if(!("HospitalId" %in% names(values$current_data$patient)))
+                values$current_data$patient[["HospitalId"]] <- NA
           # Compute episodes if possible
           values$episodes <- compute_episodes_if_possible(result)
           
@@ -734,6 +737,8 @@ visual_bsi_dashboard <- function(data = NULL) {
               ## setting right types for columns or adding default values to non mandatory columns
               isolate[["DateOfSpecCollection"]] <- as.Date(isolate$DateOfSpecCollection)
               patient[["DateOfHospitalAdmission"]] <- as.Date(patient$DateOfHospitalAdmission)	
+              if(!("HospitalId" %in% names(patient)))
+                patient[["HospitalId"]] <- NA
               if(!("DateOfHospitalDischarge" %in% names(patient)))
                 patient[["DateOfHospitalDischarge"]] <- NA
               else
@@ -741,7 +746,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                            
               ## assigning the patient id as patient record id on patients to ensure joins works properly
               # TODO: Find a better fix to this by changing the join in compute_episodes
-	      patient <- patient %>% mutate(PatientId = RecordId)  
+              patient <- patient %>% mutate(PatientId = RecordId)  
 	          
               values$current_data <- list(
                 ehrbsi = as.data.frame(ehrbsi),
@@ -948,7 +953,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       ep_per_1000 <- round(total_episodes / as.numeric(total_patients) * 1000, 1)
       
       paste0("Total sample size of ", total_patients, " patients, ",
-             "3,042 patients with ", total_episodes, " episodes remained in the dataset after applying ",
+             "with ", total_episodes, " episodes remained in the dataset after applying ",
              "episode definitions (", ep_per_1000, " episodes/1000 patient days).")
     })
 
@@ -988,7 +993,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")), 
                           position = ggplot2::position_stack(vjust = 0.5),
-                          size = 3, fontface = "bold")
+                          size = 4, fontface = "bold")
     }
 
     output$episodes_composition_all <- shiny::renderPlot({
@@ -1016,23 +1021,23 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Try to get isolate data joined with episodes, fallback to just isolates
       org_df <- isolate_with_episode()
       if (is.null(org_df) || nrow(org_df) == 0) {
-        # Fallback to using just isolate data if episode joining fails
-        if (!is.null(values$current_data$isolate)) {
-          org_df <- values$current_data$isolate
-          if ("MicroorganismCodeLabel" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCodeLabel
-          } else if ("MicroorganismCode" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCode
-          } else {
-            return(ggplot2::ggplot() + 
-                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
-                   ggplot2::theme_void())
-          }
-        } else {
+        ## Fallback to using just isolate data if episode joining fails
+        #if (!is.null(values$current_data$isolate)) {
+        #  org_df <- values$current_data$isolate
+        #  if ("MicroorganismCodeLabel" %in% names(org_df)) {
+        #    org_df$organism_label <- org_df$MicroorganismCodeLabel
+        #  } else if ("MicroorganismCode" %in% names(org_df)) {
+        #    org_df$organism_label <- org_df$MicroorganismCode
+        #  } else {
+        #    return(ggplot2::ggplot() + 
+        #           ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
+        #           ggplot2::theme_void())
+        #  }
+        #} else {
           return(ggplot2::ggplot() + 
                  ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
                  ggplot2::theme_void())
-        }
+        #}
       }
       
       # Filter for monomicrobial episodes if possible
@@ -1087,7 +1092,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::theme(legend.position = "none") +
         ggplot2::labs(x = NULL, y = "Frequency") +
-        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3)
+        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 4) +
+	ggplot2::theme(axis.text = element_text(size = 12))
     })
 
     # Pathogen analysis for polymicrobial episodes - individual pathogens
@@ -1097,23 +1103,23 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Try to get isolate data joined with episodes, fallback to just isolates
       org_df <- isolate_with_episode()
       if (is.null(org_df) || nrow(org_df) == 0) {
-        # Fallback to using just isolate data if episode joining fails
-        if (!is.null(values$current_data$isolate)) {
-          org_df <- values$current_data$isolate
-          if ("MicroorganismCodeLabel" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCodeLabel
-          } else if ("MicroorganismCode" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCode
-          } else {
-            return(ggplot2::ggplot() + 
-                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
-                   ggplot2::theme_void())
-          }
-        } else {
+       # # Fallback to using just isolate data if episode joining fails
+       # if (!is.null(values$current_data$isolate)) {
+       #   org_df <- values$current_data$isolate
+       #   if ("MicroorganismCodeLabel" %in% names(org_df)) {
+       #     org_df$organism_label <- org_df$MicroorganismCodeLabel
+       #   } else if ("MicroorganismCode" %in% names(org_df)) {
+       #     org_df$organism_label <- org_df$MicroorganismCode
+       #   } else {
+       #     return(ggplot2::ggplot() + 
+       #            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
+       #            ggplot2::theme_void())
+       #   }
+       # } else {
           return(ggplot2::ggplot() + 
                  ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
                  ggplot2::theme_void())
-        }
+       # }
       }
       
       # Filter for polymicrobial episodes if possible
@@ -1166,7 +1172,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::theme(legend.position = "none") +
         ggplot2::labs(x = NULL, y = "Frequency") +
-        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3)
+        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 4) + 
+	ggplot2::theme(axis.text = element_text(size = 12))
     })
 
     # Pathogen combinations in polymicrobial episodes
@@ -1209,7 +1216,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::theme(legend.position = "none") +
         ggplot2::labs(x = NULL, y = "Frequency") +
-        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3)
+        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 4) +
+	ggplot2::theme(axis.text = element_text(size = 12))
     })
 
     # Infection type analysis
@@ -1304,7 +1312,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")), 
                           position = ggplot2::position_stack(vjust = 0.5),
-                          size = 3, fontface = "bold")
+                          size = 4, fontface = "bold")
     }
 
     output$infection_type_all <- shiny::renderPlot({
@@ -1394,7 +1402,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           CA_n = ca_n,
           HA_R_perc = ifelse(ha_n > 0, round(100 * ha_r / ha_n, 1), NA_real_),
           CA_R_perc = ifelse(ca_n > 0, round(100 * ca_r / ca_n, 1), NA_real_),
-          p_value = p,
+          p_value = round(p, 3),
           stringsAsFactors = FALSE
         )
       })
@@ -1406,7 +1414,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       for (org in unique(out$Organism)) {
         idx <- which(out$Organism == org & !is.na(out$p_value))
         if (length(idx) > 0) {
-          out$padj_holm[idx] <- stats::p.adjust(out$p_value[idx], method = "holm")
+          out$padj_holm[idx] <- round(stats::p.adjust(out$p_value[idx], method = "holm"), 3) 
         }
       }
       out
@@ -1417,7 +1425,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(values$current_data, values$current_data$res)
       rctx <- res_with_context()
       if (is.null(rctx) || nrow(rctx) == 0) return(data.frame())
-      build_ab_table(rctx)
+      build_ab_table(rctx) %>% arrange(-HA_n)
     }, options = list(scrollX = TRUE))
 
     # Antibiograms: by episodes table (deduplicated)
@@ -1426,7 +1434,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       rctx <- res_with_context()
       if (is.null(rctx) || nrow(rctx) == 0) return(data.frame())
       rctx_dedup <- dedup_episode_ab(rctx)
-      build_ab_table(rctx_dedup)
+      build_ab_table(rctx_dedup) %>% arrange(-HA_n)
     }, options = list(scrollX = TRUE))
 
     # Context: specialty distribution (legacy - keeping for potential use)
@@ -1572,7 +1580,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
                           position = ggplot2::position_stack(vjust = 0.5),
-                          size = 3.5, fontface = "bold")
+                          size = 4, fontface = "bold")
     })
 
     # Context: Number of specialties per episode pie chart
@@ -1640,7 +1648,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
                           position = ggplot2::position_stack(vjust = 0.5),
-                          size = 3.5, fontface = "bold")
+                          size = 4, fontface = "bold")
     })
 
     # Context: Top 20 Pathogen Distribution by Specialty
@@ -1981,7 +1989,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
                           position = ggplot2::position_stack(vjust = 0.5),
-                          size = 3.5, fontface = "bold")
+                          size = 4, fontface = "bold")
     })
 
     # Age pie chart
@@ -2028,7 +2036,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
                           position = ggplot2::position_stack(vjust = 0.5),
-                          size = 3, fontface = "bold")
+                          size = 4, fontface = "bold")
     })
 
     # Age statistics
@@ -2246,7 +2254,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::geom_text(
           ggplot2::aes(label = paste0(Category, "\n", format(Count, big.mark = ","), " (", Percentage, "%)")), 
           position = ggplot2::position_stack(vjust = 0.5),
-          size = 3.5, 
+          size = 4, 
           fontface = "bold"
         )
     })

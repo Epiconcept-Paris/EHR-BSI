@@ -46,7 +46,7 @@ assign_episodes <- function(df_one_pt, episodeDuration) {
 
 
 ## helper ─ find all ≥2-positive CC windows inside the admission
-flag_cc_clusters <- function(dates) {
+flag_cc_clusters <- function(dates, episode_duration) {
   dates <- sort(as.Date(dates[!is.na(dates)]))   # keep only real dates
   n     <- length(dates)
   out   <- logical(n)
@@ -58,7 +58,7 @@ flag_cc_clusters <- function(dates) {
       out[i] <- TRUE                             # → mark start of the cluster
       
       ## jump to first sample that is *outside* the 14-day episode window
-      nxt <- which(dates > dates[i] + 13)
+      nxt <- which(dates > dates[i] + episode_duration -1 )
       if (length(nxt) == 0) break                # none found → we are done
       i <- nxt[1]
     } else {
