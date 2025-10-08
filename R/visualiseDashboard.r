@@ -697,7 +697,6 @@ visual_bsi_dashboard <- function(data = NULL) {
             write_to_file = FALSE,
             calculate_episodes = TRUE
           )
-          
           values$current_data <- result
           values$country <- input$country  # Store country code for download
           # Compute episodes if possible

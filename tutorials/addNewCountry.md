@@ -76,25 +76,7 @@ The main `process_country_bsi` function in `R/genericRecodeOrchestrator.R` must 
         if (!country %in% c("MT", "EE", "XX"))
         ```
 
-2.  **Set Default File Paths**:
-    -   Add a case for your country in the `switch` statements for `input_file` and `dictionary_path`:
-        ```r
-        # For input_file
-        input_file <- switch(country,
-          "MT" = "BSI_REPORT_Malta.csv",
-          "EE" = "BSI_REPORT_2024_share.xlsx",
-          "XX" = "BSI_REPORT_XX.csv" # Or .xlsx
-        )
-
-        # For dictionary_path
-        dictionary_path <- switch(country,
-          "MT" = "reference/dictionary_raw_BSI_Malta.xlsx",
-          "EE" = "reference/dictionary_raw_BSI_Estonia.xlsx",
-          "XX" = "reference/dictionary_raw_BSI_XX.xlsx"
-        )
-        ```
-
-3.  **Add the Country Processing Block**:
+2.  **Add the Country Processing Block**:
     -   Add an `else if` block to the main processing section to call the five functions you created in `recodingXX.R`.
         ```r
         } else if (country == "XX") {
