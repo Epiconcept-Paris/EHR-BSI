@@ -25,14 +25,17 @@ The main workflow is demonstrated in `main.R`:
 
 ```r
 
-# Ensure epiuf installed
-#devtools::install_github("Epiconcept-Paris/STRAP-epiuf")
+# Ensure dependencies
+devtools::install_github("Epiconcept-Paris/STRAP-epiuf")
+devtools::install_deps()
 
 # Load package
 devtools::load_all()
 
+# Run the visual dashboard to upload and test the data
+visual_bsi_dashboard()
 
-# Process country data with integrated episode calculation
+# Command to process country data with integrated episode calculation
 result <- process_country_bsi(
   country = "MT",
   input_data = malta_data,
@@ -49,7 +52,6 @@ result <- process_country_bsi(
 ### `visual_bsi_dashboard()`
 **Source:** `R/visualiseDashboard.r`
 The interactive tools to exectue standardisation pipelines and visualise results
-
 
 
 ### `process_country_bsi()` 
