@@ -1,4 +1,16 @@
 
+devtools::document()
+# Load package for testing
+devtools::load_all()
+
+
+
+### Run the shiny app (all functionality in one place)
+# 1. Upload your data by clicking 'Raw', select country name, choose raw dataset from local files
+# 2. Click 'Process'
+# 3. Explore ehrbsi aggregate dataset in visuals (in development)
+visual_bsi_dashboard()
+
 
 
 
@@ -14,7 +26,7 @@ devtools::load_all()
 
 
 # Load Malta data
-malta_data <- read.csv("xxx Documents/Development/epi_ehr_bsi/Malta/data/raw/BSI_REPORT_Malta.csv")
+malta_data <- read.csv("C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/BSI_REPORT_Malta.csv")
 
 # Make the raw reporting template tables for MALTA (inc episode calc)
 result <- process_country_bsi(
@@ -33,7 +45,7 @@ devtools::document()
 devtools::load_all()
 
 # Load EE data
-estonia_data <- read_xlsx("xxx Documents/Development/epi_ehr_bsi/Estonia/data/raw/BSI_REPORT_2024_share.xlsx")
+estonia_data <- read_xlsx("C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Estonia/data/raw/BSI_REPORT_2024_share.xlsx")
 
 
 # Make the raw reporting template tables for ESTONIA (inc episode calc)
@@ -45,24 +57,4 @@ result <- process_country_bsi(
   return_format = "list",
   calculate_episodes = TRUE
 )
-
-
-
-
-
-
-###### R SHINY 
-
-devtools::document()
-# Load package for testing
-devtools::load_all()
-
-
-
-### Run the shiny app (all functionality in one place)
-# 1. Upload your data by clicking 'Raw', select country name, choose raw dataset from local files
-# 2. Click 'Process'
-# 3. Explore ehrbsi aggregate dataset in visuals (in development)
-visual_bsi_dashboard()
-
 

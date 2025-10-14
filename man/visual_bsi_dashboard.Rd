@@ -25,5 +25,6 @@ The app supports:
 \item Upload reporting template Excel files with EHRBSI, Patient, Isolate, and Res sheets
 \item Interactive visualization with customizable axes, colors, and filters
 \item Data table exploration and summary statistics
+\item Collapsible sidebar to maximize visualization space
 }
 }

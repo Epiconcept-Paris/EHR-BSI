@@ -23,6 +23,7 @@ Imports:
     quarto,
     devtools,
     shiny,
+    bslib,
     openxlsx
 Suggests: 
     testthat (>= 3.0.0)

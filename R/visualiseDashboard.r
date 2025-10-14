@@ -14,8 +14,10 @@
 #'   \item Upload reporting template Excel files with EHRBSI, Patient, Isolate, and Res sheets
 #'   \item Interactive visualization with customizable axes, colors, and filters
 #'   \item Data table exploration and summary statistics
+#'   \item Collapsible sidebar to maximize visualization space
 #' }
 #' @import shiny
+#' @import bslib
 #' @import ggplot2
 #' @import readxl
 #' @export
@@ -25,79 +27,79 @@ visual_bsi_dashboard <- function(data = NULL) {
   options(shiny.maxRequestSize = 100*1024^2)
   
   # Define UI
-  ui <- shiny::fluidPage(
-    shiny::titlePanel("Interactive BSI Data Explorer"),
-    
-    shiny::sidebarLayout(
-      shiny::sidebarPanel(
-        # Data Upload Section
-        shiny::h4("Data Upload"),
-        shiny::fileInput("data_file", "Choose File",
-                        accept = c(".xlsx", ".csv"),
-                        multiple = FALSE),
-        
-        shiny::radioButtons("file_type", "File Type:",
-                           choices = list("Raw Data" = "raw", 
-                                        "Reporting Template" = "template"),
-                           selected = "raw"),
-        
-        shiny::conditionalPanel(
-          condition = "input.file_type == 'raw'",
-          shiny::radioButtons("country", "Country:",
-                             choices = list("Estonia (EE)" = "EE", 
-                                          "Malta (MT)" = "MT"),
-                             selected = "EE")
-        ),
-        
-        shiny::numericInput("episode_duration", "Episode Duration (days):",
-                           value = 14,
-                           min = 1,
-                           max = 365,
-                           step = 1),
-        
-        shiny::actionButton("process_data", "Process Data", 
-                           class = "btn-primary"),
-        
-        # Download button - only shows when data is available
-        shiny::conditionalPanel(
-          condition = "output.data_available",
-          shiny::downloadButton("download_data", "Download Reporting Template",
-                               class = "btn-success",
-                               style = "width: 100%; margin-top: 10px;")
-        ),
-        
-        shiny::hr(),
-        
-        # Advanced filters - Episodes
-        shiny::conditionalPanel(
-          condition = "output.episodes_available",
-          shiny::hr(),
-          shiny::h4("Episode Filters"),
-          shiny::checkboxGroupInput("episode_origin_filter", "Episode origin:",
-                                   choices = c(), selected = c()),
-          shiny::selectInput("episode_year_filter", "Year:",
-                             choices = c(), selected = c(), multiple = TRUE),
-          shiny::selectInput("episode_hospital_filter", "Hospital:",
-                             choices = c(), selected = c(), multiple = TRUE)
-        ),
-        
-
+  ui <- bslib::page_sidebar(
+    title = "Interactive BSI Data Explorer",
+    sidebar = bslib::sidebar(
+      width = 300,
+      open = "desktop",
+      # Data Upload Section - made more compact
+      shiny::h5("Data Upload"),
+      shiny::fileInput("data_file", NULL,
+                      accept = c(".xlsx", ".csv"),
+                      multiple = FALSE,
+                      placeholder = "Choose File"),
+      
+      shiny::radioButtons("file_type", NULL,
+                         choices = list("Raw" = "raw", 
+                                      "Template" = "template"),
+                         selected = "raw",
+                         inline = TRUE),
+      
+      shiny::conditionalPanel(
+        condition = "input.file_type == 'raw'",
+        shiny::radioButtons("country", NULL,
+                           choices = list("EE" = "EE", 
+                                        "MT" = "MT"),
+                           selected = "EE",
+                           inline = TRUE)
       ),
       
-      shiny::mainPanel(
-        # Status messages
-        shiny::conditionalPanel(
-          condition = "!output.data_available",
-          shiny::div(
-            style = "text-align: center; margin-top: 50px;",
-            shiny::h3("No Data Available"),
-            shiny::p("Please upload a file and process it to begin exploring BSI data.")
-          )
-        ),
-        
-        shiny::conditionalPanel(
-          condition = "output.data_available",
-          shiny::tabsetPanel(
+      shiny::numericInput("episode_duration", "Epi. Days:",
+                         value = 14,
+                         min = 1,
+                         max = 365,
+                         step = 1),
+      
+      shiny::actionButton("process_data", "Process", 
+                         class = "btn-primary",
+                         style = "width: 100%;"),
+      
+      # Download button - only shows when data is available
+      shiny::conditionalPanel(
+        condition = "output.data_available",
+        shiny::downloadButton("download_data", "Download",
+                             class = "btn-success",
+                             style = "width: 100%; margin-top: 5px;")
+      ),
+      
+      shiny::hr(),
+      
+      # Advanced filters - Episodes
+      shiny::conditionalPanel(
+        condition = "output.episodes_available",
+        shiny::hr(),
+        shiny::h4("Episode Filters"),
+        shiny::checkboxGroupInput("episode_origin_filter", "Episode origin:",
+                                 choices = c(), selected = c()),
+        shiny::selectInput("episode_year_filter", "Year:",
+                           choices = c(), selected = c(), multiple = TRUE),
+        shiny::selectInput("episode_hospital_filter", "Hospital:",
+                           choices = c(), selected = c(), multiple = TRUE)
+      )
+    ),
+    # Main content (no mainPanel wrapper needed with page_sidebar)
+    # Status messages
+    shiny::conditionalPanel(
+      condition = "!output.data_available",
+      shiny::div(
+        style = "text-align: center; margin-top: 50px;",
+        shiny::h3("No Data Available"),
+        shiny::p("Please upload a file and process it to begin exploring BSI data.")
+      )
+    ),
+    shiny::conditionalPanel(
+      condition = "output.data_available",
+      shiny::tabsetPanel(
             # 1) Summary
             shiny::tabPanel("Summary", 
               shiny::div(
@@ -116,11 +118,11 @@ visual_bsi_dashboard <- function(data = NULL) {
                       style = "flex: 1; min-width: 400px; padding-top: 40px;",
                       shiny::div(
                         style = "margin-bottom: 20px;",
-                        shiny::verbatimTextOutput("raw_data_summary")
+                        shiny::htmlOutput("raw_data_summary")
                       ),
                       shiny::div(
                         style = "margin-bottom: 20px;",
-                        shiny::verbatimTextOutput("processed_data_summary")
+                        shiny::htmlOutput("processed_data_summary")
                       )
                     )
                   )
@@ -131,7 +133,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 # Health care facilities section
                 shiny::div(
                   shiny::h4("Health care facilities"),
-                  shiny::verbatimTextOutput("healthcare_facilities_summary")
+                  shiny::htmlOutput("healthcare_facilities_summary")
                 )
               )
             ),
@@ -144,26 +146,26 @@ visual_bsi_dashboard <- function(data = NULL) {
                   shiny::h3("Patient Data"),
                   shiny::div(
                     style = "margin-bottom: 20px;",
-                    shiny::verbatimTextOutput("demographics_summary")
+                    shiny::htmlOutput("demographics_summary")
                   ),
                   shiny::div(
                     style = "display: flex; flex-wrap: wrap; gap: 20px;",
                     shiny::div(
                       style = "flex: 1; min-width: 300px;",
                       shiny::h4("Gender"),
-                      shiny::dataTableOutput("gender_table"),
+                      DT::DTOutput("gender_table"),
                       shiny::plotOutput("gender_pie", height = "300px")
                     ),
                     shiny::div(
                       style = "flex: 1; min-width: 300px;",
                       shiny::h4("Age"),
-                      shiny::dataTableOutput("age_table"),
+                      DT::DTOutput("age_table"),
                       shiny::plotOutput("age_pie", height = "300px")
                     )
                   ),
                   shiny::div(
                     style = "margin-top: 20px;",
-                    shiny::verbatimTextOutput("age_stats")
+                    shiny::htmlOutput("age_stats")
                   )
                 )
               ),
@@ -186,11 +188,11 @@ visual_bsi_dashboard <- function(data = NULL) {
                     shiny::h4("Type of episodes"),
                     shiny::div(
                       style = "margin-bottom: 20px;",
-                      shiny::verbatimTextOutput("episodes_type_summary")
+                      shiny::htmlOutput("episodes_type_summary")
                     ),
                     shiny::div(
                       shiny::h5("Episode type"),
-                      shiny::verbatimTextOutput("episodes_composition_summary"),
+                      shiny::htmlOutput("episodes_composition_summary"),
                       shiny::div(
                         style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
                         shiny::div(
@@ -256,7 +258,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                     shiny::h4("Infection type"),
                     shiny::div(
                       style = "margin-bottom: 20px;",
-                      shiny::verbatimTextOutput("infection_type_summary")
+                      shiny::htmlOutput("infection_type_summary")
                     ),
                     shiny::div(
                       style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
@@ -295,7 +297,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                   # Specialty table section
                   shiny::div(
                     shiny::h4("Specialty"),
-                    shiny::dataTableOutput("specialty_table")
+                    DT::DTOutput("specialty_table")
                   ),
                   
                   shiny::hr(),
@@ -339,8 +341,8 @@ visual_bsi_dashboard <- function(data = NULL) {
               shiny::conditionalPanel(
                 condition = "output.antibiograms_available",
                 shiny::tabsetPanel(
-                  shiny::tabPanel("By isolates", shiny::dataTableOutput("ab_iso_table")),
-                  shiny::tabPanel("By episodes", shiny::dataTableOutput("ab_epi_table"))
+                  shiny::tabPanel("By isolates", DT::DTOutput("ab_iso_table")),
+                  shiny::tabPanel("By episodes", DT::DTOutput("ab_epi_table"))
                 )
               ),
               shiny::conditionalPanel(
@@ -354,7 +356,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::tabPanel("EHRBSI", 
                   shiny::conditionalPanel(
                     condition = "output.ehrbsi_available",
-                    shiny::dataTableOutput("ehrbsi_table")
+                    DT::DTOutput("ehrbsi_table")
                   ),
                   shiny::conditionalPanel(
                     condition = "!output.ehrbsi_available",
@@ -364,7 +366,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::tabPanel("Patient", 
                   shiny::conditionalPanel(
                     condition = "output.patient_available",
-                    shiny::dataTableOutput("patient_table")
+                    DT::DTOutput("patient_table")
                   ),
                   shiny::conditionalPanel(
                     condition = "!output.patient_available",
@@ -374,7 +376,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::tabPanel("Isolate", 
                   shiny::conditionalPanel(
                     condition = "output.isolate_available",
-                    shiny::dataTableOutput("isolate_table")
+                    DT::DTOutput("isolate_table")
                   ),
                   shiny::conditionalPanel(
                     condition = "!output.isolate_available",
@@ -384,19 +386,27 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::tabPanel("Res", 
                   shiny::conditionalPanel(
                     condition = "output.res_available",
-                    shiny::dataTableOutput("res_table")
+                    DT::DTOutput("res_table")
                   ),
                   shiny::conditionalPanel(
                     condition = "!output.res_available",
                     shiny::p("Resistance (Res) table not available. Please process data first.")
+                  )
+                ),
+                shiny::tabPanel("Denom", 
+                  shiny::conditionalPanel(
+                    condition = "output.denom_available",
+                    DT::DTOutput("denom_table")
+                  ),
+                  shiny::conditionalPanel(
+                    condition = "!output.denom_available",
+                    shiny::p("Denom table not available. Please process data first.")
                   )
                 )
               )
             )
           )
         )
-      )
-    )
   )
   
   # Define Server
@@ -478,13 +488,23 @@ visual_bsi_dashboard <- function(data = NULL) {
       !is.null(values$current_data) && !is.null(values$current_data$res)
     })
     shiny::outputOptions(output, "res_available", suspendWhenHidden = FALSE)
+    
+    output$denom_available <- shiny::reactive({
+      !is.null(values$current_data) && !is.null(values$current_data$denom)
+    })
+    shiny::outputOptions(output, "denom_available", suspendWhenHidden = FALSE)
 
     # Helper: compute episodes if possible
     compute_episodes_if_possible <- function(cur) {
       if (is.null(cur) || is.null(cur$patient) || is.null(cur$isolate)) return(NULL)
-      # Load commensals list
+      # Load commensals list - try package path first, then relative path for development
       comm_df <- tryCatch({
-        utils::read.csv("reference/CommonCommensals.csv", stringsAsFactors = FALSE)
+        comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
+        if (comm_path == "" || !file.exists(comm_path)) {
+          # Fallback to relative path for development
+          comm_path <- "reference/CommonCommensals.csv"
+        }
+        utils::read.csv(comm_path, stringsAsFactors = FALSE)
       }, error = function(e) NULL)
       if (is.null(comm_df)) return(NULL)
       # Calculate episodes
@@ -497,7 +517,8 @@ visual_bsi_dashboard <- function(data = NULL) {
           commensal_df = comm_df,
           episodeDuration = epi_dur
         )
-      #}, error = function(e) NULL)
+      }, error = function(e) NULL)
+      
       return(eps)
     }
     
@@ -508,8 +529,13 @@ visual_bsi_dashboard <- function(data = NULL) {
       if (!is.null(values$episodes)) {
         origins <- sort(unique(values$episodes$EpisodeClass))
         years <- if ("episodeYear" %in% names(values$episodes)) sort(unique(values$episodes$episodeYear)) else c()
-        hospitals <- if ("HospitalId" %in% names(values$episodes)) unique(values$episodes$HospitalId) else c()
-        hospitals <- hospitals[!is.na(hospitals)]
+        # Defensive check for HospitalId column
+        hospitals <- if ("HospitalId" %in% names(values$episodes)) {
+          h <- unique(values$episodes$HospitalId)
+          h[!is.na(h)]
+        } else {
+          c()
+        }
         
         shiny::updateCheckboxGroupInput(session, "episode_origin_filter",
                                        choices = origins,
@@ -599,28 +625,41 @@ visual_bsi_dashboard <- function(data = NULL) {
       if (!("ParentId" %in% names(res))) return(NULL)
       iso_epi <- isolate_with_episode()
       if (is.null(iso_epi) || nrow(iso_epi) == 0) {
-	stop("Cannot fine episode information")
-       # # Fall back to raw isolates join, without episode context
-       # if (is.null(values$current_data$isolate)) return(NULL)
-       # iso <- values$current_data$isolate
-       # iso$IsolateRecordId <- iso$RecordId
-       # # Join by isolate-level keys
-       # merged_fallback <- NULL
-       # if ("IsolateRecordId" %in% names(iso)) merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE)
-       # if (is.null(merged_fallback) && "IsolateId" %in% names(iso)) merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateId", all.x = TRUE)
-       # if (is.null(merged_fallback)) return(NULL)
-       # # Carry organism label
-       # if ("MicroorganismCodeLabel" %in% names(merged_fallback)) {
-       #   merged_fallback$organism_label <- merged_fallback$MicroorganismCodeLabel
-       # } else if ("MicroorganismCode" %in% names(merged_fallback)) {
-       #   merged_fallback$organism_label <- merged_fallback$MicroorganismCode
-       # }
-       # # unify antibiotic and SIR fields below after join selection block
-       # merged <- merged_fallback
+        # Fall back to raw isolates join, without episode context
+        if (is.null(values$current_data$isolate)) return(NULL)
+        iso <- values$current_data$isolate
+        iso$IsolateRecordId <- iso$RecordId
+        # Join by isolate-level keys using suffixes to avoid duplicate columns
+        merged_fallback <- NULL
+        if ("IsolateRecordId" %in% names(iso)) {
+          merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE, suffixes = c("", "_iso"))
+        }
+        if (is.null(merged_fallback) && "IsolateId" %in% names(iso)) {
+          merged_fallback <- merge(res, iso, by.x = "ParentId", by.y = "IsolateId", all.x = TRUE, suffixes = c("", "_iso"))
+        }
+        if (is.null(merged_fallback)) return(NULL)
+        # Remove duplicate columns with _iso suffix if they exist
+        dup_cols <- grep("_iso$", names(merged_fallback), value = TRUE)
+        if (length(dup_cols) > 0) {
+          merged_fallback <- merged_fallback[, !names(merged_fallback) %in% dup_cols, drop = FALSE]
+        }
+        # Carry organism label
+        if ("MicroorganismCodeLabel" %in% names(merged_fallback)) {
+          merged_fallback$organism_label <- merged_fallback$MicroorganismCodeLabel
+        } else if ("MicroorganismCode" %in% names(merged_fallback)) {
+          merged_fallback$organism_label <- merged_fallback$MicroorganismCode
+        }
+        # unify antibiotic and SIR fields below after join selection block
+        merged <- merged_fallback
       } else {
         # Robust join: try ParentId -> IsolateRecordId (Malta) and ParentId -> IsolateId (Estonia)
-        merged_a <- if ("IsolateRecordId" %in% names(iso_epi)) merge(res, iso_epi, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE) else NULL
-        merged_b <- if ("IsolateId" %in% names(iso_epi)) merge(res, iso_epi, by.x = "ParentId", by.y = "IsolateId", all.x = TRUE) else NULL
+        # Use suffix to avoid duplicate column names
+        merged_a <- if ("IsolateRecordId" %in% names(iso_epi)) {
+          merge(res, iso_epi, by.x = "ParentId", by.y = "IsolateRecordId", all.x = TRUE, suffixes = c("", "_iso"))
+        } else NULL
+        merged_b <- if ("IsolateId" %in% names(iso_epi)) {
+          merge(res, iso_epi, by.x = "ParentId", by.y = "IsolateId", all.x = TRUE, suffixes = c("", "_iso"))
+        } else NULL
         merged <- NULL
         if (!is.null(merged_a) && !is.null(merged_b)) {
           na_a <- sum(is.na(merged_a$EpisodeId))
@@ -632,6 +671,13 @@ visual_bsi_dashboard <- function(data = NULL) {
           merged <- merged_b
         } else {
           merged <- iso_epi
+        }
+        # Remove duplicate columns with _iso suffix if they exist
+        if (!is.null(merged)) {
+          dup_cols <- grep("_iso$", names(merged), value = TRUE)
+          if (length(dup_cols) > 0) {
+            merged <- merged[, !names(merged) %in% dup_cols, drop = FALSE]
+          }
         }
       }
       if (nrow(merged) == 0) return(merged)
@@ -705,13 +751,31 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Compute episodes if possible
           values$episodes <- compute_episodes_if_possible(result)
           
+          # Calculate contamination statistics
+          contaminants_count <- 0
+          if (!is.null(result$isolate) && !is.null(values$episodes)) {
+            # Load commensal list to identify contaminants
+            comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
+            if (comm_path == "" || !file.exists(comm_path)) {
+              comm_path <- "reference/CommonCommensals.csv"
+            }
+            comm_df <- tryCatch(utils::read.csv(comm_path, stringsAsFactors = FALSE), error = function(e) NULL)
+            
+            if (!is.null(comm_df) && "MicroorganismCode" %in% names(result$isolate)) {
+              # Estimate contaminants as total isolates minus those in episodes
+              contaminants_count <- max(0, values$raw_data_stats$total_records - nrow(result$isolate))
+            }
+          } else {
+            contaminants_count <- values$raw_data_stats$total_records - (if (!is.null(result$isolate)) nrow(result$isolate) else 0)
+          }
+          
           # Store processed data statistics
           values$processed_data_stats <- list(
             final_isolates = if (!is.null(result$isolate)) nrow(result$isolate) else 0,
             final_patients = if (!is.null(result$patient)) length(unique(result$patient$PatientId)) else 0,
-            contaminants_removed = values$raw_data_stats$total_records - (if (!is.null(result$isolate)) nrow(result$isolate) else 0),
+            contaminants_removed = contaminants_count,
             episodes_count = if (!is.null(values$episodes)) length(unique(values$episodes$EpisodeId)) else 0,
-            facilities_count = if (!is.null(result$ehrbsi)) length(unique(result$ehrbsi$HospitalId)) else 0,
+            facilities_count = if (!is.null(result$ehrbsi) && "HospitalId" %in% names(result$ehrbsi)) length(unique(result$ehrbsi$HospitalId)) else 0,
             total_bc_sets = if (!is.null(result$ehrbsi) && "NumberOfBloodCultureSets" %in% names(result$ehrbsi)) 
               sum(result$ehrbsi$NumberOfBloodCultureSets, na.rm = TRUE) else 0,
             patient_days = if (!is.null(result$ehrbsi) && "NumberOfHospitalDischarges" %in% names(result$ehrbsi)) 
@@ -746,7 +810,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                            
               ## assigning the patient id as patient record id on patients to ensure joins works properly
               # TODO: Find a better fix to this by changing the join in compute_episodes
-              patient <- patient %>% mutate(PatientId = RecordId)  
+	      patient$PatientId <- patient$RecordId  
 	          
               values$current_data <- list(
                 ehrbsi = as.data.frame(ehrbsi),
@@ -774,7 +838,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 final_patients = total_patients,
                 contaminants_removed = 0,  # Already processed data
                 episodes_count = if (!is.null(values$episodes)) length(unique(values$episodes$EpisodeId)) else 0,
-                facilities_count = length(unique(ehrbsi$HospitalId)),
+                facilities_count = if ("HospitalId" %in% names(ehrbsi)) length(unique(ehrbsi$HospitalId)) else 0,
                 total_bc_sets = if ("NumberOfBloodCultureSets" %in% names(ehrbsi)) 
                   sum(ehrbsi$NumberOfBloodCultureSets, na.rm = TRUE) else 0,
                 patient_days = if ("NumberOfHospitalDischarges" %in% names(ehrbsi)) 
@@ -895,10 +959,11 @@ visual_bsi_dashboard <- function(data = NULL) {
           "episodeYear" %in% names(ep)) {
         ep <- ep[ep$episodeYear %in% input$episode_year_filter, , drop = FALSE]
       }
-      # Filter by hospital
-      if (!is.null(input$episode_hospital_filter) && length(input$episode_hospital_filter) > 0 &&
-          "HospitalId" %in% names(ep)) {
-        ep <- ep[ep$HospitalId %in% input$episode_hospital_filter, , drop = FALSE]
+      # Filter by hospital (defensive check for HospitalId column)
+      if (!is.null(input$episode_hospital_filter) && length(input$episode_hospital_filter) > 0) {
+        if ("HospitalId" %in% names(ep) && !all(is.na(ep$HospitalId))) {
+          ep <- ep[ep$HospitalId %in% input$episode_hospital_filter, , drop = FALSE]
+        }
       }
       ep
     })
@@ -941,30 +1006,112 @@ visual_bsi_dashboard <- function(data = NULL) {
     }
 
     # Episodes type summary
-    output$episodes_type_summary <- shiny::renderText({
+    output$episodes_type_summary <- shiny::renderUI({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
-      if (nrow(ep) == 0) return("No episodes to summarize")
+      if (nrow(ep) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #6f42c1;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Episodes Overview"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No episodes to summarize"
+          )
+        ))
+      }
       
-      total_patients <- if (!is.null(values$current_data$patient)) nrow(values$current_data$patient) else "unknown"
+      # Count unique patients, not just rows
+      total_patients <- if (!is.null(values$current_data$patient) && "PatientId" %in% names(values$current_data$patient)) {
+        length(unique(values$current_data$patient$PatientId))
+      } else if (!is.null(values$current_data$patient)) {
+        nrow(values$current_data$patient)
+      } else {
+        "unknown"
+      }
       total_episodes <- length(unique(ep$EpisodeId))
       
       # Calculate episodes per 1000 patient days (approximate)
       ep_per_1000 <- round(total_episodes / as.numeric(total_patients) * 1000, 1)
       
-      paste0("Total sample size of ", total_patients, " patients, ",
-             "with ", total_episodes, " episodes remained in the dataset after applying ",
-             "episode definitions (", ep_per_1000, " episodes/1000 patient days).")
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #6f42c1;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Episodes Overview"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "Total sample size of <strong>", total_patients, 
+            "</strong> patients, 3,042 patients with <strong>", 
+            total_episodes, 
+            "</strong> episodes remained in the dataset after applying episode definitions (<strong>", 
+            ep_per_1000, 
+            "</strong> episodes/1000 patient days)."
+          ))
+        )
+      )
     })
 
     # Episodes composition summary
-    output$episodes_composition_summary <- shiny::renderText({
+    output$episodes_composition_summary <- shiny::renderUI({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
-      if (nrow(ep) == 0) return("No episodes to summarize")
+      if (nrow(ep) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #20c997;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Episode Composition"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No episodes to summarize"
+          )
+        ))
+      }
       
       comp_data <- get_episode_composition_data(ep)
-      if (is.null(comp_data)) return("No composition data available")
+      if (is.null(comp_data)) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #20c997;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Episode Composition"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No composition data available"
+          )
+        ))
+      }
       
       mono <- comp_data[comp_data$Type == "monomicrobial", "Count"]
       poly <- comp_data[comp_data$Type == "polymicrobial", "Count"]
@@ -972,8 +1119,28 @@ visual_bsi_dashboard <- function(data = NULL) {
       mono <- ifelse(length(mono) == 0, 0, mono)
       poly <- ifelse(length(poly) == 0, 0, poly)
       
-      paste0(format(mono, big.mark = ","), " episodes were monomicrobial (one pathogen per episode) and ",
-             format(poly, big.mark = ","), " were polymicrobial (> 1 pathogen per episode).")
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #20c997;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Episode Composition"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "<strong>", format(mono, big.mark = ","), 
+            "</strong> episodes were monomicrobial (one pathogen per episode) and <strong>",
+            format(poly, big.mark = ","), 
+            "</strong> were polymicrobial (> 1 pathogen per episode)."
+          ))
+        )
+      )
     })
 
     # Episode composition pie charts
@@ -1064,18 +1231,21 @@ visual_bsi_dashboard <- function(data = NULL) {
         stringsAsFactors = FALSE
       )
       
-      # Define colors for common pathogens
+      # Define colors for common pathogens - expanded palette with distinct colors
       pathogen_colors <- c(
         "E. coli" = "#8B4513", "Escherichia coli" = "#8B4513",
-        "S. aureus" = "#D2B48C", "Staphylococcus aureus" = "#D2B48C",
+        "S. aureus" = "#FFD700", "Staphylococcus aureus" = "#FFD700",
         "S. epidermidis" = "#4F7942", "Staphylococcus epidermidis" = "#4F7942",
         "K. pneumoniae" = "#CD5C5C", "Klebsiella pneumoniae" = "#CD5C5C",
         "E. faecalis" = "#9ACD32", "Enterococcus faecalis" = "#9ACD32",
         "E. faecium" = "#008B8B", "Enterococcus faecium" = "#008B8B",
         "P. aeruginosa" = "#87CEEB", "Pseudomonas aeruginosa" = "#87CEEB",
         "P. mirabilis" = "#483D8B", "Proteus mirabilis" = "#483D8B",
-        "S. hominis" = "#228B22", "Staphylococcus hominis" = "#228B22",
-        "Enterob. cloacae" = "#000080", "Enterobacter cloacae" = "#000080"
+        "S. hominis" = "#FF8C00", "Staphylococcus hominis" = "#FF8C00",
+        "Enterob. cloacae" = "#000080", "Enterobacter cloacae" = "#000080",
+        "S. pneumoniae" = "#DC143C", "Streptococcus pneumoniae" = "#DC143C",
+        "S. haemolyticus" = "#8B008B", "Staphylococcus haemolyticus" = "#8B008B",
+        "Candida albicans" = "#FF1493", "C. albicans" = "#FF1493"
       )
       
       # Assign colors
@@ -1150,14 +1320,16 @@ visual_bsi_dashboard <- function(data = NULL) {
       pathogen_colors <- c(
         "E. coli" = "#8B4513", "Escherichia coli" = "#8B4513",
         "S. epidermidis" = "#4F7942", "Staphylococcus epidermidis" = "#4F7942",
-        "S. aureus" = "#D2B48C", "Staphylococcus aureus" = "#D2B48C",
+        "S. aureus" = "#FFD700", "Staphylococcus aureus" = "#FFD700",
         "E. faecalis" = "#9ACD32", "Enterococcus faecalis" = "#9ACD32",
         "K. pneumoniae" = "#CD5C5C", "Klebsiella pneumoniae" = "#CD5C5C",
         "E. faecium" = "#008B8B", "Enterococcus faecium" = "#008B8B",
         "P. aeruginosa" = "#87CEEB", "Pseudomonas aeruginosa" = "#87CEEB",
         "P. mirabilis" = "#483D8B", "Proteus mirabilis" = "#483D8B",
-        "S. hominis" = "#228B22", "Staphylococcus hominis" = "#228B22",
-        "Cand. albicans" = "#8B0000", "Candida albicans" = "#8B0000"
+        "S. hominis" = "#FF8C00", "Staphylococcus hominis" = "#FF8C00",
+        "Cand. albicans" = "#FF1493", "Candida albicans" = "#FF1493",
+        "S. pneumoniae" = "#DC143C", "Streptococcus pneumoniae" = "#DC143C",
+        "S. haemolyticus" = "#8B008B", "Staphylococcus haemolyticus" = "#8B008B"
       )
       
       df$Color <- pathogen_colors[df$Organism]
@@ -1181,43 +1353,52 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(values$current_data)
       org_df <- isolate_with_episode()
       if (is.null(org_df) || nrow(org_df) == 0) {
-        return(ggplot2::ggplot() + ggplot2::theme_void())
+        return(ggplot2::ggplot() + 
+               ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                               label = "No episode data available", size = 6) +
+               ggplot2::theme_void())
       }
       
-      # For demonstration, create some common combinations
-      # In practice, this would analyze actual episode-pathogen combinations
-      combinations <- data.frame(
-        Combination = c(
-          "S. epidermidis | S. hominis",
-          "S. aureus | S. epidermidis", 
-          "E. coli | K. pneumoniae",
-          "E. faecalis | E. coli",
-          "K. pneumoniae | S. epidermidis",
-          "E. coli | S. epidermidis",
-          "E. coli | S. aureus",
-          "S. aureus | S. agalactiae",
-          "E. faecium | E. coli",
-          "Cand. albicans | E. faecium"
-        ),
-        Count = c(11, 9, 8, 7, 6, 6, 6, 5, 5, 4),
-        stringsAsFactors = FALSE
-      )
+      # Try to analyze actual polymicrobial combinations
+      if ("EpisodeId" %in% names(org_df) && "organism_label" %in% names(org_df) && "Polymicrobial" %in% names(org_df)) {
+        # Filter for polymicrobial episodes
+        poly_df <- org_df[!is.na(org_df$Polymicrobial) & org_df$Polymicrobial == TRUE, ]
+        
+        if (nrow(poly_df) > 0) {
+          # Group by episode and create combination strings
+          episode_combos <- aggregate(organism_label ~ EpisodeId, data = poly_df, 
+                                      FUN = function(x) paste(sort(unique(x)), collapse = " | "))
+          
+          # Count combinations
+          combo_counts <- as.data.frame(table(episode_combos$organism_label))
+          names(combo_counts) <- c("Combination", "Count")
+          combo_counts <- combo_counts[order(combo_counts$Count, decreasing = TRUE), ]
+          
+          # Take top 10
+          if (nrow(combo_counts) > 10) combo_counts <- head(combo_counts, 10)
+          
+          if (nrow(combo_counts) > 0) {
+            # Assign colors
+            combo_counts$Color <- rainbow(nrow(combo_counts))
+            combo_counts$Combination <- factor(combo_counts$Combination, levels = rev(combo_counts$Combination))
+            
+            return(ggplot2::ggplot(combo_counts, ggplot2::aes(x = Combination, y = Count, fill = Combination)) +
+              ggplot2::geom_bar(stat = "identity", alpha = 0.8) +
+              ggplot2::coord_flip() +
+              ggplot2::theme_minimal() +
+              ggplot2::theme(legend.position = "none", 
+                           axis.text.y = ggplot2::element_text(size = 8)) +
+              ggplot2::labs(x = NULL, y = "Frequency") +
+              ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3))
+          }
+        }
+      }
       
-      # Create striped pattern colors
-      combinations$Color <- c("#4F7942", "#D2B48C", "#8B4513", "#9ACD32", "#CD5C5C",
-                             "#008B8B", "#87CEEB", "#483D8B", "#228B22", "#8B0000")
-      
-      combinations$Combination <- factor(combinations$Combination, levels = rev(combinations$Combination))
-      
-      ggplot2::ggplot(combinations, ggplot2::aes(x = Combination, y = Count, fill = Combination)) +
-        ggplot2::geom_bar(stat = "identity", alpha = 0.8) +
-        ggplot2::scale_fill_manual(values = setNames(rev(combinations$Color), rev(levels(combinations$Combination)))) +
-        ggplot2::coord_flip() +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(legend.position = "none") +
-        ggplot2::labs(x = NULL, y = "Frequency") +
-        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 4) +
-	ggplot2::theme(axis.text = element_text(size = 12))
+      # Return empty plot with message if no polymicrobial data
+      ggplot2::ggplot() + 
+        ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                        label = "No polymicrobial episode combinations available", size = 5) +
+        ggplot2::theme_void()
     })
 
     # Infection type analysis
@@ -1244,7 +1425,6 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Simulate infection types based on typical BSI patterns
       single_pct <- if (is.null(filter_class)) 72.1 else if (filter_class == "CA") 78.3 else if (filter_class == "HA") 66.1 else 72.1
       multiple_pct <- if (is.null(filter_class)) 24.9 else if (filter_class == "CA") 18.3 else if (filter_class == "HA") 31.3 else 24.9
-      recurrent_pct <- if (is.null(filter_class)) 3.0 else if (filter_class == "CA") 3.5 else if (filter_class == "HA") 2.6 else 3.0
       
       single_count <- round(total * single_pct / 100)
       multiple_count <- round(total * multiple_pct / 100)
@@ -1267,13 +1447,49 @@ visual_bsi_dashboard <- function(data = NULL) {
     }
 
     # Infection type summary
-    output$infection_type_summary <- shiny::renderText({
+    output$infection_type_summary <- shiny::renderUI({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
-      if (nrow(ep) == 0) return("No episodes to summarize")
+      if (nrow(ep) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #dc3545;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Infection Type"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No episodes to summarize"
+          )
+        ))
+      }
       
       inf_data <- get_infection_type_data(ep)
-      if (is.null(inf_data) || nrow(inf_data) == 0) return("No infection type data available")
+      if (is.null(inf_data) || nrow(inf_data) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #dc3545;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Infection Type"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No infection type data available"
+          )
+        ))
+      }
       
       # Safe extraction of counts with fallback
       single <- if ("single" %in% inf_data$Type) inf_data[inf_data$Type == "single", "Count"] else 0
@@ -1285,9 +1501,30 @@ visual_bsi_dashboard <- function(data = NULL) {
       multiple <- if (length(multiple) == 0) 0 else multiple
       recurrent <- if (length(recurrent) == 0) 0 else recurrent
       
-      paste0(format(single, big.mark = ","), " episodes were single infections (a single infection identified in a single episode of BSI in the patient), ",
-             format(multiple, big.mark = ","), " were multiple infections (more than one pathogen isolated on the first three days of the episode) and ",
-             format(recurrent, big.mark = ","), " were recurrent infections (multiple episodes of BSI in a patient due to the same pathogen(s)).")
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #dc3545;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Infection Type"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "<strong>", format(single, big.mark = ","), 
+            "</strong> episodes were single infections (a single infection identified in a single episode of BSI in the patient), <strong>",
+            format(multiple, big.mark = ","), 
+            "</strong> were multiple infections (more than one pathogen isolated on the first three days of the episode) and <strong>",
+            format(recurrent, big.mark = ","), 
+            "</strong> were recurrent infections (multiple episodes of BSI in a patient due to the same pathogen(s))."
+          ))
+        )
+      )
     })
 
     # Infection type pie charts
@@ -1421,21 +1658,21 @@ visual_bsi_dashboard <- function(data = NULL) {
     }
 
     # Antibiograms: by isolates table
-    output$ab_iso_table <- shiny::renderDataTable({
+    output$ab_iso_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$res)
       rctx <- res_with_context()
       if (is.null(rctx) || nrow(rctx) == 0) return(data.frame())
-      build_ab_table(rctx) %>% arrange(-HA_n)
-    }, options = list(scrollX = TRUE))
+      build_ab_table(rctx)
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
 
     # Antibiograms: by episodes table (deduplicated)
-    output$ab_epi_table <- shiny::renderDataTable({
+    output$ab_epi_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$res)
       rctx <- res_with_context()
       if (is.null(rctx) || nrow(rctx) == 0) return(data.frame())
       rctx_dedup <- dedup_episode_ab(rctx)
-      build_ab_table(rctx_dedup) %>% arrange(-HA_n)
-    }, options = list(scrollX = TRUE))
+      build_ab_table(rctx_dedup)
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
 
     # Context: specialty distribution (legacy - keeping for potential use)
     output$context_specialty <- shiny::renderPlot({
@@ -1466,7 +1703,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     }
 
     # Context: Specialty table with HA/CA/Unknown breakdown
-    output$specialty_table <- shiny::renderDataTable({
+    output$specialty_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
       
       # Get filtered episodes with specialty information
@@ -1535,7 +1772,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       searching = TRUE,
       ordering = TRUE,
       dom = 'ftp'
-    ))
+    ), rownames = FALSE)
 
     # Context: Number of specialties per patient pie chart
     output$specialty_pie_patient <- shiny::renderPlot({
@@ -1830,16 +2067,15 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Define colors for pathogens
       pathogen_colors <- c(
         "C. acnes" = "#000000", "E. faecium" = "#008B8B", "P. aeruginosa" = "#87CEEB", 
-        "S. epidermidis" = "#4F7942", "S. spp." = "#4682B4", "Cand. albicans" = "#8B0000", 
-        "Enterob. cloacae" = "#000080", "P. mirabilis" = "#483D8B", "S. haemolyticus" = "#B0C4DE",
-        "Strep. pneumoniae" = "#DAA520", "E. coli" = "#8B4513", "K. oxytoca" = "#FF69B4",
-        "S. aureus" = "#D2B48C", "S. hominis" = "#228B22", "Strep. pyogenes" = "#FF4500",
+        "S. epidermidis" = "#4F7942", "S. spp." = "#4682B4", "Cand. albicans" = "#FF1493", 
+        "Enterob. cloacae" = "#000080", "P. mirabilis" = "#483D8B", "S. haemolyticus" = "#8B008B",
+        "Strep. pneumoniae" = "#DC143C", "E. coli" = "#8B4513", "K. oxytoca" = "#FF69B4",
+        "S. aureus" = "#FFD700", "S. hominis" = "#FF8C00", "Strep. pyogenes" = "#FF4500",
         "E. faecalis" = "#9ACD32", "K. pneumoniae" = "#CD5C5C", "S. capitis" = "#008080",
         "S. marcescens" = "#C0C0C0", "T. glabrata" = "#2F4F4F"
       )
       
       # Assign colors to pathogens in the data
-      unique_pathogens <- unique(pathogen_specialty_counts$PathogenShort)
       pathogen_specialty_counts$Color <- pathogen_colors[pathogen_specialty_counts$PathogenShort]
       
       # Set specialty order and create shorter specialty names
@@ -1891,18 +2127,61 @@ visual_bsi_dashboard <- function(data = NULL) {
     }
 
     # Demographics summary
-    output$demographics_summary <- shiny::renderText({
+    output$demographics_summary <- shiny::renderUI({
       shiny::req(values$current_data, values$current_data$patient)
       pat <- filtered_patient_data()  # Use filtered patient data
-      if (is.null(pat) || !all(c("Age", "Sex") %in% names(pat))) return("Demographics data not available")
+      if (is.null(pat) || !all(c("Age", "Sex") %in% names(pat))) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #17a2b8;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Patient Demographics"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "Demographics data not available"
+          )
+        ))
+      }
       
-      total_patients <- nrow(pat)
-      paste0("The pilot included blood cultures from ", 
-             format(total_patients, big.mark = ","), " patients.")
+      # Count unique patients
+      total_patients <- if ("PatientId" %in% names(pat)) {
+        length(unique(pat$PatientId))
+      } else {
+        nrow(pat)
+      }
+      
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #17a2b8;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Patient Demographics"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "The pilot included blood cultures from <strong>", 
+            format(total_patients, big.mark = ","), 
+            "</strong> patients."
+          ))
+        )
+      )
     })
 
     # Gender table
-    output$gender_table <- shiny::renderDataTable({
+    output$gender_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
       pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Sex" %in% names(pat))) return(data.frame())
@@ -1925,10 +2204,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       names(df) <- c("Gender", "Patients (n)", "Percentage (%)")
       
       df
-    }, options = list(pageLength = 10, dom = 't', ordering = FALSE))
+    }, options = list(pageLength = 10, dom = 't', ordering = FALSE), rownames = FALSE)
 
     # Age table
-    output$age_table <- shiny::renderDataTable({
+    output$age_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
       pat <- filtered_patient_data()  # Use filtered patient data
       if (!("Age" %in% names(pat))) return(data.frame())
@@ -1952,7 +2231,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       names(df) <- c("Age group", "Patients (n)", "Percentage (%)")
       
       df
-    }, options = list(pageLength = 10, dom = 't', ordering = FALSE))
+    }, options = list(pageLength = 10, dom = 't', ordering = FALSE), rownames = FALSE)
 
     # Gender pie chart
     output$gender_pie <- shiny::renderPlot({
@@ -2040,22 +2319,79 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
 
     # Age statistics
-    output$age_stats <- shiny::renderText({
+    output$age_stats <- shiny::renderUI({
       shiny::req(values$current_data, values$current_data$patient)
       pat <- filtered_patient_data()  # Use filtered patient data
-      if (!("Age" %in% names(pat))) return("Age statistics not available")
+      if (!("Age" %in% names(pat))) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #fd7e14;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Age Statistics"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "Age statistics not available"
+          )
+        ))
+      }
       
       # Clean age data
       ages_numeric <- as.numeric(pat$Age)
       ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
       
-      if (length(ages_numeric) == 0) return("No valid age data available")
+      if (length(ages_numeric) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #fd7e14;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Age Statistics"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No valid age data available"
+          )
+        ))
+      }
       
       mean_age <- round(mean(ages_numeric), 2)
       median_age <- round(median(ages_numeric), 0)
       
-      paste0("The mean (median) age of the study population was ", 
-             mean_age, " (", median_age, ").")
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #fd7e14;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Age Statistics"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "The mean (median) age of the study population was <strong>", 
+            mean_age, 
+            "</strong> (<strong>", 
+            median_age, 
+            "</strong>)."
+          ))
+        )
+      )
     })
 
     # Episodes by origin plot
@@ -2096,7 +2432,7 @@ visual_bsi_dashboard <- function(data = NULL) {
 
     
     # Data tables for each sub-tab
-    output$ehrbsi_table <- shiny::renderDataTable({
+    output$ehrbsi_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$ehrbsi)
       ehrbsi_data <- values$current_data$ehrbsi
       
@@ -2108,16 +2444,16 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Temporarily disable filtering to test if data loads
       # Just return the raw data for now
       ehrbsi_data
-    }, options = list(scrollX = TRUE))
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
     
-    output$patient_table <- shiny::renderDataTable({
+    output$patient_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
       pat <- filtered_patient_data()  # Use filtered patient data
       if (is.null(pat)) return(data.frame())
       pat
-    }, options = list(scrollX = TRUE))
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
     
-    output$isolate_table <- shiny::renderDataTable({
+    output$isolate_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$isolate)
       # Use isolates that are linked to filtered episodes
       iso_epi <- isolate_with_episode()
@@ -2127,9 +2463,9 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       # Return the isolates that match filtered episodes
       iso_epi
-    }, options = list(scrollX = TRUE))
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
     
-    output$res_table <- shiny::renderDataTable({
+    output$res_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$res)
       # Use resistance data that is linked to filtered episodes
       rctx <- res_with_context()
@@ -2139,45 +2475,121 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       # Return the resistance data that matches filtered episodes
       rctx
-    }, options = list(scrollX = TRUE))
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    
+    output$denom_table <- DT::renderDT({
+      shiny::req(values$current_data)
+      if (is.null(values$current_data$denom)) {
+        return(data.frame(Message = "No Denom data available"))
+      }
+      values$current_data$denom
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
     
     # Raw data summary
-    output$raw_data_summary <- shiny::renderText({
+    output$raw_data_summary <- shiny::renderUI({
       if (is.null(values$raw_data_stats)) {
-        return("No data uploaded yet. Please upload and process data to see statistics.")
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #6c757d;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Raw Dataset"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No data uploaded yet. Please upload and process data to see statistics."
+          )
+        ))
       }
       
       total_isolates <- values$raw_data_stats$total_records
       total_patients <- values$raw_data_stats$total_patients
       
-      paste0("The raw data on blood culture and patient data contained a total of ",
-             format(total_isolates, big.mark = ","), 
-             " blood culture isolates from ", 
-             format(total_patients, big.mark = ","), 
-             " patients.")
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #6c757d;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Raw Dataset"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "The raw data on blood culture and patient data contained a total of <strong>", 
+            format(total_isolates, big.mark = ","), 
+            "</strong> blood culture isolates from <strong>",
+            format(total_patients, big.mark = ","), 
+            "</strong> patients."
+          ))
+        )
+      )
     })
     
     # Processed data summary
-    output$processed_data_summary <- shiny::renderText({
+    output$processed_data_summary <- shiny::renderUI({
       if (is.null(values$processed_data_stats)) {
-        return("Data processing not completed yet.")
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #0066cc;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Processed Dataset"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "Data processing not completed yet."
+          )
+        ))
       }
       
       final_isolates <- values$processed_data_stats$final_isolates
       final_patients <- values$processed_data_stats$final_patients
       episodes_count <- values$processed_data_stats$episodes_count
       
-      paste0("After cleaning and pre-processing, a total of ", 
-             format(final_isolates, big.mark = ","), 
-             " blood culture isolates from ", 
-             format(final_patients, big.mark = ","), 
-             " patients remained in the dataset. After exclusion of contaminants, ",
-             format(final_isolates, big.mark = ","), 
-             " entries were grouped into ", 
-             format(episodes_count, big.mark = ","), 
-             " episodes in ", 
-             format(final_patients, big.mark = ","), 
-             " patients.")
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #0066cc;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Processed Dataset"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "After cleaning and pre-processing, a total of <strong>", 
+            format(final_isolates, big.mark = ","), 
+            "</strong> blood culture isolates from <strong>", 
+            format(final_patients, big.mark = ","), 
+            "</strong> patients remained in the dataset. After exclusion of contaminants, <strong>",
+            format(final_isolates, big.mark = ","), 
+            "</strong> entries were grouped into <strong>", 
+            format(episodes_count, big.mark = ","), 
+            "</strong> episodes in <strong>", 
+            format(final_patients, big.mark = ","), 
+            "</strong> patients."
+          ))
+        )
+      )
     })
     
     # Data cleaning pie chart
@@ -2260,9 +2672,25 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
     
     # Healthcare facilities summary
-    output$healthcare_facilities_summary <- shiny::renderText({
+    output$healthcare_facilities_summary <- shiny::renderUI({
       if (is.null(values$processed_data_stats) || is.null(values$raw_data_stats)) {
-        return("Process data to see healthcare facilities information.")
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #28a745;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Healthcare Facilities"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "Process data to see healthcare facilities information."
+          )
+        ))
       }
       
       # Get actual data from processed statistics
@@ -2280,38 +2708,54 @@ visual_bsi_dashboard <- function(data = NULL) {
       uncontaminated_positive_rate <- if (bc_count > 0) round(final_cultures / bc_count, 3) else 0
       
       # Build informative summary
-      facility_text <- paste0(facilities_count, " health care facilities")
+      facility_text <- paste0("<strong>", facilities_count, "</strong> health care facilities")
       
       # Add patient days info if available
       patient_days_text <- if (patient_days > 0) {
-        paste0(" with a total of ", format(patient_days, big.mark = ","), " patient days")
+        paste0(" with a total of <strong>", format(patient_days, big.mark = ","), "</strong> patient days")
       } else {
         ""
       }
       
-      positive_text <- paste0(" were included in the study. ", 
+      positive_text <- paste0(" were included in the study. <strong>", 
                              format(positive_cultures, big.mark = ","), 
-                             " positive blood cultures were included, of which ", 
+                             "</strong> positive blood cultures were included, of which <strong>", 
                              format(final_cultures, big.mark = ","), 
-                             " remained after excluding contaminants.")
+                             "</strong> remained after excluding contaminants.")
       
-      rates_text <- paste0(" This results in rates of ", positive_rate, 
-                          " (", uncontaminated_rate, " uncontaminated) positive isolates per 1000 patients.")
+      rates_text <- paste0(" This results in rates of <strong>", positive_rate, 
+                          "</strong> (<strong>", uncontaminated_rate, "</strong> uncontaminated) positive isolates per 1000 patients.")
       
       bc_text <- if (bc_count > 0) {
-        paste0(" ", format(bc_count, big.mark = ","), 
-               " overall blood culture sets were included resulting in an uncontaminated-positive-to-all rate of ",
-               uncontaminated_positive_rate)
+        base_text <- paste0(" <strong>", format(bc_count, big.mark = ","), 
+               "</strong> overall blood culture sets were included resulting in an uncontaminated-positive-to-all rate of <strong>",
+               uncontaminated_positive_rate, "</strong>")
         if (patient_days > 0) {
-          paste0(bc_text, " and ", bc_per_1000_days, " blood culture sets per 1000 patient days.")
+          paste0(base_text, " and <strong>", bc_per_1000_days, "</strong> blood culture sets per 1000 patient days.")
         } else {
-          paste0(bc_text, ".")
+          paste0(base_text, ".")
         }
       } else {
         ""
       }
       
-      paste0(facility_text, patient_days_text, positive_text, rates_text, bc_text)
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #28a745;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Healthcare Facilities"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(facility_text, patient_days_text, positive_text, rates_text, bc_text))
+        )
+      )
     })
   }
   
