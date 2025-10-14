@@ -1,10 +1,23 @@
 # EHR-BSI
 
-An R package for processing Electronic Health Record Bloodstream Infection (EHR-BSI) data, specifically for data transformation and episode calculation.
+An R package for processing Electronic Health Record Bloodstream Infection (EHR-BSI) data, specifically for data transformation into EHR-BSI protocol reporting format,  episode calculation, characterisation and visualisation.
 
 ## Overview
 
-This package processes raw BSI surveillance data into standardised EHR-BSI format tables and performs episode calculations according to ECDC surveillance definitions. The package has been harmonized to handle multiple countries (currently Estonia and Malta) through a unified workflow.
+This package can processes raw BSI surveillance data into standardised EHR-BSI format or use data already standardised. It performs episode calculations according to ECDC surveillance definitions and performs visualisations. The package has been harmonized to handle multiple countries (currently Estonia, Malta and Germany) through a unified workflow.
+
+The unified workflow perform the following operations:
+1.  **Transform** country format into the EHR BSI reporting protocol.
+    - Rename columns using country specific **data Dictionaries**
+    - Transform local codes to standard using specific **lookup tables** e.g. microorganisms, antibiotic, geographic locations, Hospital Type, Speciality, etc.
+    - Create tables defined to the the EHR-BSI reporting protocol using specific **recodig scripts** (`Patient`, `Isolate`, `Res`, `EHRBSI`, `Denom`)
+2.  **Calculates episodes**: Using the provided episode duration applies the EHR-BSI reporting protocol definitions.
+    - Filter **Recognized pathogens** in blood cultures
+    - Detect concordant **common commensal (CC)** isolates within 3 calendar days in two separate samples
+    - Perform **episode deduplication** when same organism is isolated within the episode duration
+    - Detect **polymicrobial** episodes when multiple organisms are isolated  within 2 days of the onsedate as a single episode
+    - Calculate Episode Origin as **HO-HA** (Onset ≥2 days after admission) **IMP-HA** (Onset ≤2 days after previous discharge) or **CA** (all others)
+3.  **Produce visualisaitons**: Produce basic visualiation aiming to help analyse and validate the surveillance data to be submitted.
 
 ## Quick Start
 
@@ -12,14 +25,17 @@ The main workflow is demonstrated in `main.R`:
 
 ```r
 
-# Ensure epiuf installed
-#devtools::install_github("Epiconcept-Paris/STRAP-epiuf")
+# Ensure dependencies
+devtools::install_github("Epiconcept-Paris/STRAP-epiuf")
+devtools::install_deps()
 
 # Load package
 devtools::load_all()
 
+# Run the visual dashboard to upload and test the data
+visual_bsi_dashboard()
 
-# Process country data with integrated episode calculation
+# Command to process country data with integrated episode calculation
 result <- process_country_bsi(
   country = "MT",
   input_data = malta_data,
@@ -32,6 +48,11 @@ result <- process_country_bsi(
 ```
 
 ## Main Functions
+
+### `visual_bsi_dashboard()`
+**Source:** `R/visualiseDashboard.r`
+The interactive tools to exectue standardisation pipelines and visualise results
+
 
 ### `process_country_bsi()` 
 **Source:** `R/genericRecodeOrchestrator.R`
