@@ -7,68 +7,45 @@
 #' @export
 #'
 
-# Internal helper functions (not exported)
+# Internal helper functions (not exported) - simplified to use unified functions
 .process_estonia_basic_cleaning <- function(raw_data) {
-  # Validate required columns exist
-  required_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", 
-                    "HospitalId", "PatientId", "IsolateId")
-  validate_required_columns(raw_data, required_cols, "Estonia BSI data")
+  # Load Estonia configuration
+  config <- get_country_config("EE")
   
-  # Create date-time strings for IDs
+  # Estonia needs datetime formatting for IDs before unified cleaning
+  # This is handled by creating the datetime columns that the ID templates expect
   recoded_data <- raw_data %>%
     dplyr::mutate(
       DateOfSpecCollection = as.POSIXct(DateOfSpecCollection, format = "%d/%m/%Y %H:%M"),
-      sample_date_time = paste0(
-        format(DateOfSpecCollection, "%d%m%Y"), "_",
-        format(DateOfSpecCollection, "%H_%M")
-      ),
-      sample_date_year = format(DateOfSpecCollection, "%Y"),
-      DateOfHospitalAdmission = as.POSIXct(DateOfHospitalAdmission, format = "%d/%m/%Y %H:%M"),
-      admit_date_time = paste0(
-        format(DateOfHospitalAdmission, "%d%m%Y"), "_",
-        format(DateOfHospitalAdmission, "%H_%M")
-      )
+      DateOfHospitalAdmission = as.POSIXct(DateOfHospitalAdmission, format = "%d/%m/%Y %H:%M")
     )
   
-  # Create dataset IDs (Estonia uses time components, so manual creation needed)
-  recoded_data <- recoded_data %>%
-    dplyr::mutate(
-      record_id_bsi = paste0(HospitalId, "-", sample_date_year),
-      record_id_patient = paste0(PatientId, "-", admit_date_time),
-      record_id_isolate = paste0(IsolateId, "_", MicroorganismCode)
-    ) %>%
-    dplyr::select(-admit_date_time, -sample_date_time)
-  
-  # Recode dates
-  fallback_date_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge")
-  recoded_data <- parse_dates_with_fallback(recoded_data, fallback_date_cols, "%d/%m/%Y %H:%M")
+  # Use unified cleaning function
+  recoded_data <- process_basic_cleaning(recoded_data, config, "EE")
   
   return(recoded_data)
 }
 
 .create_estonia_patient_table <- function(recoded_data) {
-  # Create base patient table using shared function
-  patient <- create_standard_patient_table(recoded_data)
+  # Load config
+  config <- get_country_config("EE")
   
-  # Add Estonia-specific fields and logic
-  patient <- patient %>%
-    dplyr::mutate(
-      UnitId = paste0(HospitalId, "_", UnitSpecialtyShort)
-    ) %>%
-    dplyr::arrange(PatientId, DateOfHospitalAdmission) %>%
-    dplyr::group_by(PatientId) %>%
-    dplyr::mutate(
-      gap_days = as.numeric(
-        difftime(DateOfHospitalAdmission, dplyr::lag(DateOfHospitalAdmission), units = "days")
-      ),
-      prev_HospitalId = dplyr::lag(HospitalId),
-      PreviousAdmission = dplyr::case_when(
-        (gap_days > 0 & gap_days <= 3) & (HospitalId == prev_HospitalId) ~ "CURR",
-        (gap_days > 0 & gap_days <= 3) & (HospitalId != prev_HospitalId) ~ "OHOSP",
-        TRUE ~ NA_character_
-      )
-    ) %>%
-    dplyr::ungroup()
+  # Create base patient table using shared function
+  patient <- create_standard_patient_table(recoded_data, config = config)
+  
+  # Apply Estonia-specific PreviousAdmission logic
+  # This is now handled by the field_transforms in config, but we ensure it's applied
+  if ("PreviousAdmission" %in% names(config$field_transforms)) {
+    patient <- config$field_transforms$PreviousAdmission(patient)
+  }
+  
+  # Apply Estonia-specific UnitId logic
+  if ("UnitId" %in% names(config$field_transforms)) {
+    unit_id_result <- config$field_transforms$UnitId(patient)
+    if (length(unit_id_result) == nrow(patient)) {
+      patient$UnitId <- unit_id_result
+    }
+  }
   
   # Finalize table with standard column selection
   patient <- finalize_table(patient, get_standard_table_columns("patient"))
@@ -77,8 +54,11 @@
 }
 
 .create_estonia_isolate_table <- function(recoded_data) {
+  # Load config
+  config <- get_country_config("EE")
+  
   # Create base isolate table using shared function
-  isolate <- create_standard_isolate_table(recoded_data)
+  isolate <- create_standard_isolate_table(recoded_data, config = config)
   
   # Finalize table with standard column selection
   isolate <- finalize_table(isolate, get_standard_table_columns("isolate"))
@@ -87,193 +67,34 @@
 }
 
 .create_estonia_res_table <- function(recoded_data, metadata_path = NULL) {
-  # Create lookup vectors using shared function
-  estonia_mecres_lookup <- create_lookup_vector(Estonia_MecRes_Lookup, "resistance_type", "resistance_value")
-  estonia_resrecode_lookup <- create_lookup_vector(Estonia_ResRecode_Lookup, "generic_result", "estonia_result")
-  estonia_est2eng_lookup <- create_lookup_vector(Estonia_Ab_EST2ENG_Lookup, "english_name", "estonia_name")
-  estonia_eng2hai_lookup <- create_lookup_vector(Estonia_Ab_ENG2HAI_Lookup, "generic_name", "english_name")
+  # Load config
+  config <- get_country_config("EE")
   
-  res <- recoded_data %>%
-    dplyr::filter(!is.na(sensitivityTest_noncdm) & sensitivityTest_noncdm != "") %>%
-    dplyr::mutate(
-      RecordId = paste0(record_id_isolate, "_", sensitivityTest_noncdm),
-      ParentId = IsolateId,
-      ResultPCRmec = NA_character_,
-      ResultPbp2aAggl = NA_character_, 
-      ResultESBL = NA_character_, 
-      ResultCarbapenemase = NA_character_, 
-      ZoneValue = NA_real_, 
-      ZoneSIR = NA_character_, 
-      ZoneSusceptibilitySign = NA_character_, 
-      ZoneTestDiskLoad = NA_character_, 
-      MICSusceptibilitySign = NA_character_, 
-      MICValue = NA_real_, 
-      MICSIR = NA_character_, 
-      GradSusceptibilitySign = NA_character_, 
-      GradValue = NA_real_, 
-      GradSIR = NA_character_, 
-      ReferenceGuidelinesSIR = NA_character_
-    ) %>%
-    dplyr::select(
-      RecordId, ParentId, ResultPCRmec, ResultPbp2aAggl, ResultESBL, ResultCarbapenemase,
-      ZoneSIR, ZoneValue, ZoneSusceptibilitySign, MICSusceptibilitySign, MICValue, MICSIR, 
-      GradSusceptibilitySign, GradValue, GradSIR, ZoneTestDiskLoad, ReferenceGuidelinesSIR,
-      sensitivityTest_noncdm, sensitivityResult_noncdm, sensitivityUnit_noncdm, sensitivityValue_noncdm
-    ) %>%
-    dplyr::distinct()
-  
-  # Classify test types
-  res <- res %>%
-    dplyr::mutate(
-      test_tag = dplyr::case_when(
-        # Mechanism/screening tests
-        stringr::str_detect(sensitivityTest_noncdm, "^Karbapeneemide resistentsus") ~ "ResultCarbapenemase",
-        sensitivityTest_noncdm == "Laia spektriga beetalaktamaasid" ~ "ResultESBL",
-        stringr::str_detect(sensitivityTest_noncdm, "Metitsilliin-resistentsus") ~ "ResultPCRmec",
-        sensitivityTest_noncdm == "Staphylococcus aureus DNA" ~ "ResultPbp2aAggl",
-        # Other lab entries
-        sensitivityTest_noncdm == "Mikroobide hulk külvis" ~ "CFUCount",
-        sensitivityTest_noncdm == "Mikroobi resistentsus- või virulentsusmehhanism" ~ "ResVirMechanism",
-        # Routine antibiotic sensitivity tests
-        stringr::str_detect(sensitivityTest_noncdm, "\\sGrad$") ~ "Grad",
-        stringr::str_detect(sensitivityTest_noncdm, "\\sMIK$") ~ "MIC",
-        stringr::str_detect(sensitivityTest_noncdm, "\\sDisk$") ~ "Zone",
-        TRUE ~ NA_character_
-      )
-    )
-  
-  # Extract antibiotic names
-  res <- res %>%
-    dplyr::mutate(
-      Antibiotic = dplyr::case_when(
-        test_tag == "Grad" ~ stringr::str_trim(stringr::str_remove(sensitivityTest_noncdm, "\\sGrad$")),
-        test_tag == "MIC" ~ stringr::str_trim(stringr::str_remove(sensitivityTest_noncdm, "\\sMIK$")),
-        test_tag == "Zone" ~ stringr::str_trim(stringr::str_remove(sensitivityTest_noncdm, "\\sDisk$")),
-        is.na(test_tag) ~ sensitivityTest_noncdm,
-        TRUE ~ NA_character_
-      )
-    ) %>%
-    dplyr::mutate(
-      test_tag = dplyr::case_when(
-        !is.na(Antibiotic) & is.na(test_tag) ~ "AnySensTest",
-        TRUE ~ test_tag
-      )
-    )
-  
-  # Process mechanism resistance results
-  nonSensresults <- res %>%
-    dplyr::filter(is.na(Antibiotic)) %>%
-    dplyr::filter(test_tag != "CFUCount") %>%
-    dplyr::select(RecordId, test_tag, sensitivityResult_noncdm) %>%
-    dplyr::mutate(
-      # Map resistance mechanism results using lookup
-      test_tag = dplyr::case_when(
-        test_tag == "ResVirMechanism" & 
-          sensitivityResult_noncdm %in% Estonia_MecRes_Lookup$resistance_value[Estonia_MecRes_Lookup$resistance_type == "ResultESBL"] ~ "ResultESBL",
-        test_tag == "ResVirMechanism" & 
-          sensitivityResult_noncdm %in% Estonia_MecRes_Lookup$resistance_value[Estonia_MecRes_Lookup$resistance_type == "ResultCarbapenemase"] ~ "ResultCarbapenemase",
-        test_tag == "ResVirMechanism" & 
-          sensitivityResult_noncdm %in% Estonia_MecRes_Lookup$resistance_value[Estonia_MecRes_Lookup$resistance_type == "ResultPCRmec"] ~ "ResultPCRmec",
-        TRUE ~ test_tag
-      )
-    ) %>%
-    dplyr::mutate(
-      Result_noncdm = sensitivityResult_noncdm
-    ) %>%
-    tidyr::pivot_wider(
-      id_cols = RecordId,
-      names_from = test_tag,
-      values_from = Result_noncdm,
-      values_fn = dplyr::first
-    )
-  
-  # Apply resistance recoding to all result columns
-  result_cols <- setdiff(names(nonSensresults), "RecordId")
-  for (col in result_cols) {
-    nonSensresults <- recode_with_lookup(nonSensresults, col, estonia_resrecode_lookup)
-  }
-  
-  # Process antibiotic sensitivity results
-  Sensresults <- res %>%
-    dplyr::filter(!is.na(Antibiotic)) %>%
-    dplyr::mutate(RecordIdAb = paste0(RecordId, "_", Antibiotic)) %>%
-    dplyr::filter(test_tag %in% c("Zone", "MIC", "Grad")) %>%
-    dplyr::mutate(
-      SusceptibilitySign = stringr::str_extract(sensitivityValue_noncdm, "^<=|^<|^>=|^>|^="),
-      Value = stringr::str_remove(sensitivityValue_noncdm, "^<=|^<|^>=|^>|^="),
-      Value = as.numeric(Value),
-      SIR = sensitivityResult_noncdm
-    ) %>%
-    dplyr::select(ParentId, RecordId, RecordIdAb, Antibiotic, test_tag, SIR, SusceptibilitySign, Value) %>%
-    tidyr::pivot_wider(
-      id_cols = c(ParentId, RecordId, RecordIdAb, Antibiotic),
-      names_from = test_tag,
-      values_from = c(SIR, SusceptibilitySign, Value),
-      names_glue = "{test_tag}{.value}",
-      values_fn = dplyr::first
-    )
-  
-  # Combine results
-  res <- Sensresults %>%
-    dplyr::left_join(nonSensresults, by = "RecordId")
-  
-     # Translate antibiotic names
-   res <- recode_with_lookup(res, "Antibiotic", estonia_est2eng_lookup)
-   res <- recode_with_lookup(res, "Antibiotic", estonia_eng2hai_lookup)
-   
-   # Recode antibiotic names to HAI short format
-   if (!is.null(metadata_path)) {
-     res <- recode_to_HAI_short(
-       data = res,
-       metadata_path = metadata_path,
-       long_col = "Antibiotic",
-       short_col = "Antibiotic"
-     )
-   }
-  
-  # Final column organization
-  res <- res %>%
-    dplyr::mutate(RecordId = RecordIdAb) %>%
-    dplyr::select(
-      ParentId, RecordId, Antibiotic,
-      dplyr::starts_with("Result"),
-      dplyr::starts_with("Zone"),
-      dplyr::starts_with("MIC"),
-      dplyr::starts_with("Grad"),
-      dplyr::everything()
-    )
-  
-  res <- finalize_table(res, arrange_cols = c("RecordId", "Antibiotic"))
+  # Use unified resistance table creation function
+  # This now handles all the Estonia-specific processing:
+  # - Long format detection
+  # - Test type classification
+  # - Antibiotic name translation chain (EST2ENG -> ENG2HAI)
+  # - Mechanism resistance mapping
+  res <- create_standard_res_table(recoded_data, config, "EE", metadata_path)
   
   return(res)
 }
 
 .create_estonia_ehrbsi_table <- function(recoded_data, episode_duration) {
-  # Create lookup vectors using shared function
-  estonia_hosptype_lookup <- create_lookup_vector(Estonia_HospType_Lookup, "hosptype_code", "estonia_hosptype")
-  estonia_geog_lookup <- create_lookup_vector(Estonia_HospGeog_Lookup, "nuts3_code", "estonia_hosptype")
+  # Load config
+  config <- get_country_config("EE")
   
-  
-  # Create base EHRBSI table using shared function
-  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", episode_duration)
-  
-  # Add Estonia-specific fields
-  ehrbsi <- ehrbsi %>%
-    dplyr::mutate(
-      ClinicalTerminology = "ICD-10",
-      ClinicalTerminologySpec = NA_character_,
-      ESurvBSI = 2, # level of automation? Full/semi/denom/manual/etc
-      HospitalSize = NA_real_, # how many beds?
-      ProportionPopulationCovered = 1, # Liidia reports 100% coverage
-      GeoLocation = dplyr::recode(HospitalId, !!!estonia_geog_lookup, .default = NA_character_),
-      HospitalType = dplyr::recode(HospitalId, !!!estonia_hosptype_lookup, .default = HospitalType)
-    )
+  # Create base EHRBSI table using shared function with config
+  # This now handles:
+  # - Terminology systems from config
+  # - HospitalType and GeoLocation lookups
+  # - Estonia-specific defaults (ESurvBSI = 2, ProportionPopulationCovered = 1)
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, "EE", episode_duration, 
+                                     record_id_col = "record_id_bsi", config = config)
   
   # Finalize table with standard column selection
   ehrbsi <- finalize_table(ehrbsi, get_standard_table_columns("ehrbsi"))
   
   return(ehrbsi)
 }
-
-
-

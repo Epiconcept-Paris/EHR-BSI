@@ -19,5 +19,5 @@ Nothing if validation passes, throws error if columns missing
 \description{
 This file contains shared functions used by both Estonia and Malta
 recoding scripts to avoid code duplication and ensure consistency.
-Validate that required columns exist in the data
+Validate that required columns exist in the data (Enhanced)
 }

@@ -2,20 +2,27 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{parse_dates_with_fallback}
 \alias{parse_dates_with_fallback}
-\title{Parse date columns with dictionary fallback}
+\title{Parse date columns with dictionary fallback (Enhanced)}
 \usage{
-parse_dates_with_fallback(data, fallback_cols, date_format = "\%d/\%m/\%Y")
+parse_dates_with_fallback(
+  data,
+  fallback_cols,
+  date_format = "\%d/\%m/\%Y",
+  preserve_time = FALSE
+)
 }
 \arguments{
 \item{data}{Data frame containing date columns}
 
 \item{fallback_cols}{Character vector of date column names to use if dictionary unavailable}
 
-\item{date_format}{Format string for date parsing}
+\item{date_format}{Format string for date parsing (can include time)}
+
+\item{preserve_time}{Whether to preserve time component (returns POSIXct instead of Date)}
 }
 \value{
 Data frame with parsed date columns
 }
 \description{
-Parse date columns with dictionary fallback
+Parse date columns with dictionary fallback (Enhanced)
 }

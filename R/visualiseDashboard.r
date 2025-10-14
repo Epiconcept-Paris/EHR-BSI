@@ -35,41 +35,41 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Data Upload Section - made more compact
       shiny::h5("Data Upload"),
       shiny::fileInput("data_file", NULL,
-                      accept = c(".xlsx", ".csv"),
-                      multiple = FALSE,
-                      placeholder = "Choose File"),
+                       accept = c(".xlsx", ".csv"),
+                       multiple = FALSE,
+                       placeholder = "Choose File"),
       
       shiny::radioButtons("file_type", NULL,
-                         choices = list("Raw" = "raw", 
-                                      "Template" = "template"),
-                         selected = "raw",
-                         inline = TRUE),
+                          choices = list("Raw" = "raw", 
+                                         "Template" = "template"),
+                          selected = "raw",
+                          inline = TRUE),
       
       shiny::conditionalPanel(
         condition = "input.file_type == 'raw'",
         shiny::radioButtons("country", NULL,
-                           choices = list("EE" = "EE", 
-                                        "MT" = "MT"),
-                           selected = "EE",
-                           inline = TRUE)
+                            choices = list("EE" = "EE", 
+                                           "MT" = "MT"),
+                            selected = "EE",
+                            inline = TRUE)
       ),
       
       shiny::numericInput("episode_duration", "Epi. Days:",
-                         value = 14,
-                         min = 1,
-                         max = 365,
-                         step = 1),
+                          value = 14,
+                          min = 1,
+                          max = 365,
+                          step = 1),
       
       shiny::actionButton("process_data", "Process", 
-                         class = "btn-primary",
-                         style = "width: 100%;"),
+                          class = "btn-primary",
+                          style = "width: 100%;"),
       
       # Download button - only shows when data is available
       shiny::conditionalPanel(
         condition = "output.data_available",
         shiny::downloadButton("download_data", "Download",
-                             class = "btn-success",
-                             style = "width: 100%; margin-top: 5px;")
+                              class = "btn-success",
+                              style = "width: 100%; margin-top: 5px;")
       ),
       
       shiny::hr(),
@@ -80,7 +80,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::hr(),
         shiny::h4("Episode Filters"),
         shiny::checkboxGroupInput("episode_origin_filter", "Episode origin:",
-                                 choices = c(), selected = c()),
+                                  choices = c(), selected = c()),
         shiny::selectInput("episode_year_filter", "Year:",
                            choices = c(), selected = c(), multiple = TRUE),
         shiny::selectInput("episode_hospital_filter", "Hospital:",
@@ -100,313 +100,313 @@ visual_bsi_dashboard <- function(data = NULL) {
     shiny::conditionalPanel(
       condition = "output.data_available",
       shiny::tabsetPanel(
-            # 1) Summary
-            shiny::tabPanel("Summary", 
+        # 1) Summary
+        shiny::tabPanel("Summary", 
+                        shiny::div(
+                          shiny::h3("Data Summary"),
+                          
+                          # Data cleaning and pre-processing section
+                          shiny::div(
+                            shiny::h4("Data cleaning and pre-processing"),
+                            shiny::div(
+                              style = "display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;",
+                              shiny::div(
+                                style = "flex: 1; min-width: 400px;",
+                                shiny::plotOutput("data_cleaning_pie", height = "400px")
+                              ),
+                              shiny::div(
+                                style = "flex: 1; min-width: 400px; padding-top: 40px;",
+                                shiny::div(
+                                  style = "margin-bottom: 20px;",
+                                  shiny::htmlOutput("raw_data_summary")
+                                ),
+                                shiny::div(
+                                  style = "margin-bottom: 20px;",
+                                  shiny::htmlOutput("processed_data_summary")
+                                )
+                              )
+                            )
+                          ),
+                          
+                          shiny::hr(),
+                          
+                          # Health care facilities section
+                          shiny::div(
+                            shiny::h4("Health care facilities"),
+                            shiny::htmlOutput("healthcare_facilities_summary")
+                          )
+                        )
+        ),
+        # 2) Patient Demographics
+        shiny::tabPanel(
+          "Patient Demographics",
+          shiny::conditionalPanel(
+            condition = "output.demographics_available",
+            shiny::div(
+              shiny::h3("Patient Data"),
               shiny::div(
-                shiny::h3("Data Summary"),
-                
-                # Data cleaning and pre-processing section
+                style = "margin-bottom: 20px;",
+                shiny::htmlOutput("demographics_summary")
+              ),
+              shiny::div(
+                style = "display: flex; flex-wrap: wrap; gap: 20px;",
                 shiny::div(
-                  shiny::h4("Data cleaning and pre-processing"),
+                  style = "flex: 1; min-width: 300px;",
+                  shiny::h4("Gender"),
+                  DT::DTOutput("gender_table"),
+                  shiny::plotOutput("gender_pie", height = "300px")
+                ),
+                shiny::div(
+                  style = "flex: 1; min-width: 300px;",
+                  shiny::h4("Age"),
+                  DT::DTOutput("age_table"),
+                  shiny::plotOutput("age_pie", height = "300px")
+                )
+              ),
+              shiny::div(
+                style = "margin-top: 20px;",
+                shiny::htmlOutput("age_stats")
+              )
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.demographics_available",
+            shiny::p("Patient demographics require patient data with Age and Sex columns.")
+          )
+        ),
+        # 3) Episodes
+        shiny::tabPanel(
+          "Episodes",
+          # Show content only when advanced data available; otherwise show guidance text
+          shiny::conditionalPanel(
+            condition = "output.episodes_available",
+            shiny::div(
+              shiny::h3("Episodes"),
+              
+              # Type of episodes section
+              shiny::div(
+                shiny::h4("Type of episodes"),
+                shiny::div(
+                  style = "margin-bottom: 20px;",
+                  shiny::htmlOutput("episodes_type_summary")
+                ),
+                shiny::div(
+                  shiny::h5("Episode type"),
+                  shiny::htmlOutput("episodes_composition_summary"),
                   shiny::div(
-                    style = "display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;",
+                    style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
+                    shiny::div(
+                      style = "flex: 1; min-width: 300px;",
+                      shiny::h6("All episodes", style = "text-align: center;"),
+                      shiny::plotOutput("episodes_composition_all", height = "300px")
+                    ),
+                    shiny::div(
+                      style = "flex: 1; min-width: 300px;",
+                      shiny::h6("Health Care Acquired", style = "text-align: center;"),
+                      shiny::plotOutput("episodes_composition_ha", height = "300px")
+                    ),
+                    shiny::div(
+                      style = "flex: 1; min-width: 300px;",
+                      shiny::h6("Community Acquired", style = "text-align: center;"),
+                      shiny::plotOutput("episodes_composition_ca", height = "300px")
+                    )
+                  )
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Composition Episode Type section
+              shiny::div(
+                shiny::h4("Composition Episode Type"),
+                
+                # Monomicrobial Episodes
+                shiny::div(
+                  shiny::h5("Monomicrobial Episodes"),
+                  shiny::div(
+                    shiny::h6("Top 10 most frequent pathogens in monomicrobial episodes", 
+                              style = "text-align: center; margin-bottom: 20px;"),
+                    shiny::plotOutput("pathogens_monomicrobial", height = "400px")
+                  )
+                ),
+                
+                # Polymicrobial Episodes
+                shiny::div(
+                  shiny::h5("Polymicrobial Episodes"),
+                  shiny::div(
+                    style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
                     shiny::div(
                       style = "flex: 1; min-width: 400px;",
-                      shiny::plotOutput("data_cleaning_pie", height = "400px")
+                      shiny::h6("Top 10 most frequent pathogens in polymicrobial episodes", 
+                                style = "text-align: center;"),
+                      shiny::plotOutput("pathogens_polymicrobial_individual", height = "350px")
                     ),
                     shiny::div(
-                      style = "flex: 1; min-width: 400px; padding-top: 40px;",
-                      shiny::div(
-                        style = "margin-bottom: 20px;",
-                        shiny::htmlOutput("raw_data_summary")
-                      ),
-                      shiny::div(
-                        style = "margin-bottom: 20px;",
-                        shiny::htmlOutput("processed_data_summary")
-                      )
-                    )
-                  )
-                ),
-                
-                shiny::hr(),
-                
-                # Health care facilities section
-                shiny::div(
-                  shiny::h4("Health care facilities"),
-                  shiny::htmlOutput("healthcare_facilities_summary")
-                )
-              )
-            ),
-            # 2) Patient Demographics
-            shiny::tabPanel(
-              "Patient Demographics",
-              shiny::conditionalPanel(
-                condition = "output.demographics_available",
-                shiny::div(
-                  shiny::h3("Patient Data"),
-                  shiny::div(
-                    style = "margin-bottom: 20px;",
-                    shiny::htmlOutput("demographics_summary")
-                  ),
-                  shiny::div(
-                    style = "display: flex; flex-wrap: wrap; gap: 20px;",
-                    shiny::div(
-                      style = "flex: 1; min-width: 300px;",
-                      shiny::h4("Gender"),
-                      DT::DTOutput("gender_table"),
-                      shiny::plotOutput("gender_pie", height = "300px")
-                    ),
-                    shiny::div(
-                      style = "flex: 1; min-width: 300px;",
-                      shiny::h4("Age"),
-                      DT::DTOutput("age_table"),
-                      shiny::plotOutput("age_pie", height = "300px")
-                    )
-                  ),
-                  shiny::div(
-                    style = "margin-top: 20px;",
-                    shiny::htmlOutput("age_stats")
-                  )
-                )
-              ),
-              shiny::conditionalPanel(
-                condition = "!output.demographics_available",
-                shiny::p("Patient demographics require patient data with Age and Sex columns.")
-              )
-            ),
-            # 3) Episodes
-            shiny::tabPanel(
-              "Episodes",
-              # Show content only when advanced data available; otherwise show guidance text
-              shiny::conditionalPanel(
-                condition = "output.episodes_available",
-                shiny::div(
-                  shiny::h3("Episodes"),
-                  
-                  # Type of episodes section
-                  shiny::div(
-                    shiny::h4("Type of episodes"),
-                    shiny::div(
-                      style = "margin-bottom: 20px;",
-                      shiny::htmlOutput("episodes_type_summary")
-                    ),
-                    shiny::div(
-                      shiny::h5("Episode type"),
-                      shiny::htmlOutput("episodes_composition_summary"),
-                      shiny::div(
-                        style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
-                        shiny::div(
-                          style = "flex: 1; min-width: 300px;",
-                          shiny::h6("All episodes", style = "text-align: center;"),
-                          shiny::plotOutput("episodes_composition_all", height = "300px")
-                        ),
-                        shiny::div(
-                          style = "flex: 1; min-width: 300px;",
-                          shiny::h6("Health Care Acquired", style = "text-align: center;"),
-                          shiny::plotOutput("episodes_composition_ha", height = "300px")
-                        ),
-                        shiny::div(
-                          style = "flex: 1; min-width: 300px;",
-                          shiny::h6("Community Acquired", style = "text-align: center;"),
-                          shiny::plotOutput("episodes_composition_ca", height = "300px")
-                        )
-                      )
-                    )
-                  ),
-                  
-                  shiny::hr(),
-                  
-                  # Composition Episode Type section
-                  shiny::div(
-                    shiny::h4("Composition Episode Type"),
-                    
-                    # Monomicrobial Episodes
-                    shiny::div(
-                      shiny::h5("Monomicrobial Episodes"),
-                      shiny::div(
-                        shiny::h6("Top 10 most frequent pathogens in monomicrobial episodes", 
-                               style = "text-align: center; margin-bottom: 20px;"),
-                        shiny::plotOutput("pathogens_monomicrobial", height = "400px")
-                      )
-                    ),
-                    
-                    # Polymicrobial Episodes
-                    shiny::div(
-                      shiny::h5("Polymicrobial Episodes"),
-                      shiny::div(
-                        style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
-                        shiny::div(
-                          style = "flex: 1; min-width: 400px;",
-                          shiny::h6("Top 10 most frequent pathogens in polymicrobial episodes", 
-                                 style = "text-align: center;"),
-                          shiny::plotOutput("pathogens_polymicrobial_individual", height = "350px")
-                        ),
-                        shiny::div(
-                          style = "flex: 1; min-width: 400px;",
-                          shiny::h6("(Dummy data!!) Top 10 pathogen combinations in polymicrobial episodes", 
-                                 style = "text-align: center;"),
-                          shiny::plotOutput("pathogens_polymicrobial_combinations", height = "350px")
-                        )
-                      )
-                    )
-                  ),
-                  
-                  shiny::hr(),
-                  
-                  # Infection type section
-                  shiny::div(
-                    shiny::h4("Infection type"),
-                    shiny::div(
-                      style = "margin-bottom: 20px;",
-                      shiny::htmlOutput("infection_type_summary")
-                    ),
-                    shiny::div(
-                      style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
-                      shiny::div(
-                        style = "flex: 1; min-width: 300px;",
-                        shiny::h6("All episodes", style = "text-align: center;"),
-                        shiny::plotOutput("infection_type_all", height = "300px")
-                      ),
-                      shiny::div(
-                        style = "flex: 1; min-width: 300px;",
-                        shiny::h6("Health Care Acquired", style = "text-align: center;"),
-                        shiny::plotOutput("infection_type_ha", height = "300px")
-                      ),
-                      shiny::div(
-                        style = "flex: 1; min-width: 300px;",
-                        shiny::h6("Community Acquired", style = "text-align: center;"),
-                        shiny::plotOutput("infection_type_ca", height = "300px")
-                      )
+                      style = "flex: 1; min-width: 400px;",
+                      shiny::h6("Top 10 pathogen combinations in polymicrobial episodes", 
+                                style = "text-align: center;"),
+                      shiny::plotOutput("pathogens_polymicrobial_combinations", height = "350px")
                     )
                   )
                 )
               ),
-              shiny::conditionalPanel(
-                condition = "!output.episodes_available",
-                shiny::p("Episodes view requires patient, isolate, resistance tables and computed episodes.")
-              )
-            ),
-            # 4) Context
-            shiny::tabPanel(
-              "Context",
-              shiny::conditionalPanel(
-                condition = "output.context_available",
+              
+              shiny::hr(),
+              
+              # Infection type section
+              shiny::div(
+                shiny::h4("Infection type"),
                 shiny::div(
-                  shiny::h3("Specialty Analysis"),
-                  
-                  # Specialty table section
+                  style = "margin-bottom: 20px;",
+                  shiny::htmlOutput("infection_type_summary")
+                ),
+                shiny::div(
+                  style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
                   shiny::div(
-                    shiny::h4("Specialty"),
-                    DT::DTOutput("specialty_table")
+                    style = "flex: 1; min-width: 300px;",
+                    shiny::h6("All episodes", style = "text-align: center;"),
+                    shiny::plotOutput("infection_type_all", height = "300px")
                   ),
-                  
-                  shiny::hr(),
-                  
-                  # Pie charts section
                   shiny::div(
-                    shiny::h4("Number of Specialities per Patient and Episode"),
-                    shiny::div(
-                      style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
-                      shiny::div(
-                        style = "flex: 1; min-width: 400px;",
-                        shiny::h6("Per Patient", style = "text-align: center;"),
-                        shiny::plotOutput("specialty_pie_patient", height = "350px")
-                      ),
-                      shiny::div(
-                        style = "flex: 1; min-width: 400px;",
-                        shiny::h6("Per Episode", style = "text-align: center;"),
-                        shiny::plotOutput("specialty_pie_episode", height = "350px")
-                      )
-                    )
+                    style = "flex: 1; min-width: 300px;",
+                    shiny::h6("Health Care Acquired", style = "text-align: center;"),
+                    shiny::plotOutput("infection_type_ha", height = "300px")
                   ),
-                  
-                  shiny::hr(),
-                  
-                  # Pathogen distribution section
                   shiny::div(
-                    shiny::h4("Top 20 Pathogen Distribution by Specialty"),
-                    shiny::p("Only Specialities with at least 10 episode with the top 20 pathogens get plotted."),
-                    shiny::plotOutput("pathogen_specialty_distribution", height = "600px")
-                  )
-                )
-              ),
-              shiny::conditionalPanel(
-                condition = "!output.context_available",
-                shiny::p("Context view requires ward/specialty columns (e.g., UnitSpecialtyShort or PatientSpecialty) in patient data.")
-              )
-            ),
-            # 5) Antibiograms
-            shiny::tabPanel(
-              "Antibiograms",
-              shiny::conditionalPanel(
-                condition = "output.antibiograms_available",
-                shiny::tabsetPanel(
-                  shiny::tabPanel("By isolates", DT::DTOutput("ab_iso_table")),
-                  shiny::tabPanel("By episodes", DT::DTOutput("ab_epi_table"))
-                )
-              ),
-              shiny::conditionalPanel(
-                condition = "!output.antibiograms_available",
-                shiny::p("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
-              )
-            ),
-            # 6) Data Table
-            shiny::tabPanel("Data Table", 
-              shiny::tabsetPanel(
-                shiny::tabPanel("EHRBSI", 
-                  shiny::conditionalPanel(
-                    condition = "output.ehrbsi_available",
-                    DT::DTOutput("ehrbsi_table")
-                  ),
-                  shiny::conditionalPanel(
-                    condition = "!output.ehrbsi_available",
-                    shiny::p("EHRBSI table not available. Please process data first.")
-                  )
-                ),
-                shiny::tabPanel("Patient", 
-                  shiny::conditionalPanel(
-                    condition = "output.patient_available",
-                    DT::DTOutput("patient_table")
-                  ),
-                  shiny::conditionalPanel(
-                    condition = "!output.patient_available",
-                    shiny::p("Patient table not available. Please process data first.")
-                  )
-                ),
-                shiny::tabPanel("Isolate", 
-                  shiny::conditionalPanel(
-                    condition = "output.isolate_available",
-                    DT::DTOutput("isolate_table")
-                  ),
-                  shiny::conditionalPanel(
-                    condition = "!output.isolate_available",
-                    shiny::p("Isolate table not available. Please process data first.")
-                  )
-                ),
-                shiny::tabPanel("Res", 
-                  shiny::conditionalPanel(
-                    condition = "output.res_available",
-                    DT::DTOutput("res_table")
-                  ),
-                  shiny::conditionalPanel(
-                    condition = "!output.res_available",
-                    shiny::p("Resistance (Res) table not available. Please process data first.")
-                  )
-                ),
-                shiny::tabPanel("Denom", 
-                  shiny::conditionalPanel(
-                    condition = "output.denom_available",
-                    DT::DTOutput("denom_table")
-                  ),
-                  shiny::conditionalPanel(
-                    condition = "!output.denom_available",
-                    shiny::p("Denom table not available. Please process data first.")
+                    style = "flex: 1; min-width: 300px;",
+                    shiny::h6("Community Acquired", style = "text-align: center;"),
+                    shiny::plotOutput("infection_type_ca", height = "300px")
                   )
                 )
               )
             )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.episodes_available",
+            shiny::p("Episodes view requires patient, isolate, resistance tables and computed episodes.")
           )
+        ),
+        # 4) Context
+        shiny::tabPanel(
+          "Context",
+          shiny::conditionalPanel(
+            condition = "output.context_available",
+            shiny::div(
+              shiny::h3("Specialty Analysis"),
+              
+              # Specialty table section
+              shiny::div(
+                shiny::h4("Specialty"),
+                DT::DTOutput("specialty_table")
+              ),
+              
+              shiny::hr(),
+              
+              # Pie charts section
+              shiny::div(
+                shiny::h4("Number of Specialities per Patient and Episode"),
+                shiny::div(
+                  style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
+                  shiny::div(
+                    style = "flex: 1; min-width: 400px;",
+                    shiny::h6("Per Patient", style = "text-align: center;"),
+                    shiny::plotOutput("specialty_pie_patient", height = "350px")
+                  ),
+                  shiny::div(
+                    style = "flex: 1; min-width: 400px;",
+                    shiny::h6("Per Episode", style = "text-align: center;"),
+                    shiny::plotOutput("specialty_pie_episode", height = "350px")
+                  )
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Pathogen distribution section
+              shiny::div(
+                shiny::h4("Top 20 Pathogen Distribution by Specialty"),
+                shiny::p("Only Specialities with at least 10 episode with the top 20 pathogens get plotted."),
+                shiny::plotOutput("pathogen_specialty_distribution", height = "600px")
+              )
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.context_available",
+            shiny::p("Context view requires ward/specialty columns (e.g., UnitSpecialtyShort or PatientSpecialty) in patient data.")
+          )
+        ),
+        # 5) Antibiograms
+        shiny::tabPanel(
+          "Antibiograms",
+          shiny::conditionalPanel(
+            condition = "output.antibiograms_available",
+            shiny::tabsetPanel(
+              shiny::tabPanel("By isolates", DT::DTOutput("ab_iso_table")),
+              shiny::tabPanel("By episodes", DT::DTOutput("ab_epi_table"))
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.antibiograms_available",
+            shiny::p("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
+          )
+        ),
+        # 6) Data Table
+        shiny::tabPanel("Data Table", 
+                        shiny::tabsetPanel(
+                          shiny::tabPanel("EHRBSI", 
+                                          shiny::conditionalPanel(
+                                            condition = "output.ehrbsi_available",
+                                            DT::DTOutput("ehrbsi_table")
+                                          ),
+                                          shiny::conditionalPanel(
+                                            condition = "!output.ehrbsi_available",
+                                            shiny::p("EHRBSI table not available. Please process data first.")
+                                          )
+                          ),
+                          shiny::tabPanel("Patient", 
+                                          shiny::conditionalPanel(
+                                            condition = "output.patient_available",
+                                            DT::DTOutput("patient_table")
+                                          ),
+                                          shiny::conditionalPanel(
+                                            condition = "!output.patient_available",
+                                            shiny::p("Patient table not available. Please process data first.")
+                                          )
+                          ),
+                          shiny::tabPanel("Isolate", 
+                                          shiny::conditionalPanel(
+                                            condition = "output.isolate_available",
+                                            DT::DTOutput("isolate_table")
+                                          ),
+                                          shiny::conditionalPanel(
+                                            condition = "!output.isolate_available",
+                                            shiny::p("Isolate table not available. Please process data first.")
+                                          )
+                          ),
+                          shiny::tabPanel("Res", 
+                                          shiny::conditionalPanel(
+                                            condition = "output.res_available",
+                                            DT::DTOutput("res_table")
+                                          ),
+                                          shiny::conditionalPanel(
+                                            condition = "!output.res_available",
+                                            shiny::p("Resistance (Res) table not available. Please process data first.")
+                                          )
+                          ),
+                          shiny::tabPanel("Denom", 
+                                          shiny::conditionalPanel(
+                                            condition = "output.denom_available",
+                                            DT::DTOutput("denom_table")
+                                          ),
+                                          shiny::conditionalPanel(
+                                            condition = "!output.denom_available",
+                                            shiny::p("Denom table not available. Please process data first.")
+                                          )
+                          )
+                        )
         )
+      )
+    )
   )
   
   # Define Server
@@ -427,7 +427,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       !is.null(values$current_data) && !is.null(values$current_data$ehrbsi)
     })
     shiny::outputOptions(output, "data_available", suspendWhenHidden = FALSE)
-
+    
     # Advanced data availability (episodes + supporting tables)
     output$adv_data_available <- shiny::reactive({
       !is.null(values$episodes) &&
@@ -437,13 +437,13 @@ visual_bsi_dashboard <- function(data = NULL) {
         !is.null(values$current_data$res)
     })
     shiny::outputOptions(output, "adv_data_available", suspendWhenHidden = FALSE)
-
+    
     # Tab-specific availability flags
     output$episodes_available <- shiny::reactive({
       !is.null(values$episodes)
     })
     shiny::outputOptions(output, "episodes_available", suspendWhenHidden = FALSE)
-
+    
     
     # res + isolate + episode join available
     output$antibiograms_available <- shiny::reactive({
@@ -452,22 +452,22 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
     shiny::outputOptions(output, "antibiograms_available", suspendWhenHidden = FALSE)
     
-
-
+    
+    
     # Context available (ward/specialty present)
     output$context_available <- shiny::reactive({
       if (is.null(values$current_data) || is.null(values$current_data$patient)) return(FALSE)
       any(c("UnitSpecialtyShort", "PatientSpecialty") %in% names(values$current_data$patient))
     })
     shiny::outputOptions(output, "context_available", suspendWhenHidden = FALSE)
-
+    
     # Demographics available (patient data with Age and Sex columns)
     output$demographics_available <- shiny::reactive({
       if (is.null(values$current_data) || is.null(values$current_data$patient)) return(FALSE)
       all(c("Age", "Sex") %in% names(values$current_data$patient))
     })
     shiny::outputOptions(output, "demographics_available", suspendWhenHidden = FALSE)
-
+    
     # Table-specific availability flags for Data Table sub-tabs
     output$ehrbsi_available <- shiny::reactive({
       !is.null(values$current_data) && !is.null(values$current_data$ehrbsi)
@@ -493,7 +493,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       !is.null(values$current_data) && !is.null(values$current_data$denom)
     })
     shiny::outputOptions(output, "denom_available", suspendWhenHidden = FALSE)
-
+    
     # Helper: compute episodes if possible
     compute_episodes_if_possible <- function(cur) {
       if (is.null(cur) || is.null(cur$patient) || is.null(cur$isolate)) return(NULL)
@@ -510,7 +510,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Calculate episodes
       # Use episode_duration from input, default to 14 if not available
       epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
-      eps <- #tryCatch({
+      eps <- tryCatch({
         calculateEpisodes(
           patient_df = cur$patient,
           isolate_df = cur$isolate,
@@ -522,8 +522,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       return(eps)
     }
     
-
-
+    
+    
     # Update advanced filter choices when episodes change
     shiny::observe({
       if (!is.null(values$episodes)) {
@@ -538,8 +538,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         }
         
         shiny::updateCheckboxGroupInput(session, "episode_origin_filter",
-                                       choices = origins,
-                                       selected = origins)
+                                        choices = origins,
+                                        selected = origins)
         shiny::updateSelectInput(session, "episode_year_filter",
                                  choices = years,
                                  selected = years)
@@ -548,7 +548,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                                  selected = hospitals)
       }
     })
-
+    
     # Reactive: filtered patient data based on hospital/year filters
     filtered_patient_data <- shiny::reactive({
       shiny::req(values$current_data)
@@ -573,7 +573,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       return(pat) # Fallback to all patient data if can't filter
     })
-
+    
     # Reactive: isolates joined with episodes (filtered by hospital/year filters)
     isolate_with_episode <- shiny::reactive({
       shiny::req(values$current_data)
@@ -612,11 +612,11 @@ visual_bsi_dashboard <- function(data = NULL) {
       merged$organism_label <- if ("MicroorganismCodeLabel" %in% names(merged)) merged$MicroorganismCodeLabel else merged$MicroorganismCode
       merged
     })
-
-
-
-
-
+    
+    
+    
+    
+    
     # Reactive: resistance with context (fallback to isolate-only when episodes missing)
     res_with_context <- shiny::reactive({
       shiny::req(values$current_data)
@@ -703,8 +703,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       merged
     })
-
-
+    
+    
     
     # Process uploaded data
     shiny::observeEvent(input$process_data, {
@@ -744,10 +744,9 @@ visual_bsi_dashboard <- function(data = NULL) {
             write_to_file = FALSE,
             calculate_episodes = TRUE
           )
+          
           values$current_data <- result
           values$country <- input$country  # Store country code for download
-          if(!("HospitalId" %in% names(values$current_data$patient)))
-                values$current_data$patient[["HospitalId"]] <- NA
           # Compute episodes if possible
           values$episodes <- compute_episodes_if_possible(result)
           
@@ -801,17 +800,15 @@ visual_bsi_dashboard <- function(data = NULL) {
               ## setting right types for columns or adding default values to non mandatory columns
               isolate[["DateOfSpecCollection"]] <- as.Date(isolate$DateOfSpecCollection)
               patient[["DateOfHospitalAdmission"]] <- as.Date(patient$DateOfHospitalAdmission)	
-              if(!("HospitalId" %in% names(patient)))
-                patient[["HospitalId"]] <- NA
               if(!("DateOfHospitalDischarge" %in% names(patient)))
                 patient[["DateOfHospitalDischarge"]] <- NA
               else
                 patient[["DateOfHospitalDischarge"]] <- as.Date(patient$DateOfHospitalDischarge)
-                           
+              
               ## assigning the patient id as patient record id on patients to ensure joins works properly
               # TODO: Find a better fix to this by changing the join in compute_episodes
-	      patient$PatientId <- patient$RecordId  
-	          
+              patient$PatientId <- patient$RecordId  
+              
               values$current_data <- list(
                 ehrbsi = as.data.frame(ehrbsi),
                 patient = as.data.frame(patient),
@@ -854,7 +851,7 @@ visual_bsi_dashboard <- function(data = NULL) {
               } else {
                 values$country <- "DATA"
               }
-
+              
               shiny::removeNotification("processing")
               shiny::showNotification("Reporting template loaded successfully!", type = "message", duration = 3)
               
@@ -942,8 +939,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         values$episodes <- compute_episodes_if_possible(values$current_data)
       }
     })
-
-
+    
+    
     
     # Episodes reactive table (filtered)
     episodes_tbl <- shiny::reactive({
@@ -967,7 +964,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       ep
     })
-
+    
     # Helper function to get episode composition data
     get_episode_composition_data <- function(episodes_data, filter_class = NULL) {
       if (is.null(episodes_data) || nrow(episodes_data) == 0) return(NULL)
@@ -1004,7 +1001,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       return(df)
     }
-
+    
     # Episodes type summary
     output$episodes_type_summary <- shiny::renderUI({
       shiny::req(values$episodes)
@@ -1067,7 +1064,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
-
+    
     # Episodes composition summary
     output$episodes_composition_summary <- shiny::renderUI({
       shiny::req(values$episodes)
@@ -1142,7 +1139,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
-
+    
     # Episode composition pie charts
     create_composition_pie <- function(episodes_data, filter_class = NULL, title_suffix = "") {
       comp_data <- get_episode_composition_data(episodes_data, filter_class)
@@ -1159,28 +1156,28 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_void() +
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")), 
-                          position = ggplot2::position_stack(vjust = 0.5),
-                          size = 4, fontface = "bold")
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3, fontface = "bold")
     }
-
+    
     output$episodes_composition_all <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_composition_pie(ep)
     })
-
+    
     output$episodes_composition_ha <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_composition_pie(ep, "HA")
     })
-
+    
     output$episodes_composition_ca <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_composition_pie(ep, "CA")
     })
-
+    
     # Pathogen analysis for monomicrobial episodes
     output$pathogens_monomicrobial <- shiny::renderPlot({
       shiny::req(values$current_data)
@@ -1188,23 +1185,23 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Try to get isolate data joined with episodes, fallback to just isolates
       org_df <- isolate_with_episode()
       if (is.null(org_df) || nrow(org_df) == 0) {
-        ## Fallback to using just isolate data if episode joining fails
-        #if (!is.null(values$current_data$isolate)) {
-        #  org_df <- values$current_data$isolate
-        #  if ("MicroorganismCodeLabel" %in% names(org_df)) {
-        #    org_df$organism_label <- org_df$MicroorganismCodeLabel
-        #  } else if ("MicroorganismCode" %in% names(org_df)) {
-        #    org_df$organism_label <- org_df$MicroorganismCode
-        #  } else {
-        #    return(ggplot2::ggplot() + 
-        #           ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
-        #           ggplot2::theme_void())
-        #  }
-        #} else {
+        # Fallback to using just isolate data if episode joining fails
+        if (!is.null(values$current_data$isolate)) {
+          org_df <- values$current_data$isolate
+          if ("MicroorganismCodeLabel" %in% names(org_df)) {
+            org_df$organism_label <- org_df$MicroorganismCodeLabel
+          } else if ("MicroorganismCode" %in% names(org_df)) {
+            org_df$organism_label <- org_df$MicroorganismCode
+          } else {
+            return(ggplot2::ggplot() + 
+                     ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
+                     ggplot2::theme_void())
+          }
+        } else {
           return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
-                 ggplot2::theme_void())
-        #}
+                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
+                   ggplot2::theme_void())
+        }
       }
       
       # Filter for monomicrobial episodes if possible
@@ -1217,8 +1214,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       if (nrow(mono_df) == 0 || !("organism_label" %in% names(mono_df))) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No monomicrobial data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No monomicrobial data available", size = 6) +
+                 ggplot2::theme_void())
       }
       
       # Get top 10 organisms
@@ -1262,10 +1259,9 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::theme(legend.position = "none") +
         ggplot2::labs(x = NULL, y = "Frequency") +
-        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 4) +
-	ggplot2::theme(axis.text = element_text(size = 12))
+        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3)
     })
-
+    
     # Pathogen analysis for polymicrobial episodes - individual pathogens
     output$pathogens_polymicrobial_individual <- shiny::renderPlot({
       shiny::req(values$current_data)
@@ -1273,23 +1269,23 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Try to get isolate data joined with episodes, fallback to just isolates
       org_df <- isolate_with_episode()
       if (is.null(org_df) || nrow(org_df) == 0) {
-       # # Fallback to using just isolate data if episode joining fails
-       # if (!is.null(values$current_data$isolate)) {
-       #   org_df <- values$current_data$isolate
-       #   if ("MicroorganismCodeLabel" %in% names(org_df)) {
-       #     org_df$organism_label <- org_df$MicroorganismCodeLabel
-       #   } else if ("MicroorganismCode" %in% names(org_df)) {
-       #     org_df$organism_label <- org_df$MicroorganismCode
-       #   } else {
-       #     return(ggplot2::ggplot() + 
-       #            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
-       #            ggplot2::theme_void())
-       #   }
-       # } else {
+        # Fallback to using just isolate data if episode joining fails
+        if (!is.null(values$current_data$isolate)) {
+          org_df <- values$current_data$isolate
+          if ("MicroorganismCodeLabel" %in% names(org_df)) {
+            org_df$organism_label <- org_df$MicroorganismCodeLabel
+          } else if ("MicroorganismCode" %in% names(org_df)) {
+            org_df$organism_label <- org_df$MicroorganismCode
+          } else {
+            return(ggplot2::ggplot() + 
+                     ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
+                     ggplot2::theme_void())
+          }
+        } else {
           return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
-                 ggplot2::theme_void())
-       # }
+                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
+                   ggplot2::theme_void())
+        }
       }
       
       # Filter for polymicrobial episodes if possible
@@ -1302,8 +1298,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       if (nrow(poly_df) == 0 || !("organism_label" %in% names(poly_df))) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial data available", size = 6) +
+                 ggplot2::theme_void())
       }
       
       # Get top 10 organisms in polymicrobial episodes
@@ -1344,19 +1340,18 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::theme(legend.position = "none") +
         ggplot2::labs(x = NULL, y = "Frequency") +
-        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 4) + 
-	ggplot2::theme(axis.text = element_text(size = 12))
+        ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3)
     })
-
+    
     # Pathogen combinations in polymicrobial episodes
     output$pathogens_polymicrobial_combinations <- shiny::renderPlot({
       shiny::req(values$current_data)
       org_df <- isolate_with_episode()
       if (is.null(org_df) || nrow(org_df) == 0) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, 
-                               label = "No episode data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                                   label = "No episode data available", size = 6) +
+                 ggplot2::theme_void())
       }
       
       # Try to analyze actual polymicrobial combinations
@@ -1383,13 +1378,13 @@ visual_bsi_dashboard <- function(data = NULL) {
             combo_counts$Combination <- factor(combo_counts$Combination, levels = rev(combo_counts$Combination))
             
             return(ggplot2::ggplot(combo_counts, ggplot2::aes(x = Combination, y = Count, fill = Combination)) +
-              ggplot2::geom_bar(stat = "identity", alpha = 0.8) +
-              ggplot2::coord_flip() +
-              ggplot2::theme_minimal() +
-              ggplot2::theme(legend.position = "none", 
-                           axis.text.y = ggplot2::element_text(size = 8)) +
-              ggplot2::labs(x = NULL, y = "Frequency") +
-              ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3))
+                     ggplot2::geom_bar(stat = "identity", alpha = 0.8) +
+                     ggplot2::coord_flip() +
+                     ggplot2::theme_minimal() +
+                     ggplot2::theme(legend.position = "none", 
+                                    axis.text.y = ggplot2::element_text(size = 8)) +
+                     ggplot2::labs(x = NULL, y = "Frequency") +
+                     ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3))
           }
         }
       }
@@ -1397,10 +1392,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Return empty plot with message if no polymicrobial data
       ggplot2::ggplot() + 
         ggplot2::annotate("text", x = 0.5, y = 0.5, 
-                        label = "No polymicrobial episode combinations available", size = 5) +
+                          label = "No polymicrobial episode combinations available", size = 5) +
         ggplot2::theme_void()
     })
-
+    
     # Infection type analysis
     get_infection_type_data <- function(episodes_data, filter_class = NULL) {
       if (is.null(episodes_data) || nrow(episodes_data) == 0) return(NULL)
@@ -1445,7 +1440,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       return(df)
     }
-
+    
     # Infection type summary
     output$infection_type_summary <- shiny::renderUI({
       shiny::req(values$episodes)
@@ -1526,14 +1521,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
-
+    
     # Infection type pie charts
     create_infection_type_pie <- function(episodes_data, filter_class = NULL) {
       inf_data <- get_infection_type_data(episodes_data, filter_class)
       if (is.null(inf_data) || nrow(inf_data) == 0) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
+                 ggplot2::theme_void())
       }
       
       colors <- c("single" = "#90EE90", "multiple" = "#87CEEB", "recurrent" = "#4682B4")
@@ -1548,30 +1543,30 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_void() +
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")), 
-                          position = ggplot2::position_stack(vjust = 0.5),
-                          size = 4, fontface = "bold")
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3, fontface = "bold")
     }
-
+    
     output$infection_type_all <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_infection_type_pie(ep)
     })
-
+    
     output$infection_type_ha <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_infection_type_pie(ep, "HA")
     })
-
+    
     output$infection_type_ca <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_infection_type_pie(ep, "CA")
     })
-
-
-
+    
+    
+    
     # Helper: deduplicate to one record per episode-organism-antibiotic (earliest isolate)
     dedup_episode_ab <- function(rctx) {
       if (is.null(rctx) || nrow(rctx) == 0) return(rctx)
@@ -1582,7 +1577,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       dedup_idx <- !duplicated(key)
       rctx[dedup_idx, , drop = FALSE]
     }
-
+    
     # Antibiograms: build summary table helper
     build_ab_table <- function(rctx_df) {
       if (is.null(rctx_df) || nrow(rctx_df) == 0) return(data.frame())
@@ -1639,7 +1634,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           CA_n = ca_n,
           HA_R_perc = ifelse(ha_n > 0, round(100 * ha_r / ha_n, 1), NA_real_),
           CA_R_perc = ifelse(ca_n > 0, round(100 * ca_r / ca_n, 1), NA_real_),
-          p_value = round(p, 3),
+          p_value = p,
           stringsAsFactors = FALSE
         )
       })
@@ -1651,12 +1646,12 @@ visual_bsi_dashboard <- function(data = NULL) {
       for (org in unique(out$Organism)) {
         idx <- which(out$Organism == org & !is.na(out$p_value))
         if (length(idx) > 0) {
-          out$padj_holm[idx] <- round(stats::p.adjust(out$p_value[idx], method = "holm"), 3) 
+          out$padj_holm[idx] <- stats::p.adjust(out$p_value[idx], method = "holm")
         }
       }
       out
     }
-
+    
     # Antibiograms: by isolates table
     output$ab_iso_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$res)
@@ -1664,7 +1659,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       if (is.null(rctx) || nrow(rctx) == 0) return(data.frame())
       build_ab_table(rctx)
     }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
-
+    
     # Antibiograms: by episodes table (deduplicated)
     output$ab_epi_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$res)
@@ -1673,7 +1668,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       rctx_dedup <- dedup_episode_ab(rctx)
       build_ab_table(rctx_dedup)
     }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
-
+    
     # Context: specialty distribution (legacy - keeping for potential use)
     output$context_specialty <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
@@ -1694,14 +1689,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::labs(x = NULL, y = "Count")
     })
-
+    
     # Helper function to get specialty column
     get_specialty_column <- function(pat) {
       if ("UnitSpecialtyShort" %in% names(pat)) return("UnitSpecialtyShort")
       if ("PatientSpecialty" %in% names(pat)) return("PatientSpecialty")
       return(NULL)
     }
-
+    
     # Context: Specialty table with HA/CA/Unknown breakdown
     output$specialty_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
@@ -1717,7 +1712,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Join episodes with patient data to get specialty information
       if ("AdmissionRecordId" %in% names(ep) && "RecordId" %in% names(pat)) {
         ep_with_specialty <- merge(ep, pat[, c("RecordId", specialty_col)], 
-                                  by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+                                   by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
       } else {
         return(data.frame())
       }
@@ -1727,7 +1722,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Clean specialty names
       ep_with_specialty$specialty_clean <- ep_with_specialty[[specialty_col]]
       ep_with_specialty$specialty_clean[is.na(ep_with_specialty$specialty_clean) | 
-                                       ep_with_specialty$specialty_clean == ""] <- "-"
+                                          ep_with_specialty$specialty_clean == ""] <- "-"
       
       # Create episode class groups
       ep_with_specialty$EpisodeGroup <- "Unknown"
@@ -1740,7 +1735,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Aggregate by specialty and episode group
       agg_data <- aggregate(EpisodeId ~ specialty_clean + EpisodeGroup, 
-                           data = ep_with_specialty, FUN = length)
+                            data = ep_with_specialty, FUN = length)
       names(agg_data) <- c("Specialty", "EpisodeGroup", "Count")
       
       # Pivot to wide format
@@ -1759,8 +1754,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Calculate total episodes per specialty
       specialty_summary$`Total episodes` <- specialty_summary$HA + 
-                                          specialty_summary$CA + 
-                                          specialty_summary$Unknown
+        specialty_summary$CA + 
+        specialty_summary$Unknown
       
       # Sort by total episodes descending
       specialty_summary <- specialty_summary[order(specialty_summary$`Total episodes`, decreasing = TRUE), ]
@@ -1773,7 +1768,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       ordering = TRUE,
       dom = 'ftp'
     ), rownames = FALSE)
-
+    
     # Context: Number of specialties per patient pie chart
     output$specialty_pie_patient <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
@@ -1792,7 +1787,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Count specialties per patient
       specialty_counts <- aggregate(get(specialty_col) ~ PatientId, data = pat_clean, 
-                                  FUN = function(x) length(unique(x)))
+                                    FUN = function(x) length(unique(x)))
       names(specialty_counts) <- c("PatientId", "NumSpecialties")
       
       # Create summary of specialty distribution
@@ -1816,10 +1811,10 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_void() +
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
-                          position = ggplot2::position_stack(vjust = 0.5),
-                          size = 4, fontface = "bold")
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3.5, fontface = "bold")
     })
-
+    
     # Context: Number of specialties per episode pie chart
     output$specialty_pie_episode <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
@@ -1839,7 +1834,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Join episodes with patient data to get specialty information
       if ("AdmissionRecordId" %in% names(ep) && "RecordId" %in% names(pat)) {
         ep_with_specialty <- merge(ep, pat[, c("RecordId", specialty_col)], 
-                                  by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+                                   by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
       } else {
         return(ggplot2::ggplot() + ggplot2::theme_void())
       }
@@ -1851,7 +1846,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Clean specialty data
       ep_with_specialty$specialty_clean <- ep_with_specialty[[specialty_col]]
       ep_with_specialty <- ep_with_specialty[!is.na(ep_with_specialty$specialty_clean) & 
-                                           ep_with_specialty$specialty_clean != "", ]
+                                               ep_with_specialty$specialty_clean != "", ]
       
       if (nrow(ep_with_specialty) == 0) {
         return(ggplot2::ggplot() + ggplot2::theme_void())
@@ -1860,7 +1855,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Count unique specialties per episode (assuming 1 specialty per episode for this data)
       # In practice, episodes are typically linked to one admission/specialty
       specialty_counts <- aggregate(specialty_clean ~ EpisodeId, data = ep_with_specialty, 
-                                  FUN = function(x) length(unique(x)))
+                                    FUN = function(x) length(unique(x)))
       names(specialty_counts) <- c("EpisodeId", "NumSpecialties")
       
       # Create summary
@@ -1884,10 +1879,10 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_void() +
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
-                          position = ggplot2::position_stack(vjust = 0.5),
-                          size = 4, fontface = "bold")
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3.5, fontface = "bold")
     })
-
+    
     # Context: Top 20 Pathogen Distribution by Specialty
     output$pathogen_specialty_distribution <- shiny::renderPlot({
       shiny::req(values$current_data)
@@ -1948,7 +1943,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           
           if ("organism_label" %in% names(iso) && "ParentId" %in% names(iso) && "PatientId" %in% names(pat)) {
             iso_specialty <- merge(iso, pat[, c("PatientId", specialty_col)], 
-                                  by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+                                   by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
             iso_specialty <- iso_specialty[!is.na(iso_specialty[[specialty_col]]), ]
             
             if (nrow(iso_specialty) > 0) {
@@ -1960,15 +1955,15 @@ visual_bsi_dashboard <- function(data = NULL) {
         
         if (!organism_col_available) {
           return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No pathogen data available", size = 6) +
-                 ggplot2::theme_void())
+                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No pathogen data available", size = 6) +
+                   ggplot2::theme_void())
         }
       }
       
       if (!specialty_available) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No specialty data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No specialty data available", size = 6) +
+                 ggplot2::theme_void())
       }
       
       # Ensure specialty information is available in iso_epi (if not already set by fallback)
@@ -1977,15 +1972,15 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Join with patient data to get specialty if not already present
           if ("AdmissionRecordId" %in% names(iso_epi) && "RecordId" %in% names(pat)) {
             iso_specialty <- merge(iso_epi, pat[, c("RecordId", specialty_col)], 
-                                  by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+                                   by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
           } else if ("ParentId" %in% names(iso_epi) && "PatientId" %in% names(pat)) {
             # Alternative join method
             iso_specialty <- merge(iso_epi, pat[, c("PatientId", specialty_col)], 
-                                  by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+                                   by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
           } else {
             return(ggplot2::ggplot() + 
-                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Cannot link pathogens to specialties", size = 6) +
-                   ggplot2::theme_void())
+                     ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Cannot link pathogens to specialties", size = 6) +
+                     ggplot2::theme_void())
           }
         } else {
           iso_specialty <- iso_epi
@@ -1999,7 +1994,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Clean data
       iso_specialty$specialty_clean <- iso_specialty[[specialty_col]]
       iso_specialty$specialty_clean[is.na(iso_specialty$specialty_clean) | 
-                                   iso_specialty$specialty_clean == ""] <- "Interdisciplinary or unknown"
+                                      iso_specialty$specialty_clean == ""] <- "Interdisciplinary or unknown"
       
       # Get top 20 pathogens overall
       pathogen_counts <- sort(table(iso_specialty$organism_label), decreasing = TRUE)
@@ -2012,7 +2007,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # If EpisodeId is not available (fallback scenario), use isolate counts instead
       if ("EpisodeId" %in% names(iso_filtered)) {
         specialty_episode_counts <- aggregate(EpisodeId ~ specialty_clean, data = iso_filtered, 
-                                            FUN = function(x) length(unique(x)))
+                                              FUN = function(x) length(unique(x)))
         count_threshold <- 10
       } else {
         # Fallback: count isolates per specialty (use lower threshold)
@@ -2028,20 +2023,20 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       if (nrow(iso_final) == 0) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, 
-                               label = "No specialties with ≥10 episodes found", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                                   label = "No specialties with ≥10 episodes found", size = 6) +
+                 ggplot2::theme_void())
       }
       
       # Count pathogen-specialty combinations
       if ("EpisodeId" %in% names(iso_final)) {
         pathogen_specialty_counts <- aggregate(EpisodeId ~ organism_label + specialty_clean, 
-                                             data = iso_final, FUN = length)
+                                               data = iso_final, FUN = length)
       } else {
         # Fallback: count isolates instead of episodes by creating a temporary ID column
         iso_final$temp_id <- seq_len(nrow(iso_final))
         pathogen_specialty_counts <- aggregate(temp_id ~ organism_label + specialty_clean, 
-                                             data = iso_final, FUN = length)
+                                               data = iso_final, FUN = length)
         names(pathogen_specialty_counts)[names(pathogen_specialty_counts) == "temp_id"] <- "EpisodeId"
       }
       names(pathogen_specialty_counts) <- c("Pathogen", "Specialty", "Count")
@@ -2080,22 +2075,22 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Set specialty order and create shorter specialty names
       pathogen_specialty_counts$Specialty <- factor(pathogen_specialty_counts$Specialty, 
-                                                   levels = specialty_order)
+                                                    levels = specialty_order)
       
       # Create shorter specialty names for x-axis
       pathogen_specialty_counts$SpecialtyShort <- gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
-                                                      pathogen_specialty_counts$Specialty)
+                                                       pathogen_specialty_counts$Specialty)
       pathogen_specialty_counts$SpecialtyShort <- gsub("Internal Medicine", "Internal Medicine", 
-                                                      pathogen_specialty_counts$SpecialtyShort)
+                                                       pathogen_specialty_counts$SpecialtyShort)
       pathogen_specialty_counts$SpecialtyShort <- gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines", 
-                                                      pathogen_specialty_counts$SpecialtyShort)
+                                                       pathogen_specialty_counts$SpecialtyShort)
       pathogen_specialty_counts$SpecialtyShort <- gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", 
-                                                      pathogen_specialty_counts$SpecialtyShort)
+                                                       pathogen_specialty_counts$SpecialtyShort)
       
       pathogen_specialty_counts$SpecialtyShort <- factor(pathogen_specialty_counts$SpecialtyShort, 
-                                                        levels = gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
-                                                                    gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines",
-                                                                       gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", specialty_order))))
+                                                         levels = gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
+                                                                       gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines",
+                                                                            gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", specialty_order))))
       
       # Create the stacked bar chart
       p <- ggplot2::ggplot(pathogen_specialty_counts, ggplot2::aes(x = SpecialtyShort, y = Count, fill = PathogenShort)) +
@@ -2117,7 +2112,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       return(p)
     })
-
+    
     # Demographics helper functions
     create_age_groups <- function(ages) {
       cut(ages, 
@@ -2125,7 +2120,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           labels = c("< 20 years", "21 - 40 years", "41 - 60 years", "61 - 80 years", "81 + years"),
           include.lowest = TRUE, right = FALSE)
     }
-
+    
     # Demographics summary
     output$demographics_summary <- shiny::renderUI({
       shiny::req(values$current_data, values$current_data$patient)
@@ -2179,7 +2174,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
-
+    
     # Gender table
     output$gender_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
@@ -2205,7 +2200,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       df
     }, options = list(pageLength = 10, dom = 't', ordering = FALSE), rownames = FALSE)
-
+    
     # Age table
     output$age_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
@@ -2232,7 +2227,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       df
     }, options = list(pageLength = 10, dom = 't', ordering = FALSE), rownames = FALSE)
-
+    
     # Gender pie chart
     output$gender_pie <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
@@ -2267,10 +2262,10 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_void() +
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
-                          position = ggplot2::position_stack(vjust = 0.5),
-                          size = 4, fontface = "bold")
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3.5, fontface = "bold")
     })
-
+    
     # Age pie chart
     output$age_pie <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
@@ -2314,10 +2309,10 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_void() +
         ggplot2::theme(legend.position = "bottom") +
         ggplot2::geom_text(ggplot2::aes(label = paste0(Count, "\n(", Percentage, "%)")), 
-                          position = ggplot2::position_stack(vjust = 0.5),
-                          size = 4, fontface = "bold")
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3, fontface = "bold")
     })
-
+    
     # Age statistics
     output$age_stats <- shiny::renderUI({
       shiny::req(values$current_data, values$current_data$patient)
@@ -2393,15 +2388,15 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
-
+    
     # Episodes by origin plot
     output$episodes_by_origin <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       if (nrow(ep) == 0 || !("EpisodeClass" %in% names(ep))) {
         return(ggplot2::ggplot() +
-               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No episodes data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No episodes data available", size = 6) +
+                 ggplot2::theme_void())
       }
       df <- as.data.frame(table(ep$EpisodeClass), stringsAsFactors = FALSE)
       names(df) <- c("EpisodeClass", "Count")
@@ -2410,15 +2405,15 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::labs(title = "Episodes by class", x = "Class", y = "Count")
     })
-
+    
     # Episode composition (mono vs poly) plot
     output$episodes_poly <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       if (nrow(ep) == 0 || !("Polymicrobial" %in% names(ep))) {
         return(ggplot2::ggplot() +
-               ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial data available", size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial data available", size = 6) +
+                 ggplot2::theme_void())
       }
       comp <- ifelse(isTRUE(ep$Polymicrobial), "Polymicrobial", "Monomicrobial")
       df <- as.data.frame(table(comp), stringsAsFactors = FALSE)
@@ -2428,8 +2423,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::theme_minimal() +
         ggplot2::labs(title = "Episode composition", x = NULL, y = "Count")
     })
-
-
+    
+    
     
     # Data tables for each sub-tab
     output$ehrbsi_table <- DT::renderDT({
@@ -2596,10 +2591,10 @@ visual_bsi_dashboard <- function(data = NULL) {
     output$data_cleaning_pie <- shiny::renderPlot({
       if (is.null(values$raw_data_stats) || is.null(values$processed_data_stats)) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 0.5, y = 0.5, 
-                               label = "Upload and process data to see cleaning statistics", 
-                               size = 6) +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                                   label = "Upload and process data to see cleaning statistics", 
+                                   size = 6) +
+                 ggplot2::theme_void())
       }
       
       # Calculate actual data cleaning statistics from real data
@@ -2666,7 +2661,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ggplot2::geom_text(
           ggplot2::aes(label = paste0(Category, "\n", format(Count, big.mark = ","), " (", Percentage, "%)")), 
           position = ggplot2::position_stack(vjust = 0.5),
-          size = 4, 
+          size = 3.5, 
           fontface = "bold"
         )
     })
@@ -2718,18 +2713,18 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       
       positive_text <- paste0(" were included in the study. <strong>", 
-                             format(positive_cultures, big.mark = ","), 
-                             "</strong> positive blood cultures were included, of which <strong>", 
-                             format(final_cultures, big.mark = ","), 
-                             "</strong> remained after excluding contaminants.")
+                              format(positive_cultures, big.mark = ","), 
+                              "</strong> positive blood cultures were included, of which <strong>", 
+                              format(final_cultures, big.mark = ","), 
+                              "</strong> remained after excluding contaminants.")
       
       rates_text <- paste0(" This results in rates of <strong>", positive_rate, 
-                          "</strong> (<strong>", uncontaminated_rate, "</strong> uncontaminated) positive isolates per 1000 patients.")
+                           "</strong> (<strong>", uncontaminated_rate, "</strong> uncontaminated) positive isolates per 1000 patients.")
       
       bc_text <- if (bc_count > 0) {
         base_text <- paste0(" <strong>", format(bc_count, big.mark = ","), 
-               "</strong> overall blood culture sets were included resulting in an uncontaminated-positive-to-all rate of <strong>",
-               uncontaminated_positive_rate, "</strong>")
+                            "</strong> overall blood culture sets were included resulting in an uncontaminated-positive-to-all rate of <strong>",
+                            uncontaminated_positive_rate, "</strong>")
         if (patient_days > 0) {
           paste0(base_text, " and <strong>", bc_per_1000_days, "</strong> blood culture sets per 1000 patient days.")
         } else {
@@ -2762,6 +2757,5 @@ visual_bsi_dashboard <- function(data = NULL) {
   # Launch the app
   shiny::shinyApp(ui = ui, server = server)
 }
-
 
 
