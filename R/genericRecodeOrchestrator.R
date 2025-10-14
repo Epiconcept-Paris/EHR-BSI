@@ -57,14 +57,17 @@ process_country_bsi <- function(country,
                                episode_duration = 14,
                                calculate_episodes = TRUE) {
   
-  # Validate country parameter
-  if (!country %in% c("MT", "EE")) {
-    stop("Country must be either 'MT' (Malta) or 'EE' (Estonia)")
-  }
+  # Validate country parameter using config system
+  tryCatch({
+    # Just validate that config exists; it will be loaded in country-specific functions
+    get_country_config(country)
+  }, error = function(e) {
+    stop("Invalid country code: ", country, ". ", e$message, call. = FALSE)
+  })
   
   # Validate input data
   if (is.null(input_data)) {
-    stop("input_data must be a valid data frame or list of data frames")
+    stop("input_data must be a valid data frame or list of data frames", call. = FALSE)
   }
   
   # Set default dictionary path if not provided
@@ -73,7 +76,9 @@ process_country_bsi <- function(country,
     
     # Check if country dictionary exists
     if (!file.exists(dictionary_path)) {
-      stop("No country dictionary in 'reference/dictionaries' for ", country, " country")
+      warning("No country dictionary found at: ", dictionary_path, 
+              ". Proceeding without dictionary.", call. = FALSE)
+      dictionary_path <- NULL
     }
   }
   
@@ -88,24 +93,29 @@ process_country_bsi <- function(country,
   
   # Validate reference file paths
   if (!is.null(dictionary_path) && !file.exists(dictionary_path)) {
-    stop("Dictionary file not found: ", dictionary_path)
+    warning("Dictionary file not found: ", dictionary_path, call. = FALSE)
+    dictionary_path <- NULL
   }
   
   if (!file.exists(metadata_path)) {
-    stop("Metadata file not found: ", metadata_path)
+    warning("Metadata file not found: ", metadata_path, 
+            ". HAI short codes will not be applied.", call. = FALSE)
+    metadata_path <- NULL
   }
   
   if (!file.exists(commensal_path)) {
-    stop("Commensals file not found: ", commensal_path)
+    warning("Commensals file not found: ", commensal_path, 
+            ". Episode calculation may be affected.", call. = FALSE)
   }
-  
   
   # Load required libraries (should be in Imports)
   requireNamespace("dplyr", quietly = TRUE)
   requireNamespace("readxl", quietly = TRUE)
   requireNamespace("stringr", quietly = TRUE)
   requireNamespace("tidyr", quietly = TRUE)
-  if (country == "MT") {
+  
+  # Load epiuf for dictionary support if needed
+  if (!is.null(dictionary_path) && country == "MT") {
     requireNamespace("tidyverse", quietly = TRUE)
     requireNamespace("epiuf", quietly = TRUE)
   }
@@ -119,12 +129,18 @@ process_country_bsi <- function(country,
   }
   
   # Apply dictionary if provided
-  if (!is.null(dictionary_path)) {
-    epiuf::openDictionary(dictionary_path)
-    raw_data <- epiuf::applyDictionary(dictionary = NULL, raw_data)
+  if (!is.null(dictionary_path) && requireNamespace("epiuf", quietly = TRUE)) {
+    tryCatch({
+      epiuf::openDictionary(dictionary_path)
+      raw_data <- epiuf::applyDictionary(dictionary = NULL, raw_data)
+    }, error = function(e) {
+      warning("Dictionary application failed: ", e$message, 
+              ". Proceeding with raw data.", call. = FALSE)
+    })
   }
   
   # Process the data using country-specific internal helper functions
+  # These are now simplified wrappers around unified functions
   if (country == "MT") {
     recoded_data <- .process_malta_basic_cleaning(raw_data)
     
@@ -142,6 +158,10 @@ process_country_bsi <- function(country,
     isolate <- .create_estonia_isolate_table(recoded_data)
     res <- .create_estonia_res_table(recoded_data, metadata_path)
     ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, episode_duration)
+  } else {
+    # Future countries can be added here with minimal code
+    stop("Country '", country, "' is not yet implemented. ",
+         "Please add implementation for this country.", call. = FALSE)
   }
   
   if(calculate_episodes){

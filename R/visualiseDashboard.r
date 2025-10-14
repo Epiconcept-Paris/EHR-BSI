@@ -494,22 +494,51 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
     shiny::outputOptions(output, "denom_available", suspendWhenHidden = FALSE)
 
-    # Helper: compute episodes if possible
-    compute_episodes_if_possible <- function(cur) {
-      if (is.null(cur) || is.null(cur$patient) || is.null(cur$isolate)) return(NULL)
-      # Load commensals list - try package path first, then relative path for development
-      comm_df <- tryCatch({
+    # Helper: create styled info box
+    create_info_box <- function(title, content, border_color = "#6c757d") {
+      shiny::div(
+        style = paste0("background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid ", border_color, ";
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;"),
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          title
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          content
+        )
+      )
+    }
+    
+    # Helper: load commensal data
+    load_commensal_data <- function() {
+      tryCatch({
         comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
         if (comm_path == "" || !file.exists(comm_path)) {
-          # Fallback to relative path for development
           comm_path <- "reference/CommonCommensals.csv"
         }
         utils::read.csv(comm_path, stringsAsFactors = FALSE)
-      }, error = function(e) NULL)
+      }, error = function(e) {
+        warning("Failed to load commensal data: ", e$message, call. = FALSE)
+        NULL
+      })
+    }
+    
+    # Helper: compute episodes if possible
+    compute_episodes_if_possible <- function(cur) {
+      if (is.null(cur) || is.null(cur$patient) || is.null(cur$isolate)) return(NULL)
+      
+      comm_df <- load_commensal_data()
       if (is.null(comm_df)) return(NULL)
-      # Calculate episodes
+      
       # Use episode_duration from input, default to 14 if not available
       epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
+      
       eps <- tryCatch({
         calculateEpisodes(
           patient_df = cur$patient,
@@ -517,7 +546,10 @@ visual_bsi_dashboard <- function(data = NULL) {
           commensal_df = comm_df,
           episodeDuration = epi_dur
         )
-      }, error = function(e) NULL)
+      }, error = function(e) {
+        warning("Episode calculation failed: ", e$message, call. = FALSE)
+        NULL
+      })
       
       return(eps)
     }

@@ -2,13 +2,14 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{create_base_ehrbsi_table}
 \alias{create_base_ehrbsi_table}
-\title{Create base EHRBSI table with common fields}
+\title{Create base EHRBSI table with common fields (Enhanced)}
 \usage{
 create_base_ehrbsi_table(
   data,
   country_code,
   episode_duration,
-  record_id_col = "record_id_bsi"
+  record_id_col = "record_id_bsi",
+  config = NULL
 )
 }
 \arguments{
@@ -20,11 +21,11 @@ create_base_ehrbsi_table(
 
 \item{record_id_col}{Name of column containing record IDs}
 
-\item{reporting_year}{Year for DateUsedForStatistics}
+\item{config}{Country configuration object (optional)}
 }
 \value{
 Data frame with base EHRBSI structure
 }
 \description{
-Create base EHRBSI table with common fields
+Create base EHRBSI table with common fields (Enhanced)
 }

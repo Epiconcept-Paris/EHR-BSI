@@ -22,9 +22,10 @@ calculateEpisodes <- function(patient_df,
                         DateOfHospitalDischarge),
                by = "PatientId",
                relationship = "many-to-many"  ) %>%
-    filter(DateOfSpecCollection >= DateOfHospitalAdmission,
+    # Convert dates to Date class for consistent comparison (handles POSIXct from Estonia)
+    filter(as.Date(DateOfSpecCollection) >= as.Date(DateOfHospitalAdmission),
            is.na(DateOfHospitalDischarge) |
-             DateOfSpecCollection <= DateOfHospitalDischarge)
+             as.Date(DateOfSpecCollection) <= as.Date(DateOfHospitalDischarge))
   
   ## ---- RULE 1  – recognised pathogens (one pos = onset) ----------------
   rule1 <- iso_in_admission %>%
@@ -83,8 +84,9 @@ calculateEpisodes <- function(patient_df,
     left_join(adm_tbl, by = c("AdmissionRecordId"="RecordId")) %>%
     ## day-of-stay is counted with admission = day 1
     mutate(
-      DaysSinceAdmission = as.numeric(EpisodeStartDate - DateOfHospitalAdmission, units = "days"),
-      DaysAfterPrevDisch = as.numeric(EpisodeStartDate - PrevDischarge,  units = "days")
+      # Convert both dates to Date class to ensure compatible subtraction (handles POSIXct from Estonia)
+      DaysSinceAdmission = as.numeric(as.Date(EpisodeStartDate) - as.Date(DateOfHospitalAdmission), units = "days"),
+      DaysAfterPrevDisch = as.numeric(as.Date(EpisodeStartDate) - as.Date(PrevDischarge), units = "days")
     )
   
   ## ── 3 · Apply the decision tree for the case definition ──────────────

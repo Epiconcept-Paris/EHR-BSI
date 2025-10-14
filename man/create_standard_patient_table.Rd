@@ -2,13 +2,14 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{create_standard_patient_table}
 \alias{create_standard_patient_table}
-\title{Create standard patient table structure}
+\title{Create standard patient table structure (Enhanced)}
 \usage{
 create_standard_patient_table(
   data,
   record_id_col = "record_id_patient",
   parent_id_col = "record_id_bsi",
-  country_defaults = list()
+  country_defaults = list(),
+  config = NULL
 )
 }
 \arguments{
@@ -19,10 +20,12 @@ create_standard_patient_table(
 \item{parent_id_col}{Name of parent (BSI) record ID column}
 
 \item{country_defaults}{List of country-specific default values}
+
+\item{config}{Country configuration object (optional)}
 }
 \value{
 Data frame with standard patient table structure
 }
 \description{
-Create standard patient table structure
+Create standard patient table structure (Enhanced)
 }

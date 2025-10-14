@@ -2,13 +2,14 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{create_standard_isolate_table}
 \alias{create_standard_isolate_table}
-\title{Create standard isolate table structure}
+\title{Create standard isolate table structure (Enhanced)}
 \usage{
 create_standard_isolate_table(
   data,
   record_id_col = "record_id_isolate",
   parent_id_col = "PatientId",
-  country_defaults = list()
+  country_defaults = list(),
+  config = NULL
 )
 }
 \arguments{
@@ -19,10 +20,12 @@ create_standard_isolate_table(
 \item{parent_id_col}{Name of parent (patient) record ID column}
 
 \item{country_defaults}{List of country-specific default values}
+
+\item{config}{Country configuration object (optional)}
 }
 \value{
 Data frame with standard isolate table structure
 }
 \description{
-Create standard isolate table structure
+Create standard isolate table structure (Enhanced)
 }
