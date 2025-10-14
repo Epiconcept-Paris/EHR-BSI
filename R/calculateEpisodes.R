@@ -38,7 +38,7 @@ calculateEpisodes <- function(patient_df,
     filter(org_type == "CC", !is.na(DateOfSpecCollection)) %>%
     arrange(PatientId, MicroorganismCode, DateOfSpecCollection) %>%
     group_by(PatientId, MicroorganismCode) %>%
-    mutate(cluster_first = flag_cc_clusters(DateOfSpecCollection)) %>%
+    mutate(cluster_first = flag_cc_clusters(DateOfSpecCollection, episodeDuration)) %>%
     ungroup() %>%
     filter(cluster_first) %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = DateOfSpecCollection,
