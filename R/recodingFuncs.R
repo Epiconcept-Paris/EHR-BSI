@@ -3,6 +3,70 @@
 #' This file contains shared functions used by both Estonia and Malta
 #' recoding scripts to avoid code duplication and ensure consistency.
 
+#' Load country configuration from Excel file
+#'
+#' @param country_code Two-letter country code
+#' @param dictionary_path Optional path to country Excel file
+#'
+#' @return List containing configuration from Config tab
+#' @export
+load_country_config_from_excel <- function(country_code, dictionary_path = NULL) {
+  if (is.null(dictionary_path)) {
+    dictionary_path <- file.path("reference", "dictionaries", paste0(country_code, ".xlsx"))
+  }
+  
+  if (!file.exists(dictionary_path)) {
+    stop("Dictionary file not found: ", dictionary_path, call. = FALSE)
+  }
+  
+  # Try to read Config tab
+  config_raw <- tryCatch({
+    readxl::read_xlsx(dictionary_path, sheet = "Config")
+  }, error = function(e) {
+    return(NULL)  # Config tab optional for backward compatibility
+  })
+  
+  if (is.null(config_raw)) {
+    return(list())  # Return empty config if no Config tab
+  }
+  
+  # Validate structure
+  required_cols <- c("config_key", "config_value")
+  if (!all(required_cols %in% names(config_raw))) {
+    warning("Config tab missing required columns (config_key, config_value). Using empty config.", 
+            call. = FALSE)
+    return(list())
+  }
+  
+  # Parse config into list
+  config <- list()
+  for (i in seq_len(nrow(config_raw))) {
+    key <- config_raw$config_key[i]
+    value <- config_raw$config_value[i]
+    
+    # Skip NA keys
+    if (is.na(key)) next
+    
+    type <- if ("config_type" %in% names(config_raw) && !is.na(config_raw$config_type[i])) {
+      config_raw$config_type[i]
+    } else {
+      "string"
+    }
+    
+    # Type conversion
+    parsed_value <- switch(type,
+      "boolean" = as.logical(value),
+      "numeric" = as.numeric(value),
+      "list" = if (!is.na(value)) trimws(strsplit(as.character(value), ",")[[1]]) else character(0),
+      as.character(value)  # string default
+    )
+    
+    config[[key]] <- parsed_value
+  }
+  
+  return(config)
+}
+
 #' Validate that required columns exist in the data (Enhanced)
 #'
 #' @param data Data frame to validate
@@ -1053,4 +1117,44 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
   res <- finalize_table(res, get_standard_table_columns("res"))
   
   return(res)
+}
+
+#' Process country BSI data using config-driven approach
+#'
+#' This generic processor works for any country with a valid configuration.
+#' It replaces the need for country-specific recoding files.
+#'
+#' @param raw_data Raw data frame
+#' @param country_code Two-letter country code
+#' @param episode_duration Episode duration in days
+#' @param metadata_path Path to metadata file
+#'
+#' @return List with ehrbsi, patient, isolate, res tables
+#' @export
+process_country_generic <- function(raw_data, country_code, episode_duration, metadata_path = NULL) {
+  # Get config (from Excel + R transforms)
+  config <- get_country_config(country_code)
+  
+  # Step 1: Basic cleaning
+  recoded_data <- process_basic_cleaning(raw_data, config, country_code)
+  
+  # Step 2: Create tables
+  patient <- create_standard_patient_table(recoded_data, config = config)
+  patient <- finalize_table(patient, get_standard_table_columns("patient"))
+  
+  isolate <- create_standard_isolate_table(recoded_data, config = config)
+  isolate <- finalize_table(isolate, get_standard_table_columns("isolate"))
+  
+  res <- create_standard_res_table(recoded_data, config, country_code, metadata_path)
+  
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, country_code, episode_duration, 
+                                     record_id_col = "record_id_bsi", config = config)
+  ehrbsi <- finalize_table(ehrbsi, get_standard_table_columns("ehrbsi"))
+  
+  return(list(
+    ehrbsi = ehrbsi,
+    patient = patient,
+    isolate = isolate,
+    res = res
+  ))
 } 

@@ -125,30 +125,13 @@ process_country_bsi <- function(country,
     })
   }
   
-  # Process the data using country-specific internal helper functions
-  # These are now simplified wrappers around unified functions
-  if (country == "MT") {
-    recoded_data <- .process_malta_basic_cleaning(raw_data)
-    
-    # Create the four tables
-    patient <- .create_malta_patient_table(recoded_data)
-    isolate <- .create_malta_isolate_table(recoded_data)
-    res <- .create_malta_res_table(recoded_data)
-    ehrbsi <- .create_malta_ehrbsi_table(recoded_data, episode_duration)
-    
-  } else if (country == "EE") {
-    recoded_data <- .process_estonia_basic_cleaning(raw_data)
-    
-    # Create the four tables
-    patient <- .create_estonia_patient_table(recoded_data)
-    isolate <- .create_estonia_isolate_table(recoded_data)
-    res <- .create_estonia_res_table(recoded_data, metadata_path)
-    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, episode_duration)
-  } else {
-    # Future countries can be added here with minimal code
-    stop("Country '", country, "' is not yet implemented. ",
-         "Please add implementation for this country.", call. = FALSE)
-  }
+  # Process the data using unified config-driven approach
+  # This works for all countries with proper configuration
+  result <- process_country_generic(raw_data, country, episode_duration, metadata_path)
+  patient <- result$patient
+  isolate <- result$isolate
+  res <- result$res
+  ehrbsi <- result$ehrbsi
   
   if(calculate_episodes){
     

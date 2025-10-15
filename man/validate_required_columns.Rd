@@ -2,7 +2,7 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{validate_required_columns}
 \alias{validate_required_columns}
-\title{Common functions for country-specific BSI data recoding}
+\title{Validate that required columns exist in the data (Enhanced)}
 \usage{
 validate_required_columns(data, required_cols, context_name = "dataset")
 }
@@ -17,7 +17,5 @@ validate_required_columns(data, required_cols, context_name = "dataset")
 Nothing if validation passes, throws error if columns missing
 }
 \description{
-This file contains shared functions used by both Estonia and Malta
-recoding scripts to avoid code duplication and ensure consistency.
 Validate that required columns exist in the data (Enhanced)
 }
