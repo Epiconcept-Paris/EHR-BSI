@@ -148,6 +148,29 @@ COUNTRY_CONFIGS <- list(
         } else {
           NA_character_
         }
+      },
+      HospitalSize = function(data) {
+        if ("HospitalId" %in% names(data)) {
+          dplyr::case_when(
+            data$HospitalId == "GO" ~ 320,
+            data$HospitalId == "MDH" ~ 1200,
+            data$HospitalId == "OC" ~ 70,
+            TRUE ~ NA_real_
+          )
+        } else {
+          NA_real_
+        }
+      },
+      GeoLocation = function(data) {
+        if ("HospitalId" %in% names(data)) {
+          dplyr::case_when(
+            data$HospitalId == "GO" ~ "Gozo",
+            data$HospitalId %in% c("MDH", "OC") ~ "Malta",
+            TRUE ~ NA_character_
+          )
+        } else {
+          NA_character_
+        }
       }
     ),
     
@@ -155,14 +178,17 @@ COUNTRY_CONFIGS <- list(
     defaults = list(
       patient = list(
         HospitalisationAdmissionCodeSystem = "SNOMED-CT",
-        DateOfAdmissionCurrentWard = NA_character_
+        DateOfAdmissionCurrentWard = NA_character_,
+        LaboratoryCode = "MT001"
       ),
-      isolate = list(),
+      isolate = list(
+        LaboratoryCode = "MT001",
+        Specimen = "BLOOD"
+      ),
       ehrbsi = list(
-        ESurvBSI = NA_real_,
-        GeoLocation = NA_character_,
-        HospitalSize = NA_real_,
-        ProportionPopulationCovered = NA_real_
+        ESurvBSI = "Automated (except denominators)",
+        ProportionPopulationCovered = 0.95,
+        LaboratoryCode = "MT001"
       )
     ),
     

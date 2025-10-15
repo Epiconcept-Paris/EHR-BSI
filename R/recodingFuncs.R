@@ -778,7 +778,7 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
       dplyr::filter(!is.na(.data[[ab_config$test_column]]) & .data[[ab_config$test_column]] != "") %>%
       dplyr::mutate(
         RecordId = paste0(record_id_isolate, "_", .data[[ab_config$test_column]]),
-        ParentId = IsolateId
+        ParentId = record_id_isolate
       )
     
     # Classify test types
