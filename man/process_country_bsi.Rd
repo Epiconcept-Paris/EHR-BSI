@@ -8,7 +8,6 @@ process_country_bsi(
   country,
   input_data,
   dictionary_path = NULL,
-  value_maps_path = "reference/Lookup_Tables.R",
   write_to_file = FALSE,
   write_to_file_path = NULL,
   return_format = "list",
@@ -22,8 +21,6 @@ process_country_bsi(
 \item{input_data}{Data frame containing the raw BSI data to be processed}
 
 \item{dictionary_path}{Path to the data dictionary Excel file}
-
-\item{value_maps_path}{Path to the value maps R script}
 
 \item{write_to_file}{Whether to write output files to disk}
 

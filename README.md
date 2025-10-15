@@ -8,16 +8,16 @@ This package can processes raw BSI surveillance data into standardised EHR-BSI f
 
 The unified workflow perform the following operations:
 1.  **Transform** country format into the EHR BSI reporting protocol.
-    - Rename columns using country specific **data Dictionaries**
-    - Transform local codes to standard using specific **lookup tables** e.g. microorganisms, antibiotic, geographic locations, Hospital Type, Speciality, etc.
-    - Create tables defined to the the EHR-BSI reporting protocol using specific **recodig scripts** (`Patient`, `Isolate`, `Res`, `EHRBSI`, `Denom`)
+    - Rename columns using country-specific **data dictionaries** (stored in Excel files)
+    - Transform local codes to standard using specific **lookup tables** (stored in Excel files) e.g. microorganisms, antibiotic, geographic locations, Hospital Type, Speciality, etc.
+    - Create tables defined to the EHR-BSI reporting protocol using specific **recoding scripts** (`Patient`, `Isolate`, `Res`, `EHRBSI`, `Denom`)
 2.  **Calculates episodes**: Using the provided episode duration applies the EHR-BSI reporting protocol definitions.
     - Filter **Recognized pathogens** in blood cultures
     - Detect concordant **common commensal (CC)** isolates within 3 calendar days in two separate samples
     - Perform **episode deduplication** when same organism is isolated within the episode duration
     - Detect **polymicrobial** episodes when multiple organisms are isolated  within 2 days of the onsedate as a single episode
     - Calculate Episode Origin as **HO-HA** (Onset ≥2 days after admission) **IMP-HA** (Onset ≤2 days after previous discharge) or **CA** (all others)
-3.  **Produce visualisaitons**: Produce basic visualiation aiming to help analyse and validate the surveillance data to be submitted.
+3.  **Produce visualisations**: Produce basic visualiation aiming to help analyse and validate the surveillance data to be submitted.
 
 ## Quick Start
 
@@ -26,7 +26,6 @@ The main workflow is demonstrated in `main.R`:
 ```r
 
 # Ensure dependencies
-devtools::install_github("Epiconcept-Paris/STRAP-epiuf")
 devtools::install_deps()
 
 # Load package
@@ -123,12 +122,13 @@ Aggregates episode counts back to the ehrbsi summary table.
 ## Workflow Overview
 
 1. **Data Loading:** Raw surveillance data is loaded (CSV for Malta, Excel for Estonia)
-2. **Dictionary Application:** Data dictionaries are applied for standardization using `epiuf` package
-3. **Country-Specific Processing:** Internal helper functions handle country-specific data transformations
-4. **Table Creation:** Four EHR-BSI tables are generated (ehrbsi, patient, isolate, res)
-5. **Episode Calculation:** BSI episodes are identified and classified using ECDC definitions
-6. **Aggregation:** Episode counts are aggregated back to the ehrbsi summary table
-7. **Output:** Results are returned as a list and optionally saved as Excel workbook
+2. **Dictionary Application:** Column names are standardized using country-specific Excel dictionaries
+3. **Lookup Application:** Values are transformed using country-specific lookup tables from Excel files
+4. **Country-Specific Processing:** Internal helper functions handle country-specific data transformations
+5. **Table Creation:** Four EHR-BSI tables are generated (ehrbsi, patient, isolate, res)
+6. **Episode Calculation:** BSI episodes are identified and classified using ECDC definitions
+7. **Aggregation:** Episode counts are aggregated back to the ehrbsi summary table
+8. **Output:** Results are returned as a list and optionally saved as Excel workbook
 
 ## Helper Functions
 
@@ -144,10 +144,14 @@ Aggregates episode counts back to the ehrbsi summary table.
 ## Reference Files
 
 - `reference/CommonCommensals.csv`: List of commensal organisms for BSI case definition
-- `reference/Lookup_Tables.r`: Value mapping tables for data recoding
-- `reference/dictionary_raw_BSI_Estonia.xlsx`: Data dictionary for Estonia
-- `reference/dictionary_raw_BSI_Malta.xlsx`: Data dictionary for Malta  
-- `reference/MetaDataSet_57 (2025-03-13).xlsx`: Metadata for antibiotic resistance recoding
+- `reference/dictionaries/EE.xlsx`: Country-specific dictionary and lookup tables for Estonia
+  - **Dictionary** tab: Column name mappings (raw_column_name → standard_column_name)
+  - **Lookups** tab: All value mappings in long format (lookup_name, from_value, to_value)
+- `reference/dictionaries/MT.xlsx`: Country-specific dictionary and lookup tables for Malta
+  - **Dictionary** tab: Column name mappings (raw_column_name → standard_column_name)
+  - **Lookups** tab: All value mappings in long format (lookup_name, from_value, to_value)
+- `reference/Metadata.xlsx`: Metadata for antibiotic resistance recoding
+- `reference/EUCAST_Breakpoints_v14.xlsx`: EUCAST breakpoints reference
 
 ## Output Tables
 
@@ -161,5 +165,5 @@ When `write_to_file = TRUE`, these tables are saved as an Excel workbook with se
 
 ## Requirements
 
-- R packages: `dplyr`, `readxl`, `stringr`, `tidyr`, `epiuf`, `openxlsx`
-- For Malta processing: additional `tidyverse` dependency
+- R packages: `dplyr`, `readxl`, `stringr`, `tidyr`, `data.table`, `openxlsx`
+- R version >= 3.5

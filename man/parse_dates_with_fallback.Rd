@@ -2,7 +2,7 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{parse_dates_with_fallback}
 \alias{parse_dates_with_fallback}
-\title{Parse date columns with dictionary fallback (Enhanced)}
+\title{Parse date columns with specified format}
 \usage{
 parse_dates_with_fallback(
   data,
@@ -14,7 +14,7 @@ parse_dates_with_fallback(
 \arguments{
 \item{data}{Data frame containing date columns}
 
-\item{fallback_cols}{Character vector of date column names to use if dictionary unavailable}
+\item{fallback_cols}{Character vector of date column names to parse}
 
 \item{date_format}{Format string for date parsing (can include time)}
 
@@ -24,5 +24,5 @@ parse_dates_with_fallback(
 Data frame with parsed date columns
 }
 \description{
-Parse date columns with dictionary fallback (Enhanced)
+Parse date columns with specified format
 }

@@ -4,10 +4,12 @@
 \alias{get_country_lookups}
 \title{Get lookup tables for a country}
 \usage{
-get_country_lookups(country_code)
+get_country_lookups(country_code, dictionary_path = NULL)
 }
 \arguments{
 \item{country_code}{Two-letter country code}
+
+\item{dictionary_path}{Optional path to country Excel file (defaults to reference/dictionaries/{country_code}.xlsx)}
 }
 \value{
 List of lookup vectors for the specified country

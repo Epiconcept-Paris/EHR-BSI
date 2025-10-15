@@ -21,33 +21,22 @@ get_country_config <- function(country_code) {
 #' Get lookup tables for a country
 #'
 #' @param country_code Two-letter country code
+#' @param dictionary_path Optional path to country Excel file (defaults to reference/dictionaries/{country_code}.xlsx)
 #' @return List of lookup vectors for the specified country
 #' @export
-get_country_lookups <- function(country_code) {
+get_country_lookups <- function(country_code, dictionary_path = NULL) {
   config <- get_country_config(country_code)
+  
+  # Load all lookups from Excel
+  all_lookups <- load_country_lookups_from_excel(country_code, dictionary_path)
+  
+  # Filter to only the lookups specified in the config
   lookups <- list()
-  
-  # Map country codes to full names for lookup tables
-  country_name_map <- list(
-    MT = "Malta",
-    EE = "Estonia"
-  )
-  
-  country_name <- country_name_map[[country_code]]
-  if (is.null(country_name)) {
-    country_name <- country_code
-  }
-  
   for (lookup_name in config$lookups) {
-    lookup_table_name <- paste0(country_name, "_", lookup_name, "_Lookup")
-    
-    # Try to get the lookup table from the package data
-    if (exists(lookup_table_name, envir = .GlobalEnv)) {
-      lookups[[lookup_name]] <- get(lookup_table_name, envir = .GlobalEnv)
-    } else if (exists(lookup_table_name)) {
-      lookups[[lookup_name]] <- get(lookup_table_name)
+    if (lookup_name %in% names(all_lookups)) {
+      lookups[[lookup_name]] <- all_lookups[[lookup_name]]
     } else {
-      warning("Lookup table not found: ", lookup_table_name, call. = FALSE)
+      warning("Lookup table not found in Excel: ", lookup_name, call. = FALSE)
     }
   }
   

@@ -12,16 +12,9 @@
   # Load Estonia configuration
   config <- get_country_config("EE")
   
-  # Estonia needs datetime formatting for IDs before unified cleaning
-  # This is handled by creating the datetime columns that the ID templates expect
-  recoded_data <- raw_data %>%
-    dplyr::mutate(
-      DateOfSpecCollection = as.POSIXct(DateOfSpecCollection, format = "%d/%m/%Y %H:%M"),
-      DateOfHospitalAdmission = as.POSIXct(DateOfHospitalAdmission, format = "%d/%m/%Y %H:%M")
-    )
-  
   # Use unified cleaning function
-  recoded_data <- process_basic_cleaning(recoded_data, config, "EE")
+  # Date parsing is now handled by process_basic_cleaning based on config
+  recoded_data <- process_basic_cleaning(raw_data, config, "EE")
   
   return(recoded_data)
 }
