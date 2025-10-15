@@ -3,7 +3,6 @@
 #' @param country Country code ("MT" for Malta, "EE" for Estonia)
 #' @param input_data Data frame containing the raw BSI data to be processed
 #' @param dictionary_path Path to the data dictionary Excel file
-#' @param value_maps_path Path to the value maps R script
 #' @param reporting_year Year for the DateUsedForStatistics field, defaults to current year
 #' @param episode_duration Duration for episode calculation in days, defaults to 14
 #' @param write_to_file Whether to write output files to disk
@@ -43,14 +42,13 @@
 # # The generic function automatically handles:
 # # - Country-specific dictionary loading from reference/dictionaries/
 # # - Fixed metadata and commensal file paths in reference/
-# # - Loading CSV for Malta, Excel for Estonia
+# # - Lookup tables loaded from Excel files
 # # - Calling the correct internal helper functions
 # # - Using the appropriate file writing functions
 
 process_country_bsi <- function(country,
                                input_data,
                                dictionary_path = NULL,
-                               value_maps_path = "reference/Lookup_Tables.R",
                                write_to_file = FALSE,
                                write_to_file_path = NULL,
                                return_format = "list",
@@ -114,55 +112,26 @@ process_country_bsi <- function(country,
   requireNamespace("stringr", quietly = TRUE)
   requireNamespace("tidyr", quietly = TRUE)
   
-  # Load epiuf for dictionary support if needed
-  if (!is.null(dictionary_path) && country == "MT") {
-    requireNamespace("tidyverse", quietly = TRUE)
-    requireNamespace("epiuf", quietly = TRUE)
-  }
-  
   # Use input data directly
   raw_data <- input_data
   
-  # Load value maps if provided
-  if (file.exists(value_maps_path)) {
-    source(value_maps_path, local = TRUE)
-  }
-  
-  # Apply dictionary if provided
-  if (!is.null(dictionary_path) && requireNamespace("epiuf", quietly = TRUE)) {
+  # Apply dictionary column renaming if provided
+  if (!is.null(dictionary_path)) {
     tryCatch({
-      epiuf::openDictionary(dictionary_path)
-      raw_data <- epiuf::applyDictionary(dictionary = NULL, raw_data)
+      raw_data <- apply_dictionary_from_excel(raw_data, dictionary_path)
     }, error = function(e) {
       warning("Dictionary application failed: ", e$message, 
               ". Proceeding with raw data.", call. = FALSE)
     })
   }
   
-  # Process the data using country-specific internal helper functions
-  # These are now simplified wrappers around unified functions
-  if (country == "MT") {
-    recoded_data <- .process_malta_basic_cleaning(raw_data)
-    
-    # Create the four tables
-    patient <- .create_malta_patient_table(recoded_data)
-    isolate <- .create_malta_isolate_table(recoded_data)
-    res <- .create_malta_res_table(recoded_data)
-    ehrbsi <- .create_malta_ehrbsi_table(recoded_data, episode_duration)
-    
-  } else if (country == "EE") {
-    recoded_data <- .process_estonia_basic_cleaning(raw_data)
-    
-    # Create the four tables
-    patient <- .create_estonia_patient_table(recoded_data)
-    isolate <- .create_estonia_isolate_table(recoded_data)
-    res <- .create_estonia_res_table(recoded_data, metadata_path)
-    ehrbsi <- .create_estonia_ehrbsi_table(recoded_data, episode_duration)
-  } else {
-    # Future countries can be added here with minimal code
-    stop("Country '", country, "' is not yet implemented. ",
-         "Please add implementation for this country.", call. = FALSE)
-  }
+  # Process the data using unified config-driven approach
+  # This works for all countries with proper configuration
+  result <- process_country_generic(raw_data, country, episode_duration, metadata_path)
+  patient <- result$patient
+  isolate <- result$isolate
+  res <- result$res
+  ehrbsi <- result$ehrbsi
   
   if(calculate_episodes){
     

@@ -18,7 +18,6 @@ Imports:
     readxl,
     stringr,
     tidyr,
-    epiuf,
     ggplot2,
     quarto,
     devtools,

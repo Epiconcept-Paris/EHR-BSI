@@ -1,109 +1,204 @@
 # How to Add a New Country to the EHR-BSI Package
 
-This document outlines the key steps required to extend the `EHR-BSI` package to support a new country, using the existing implementations for Malta (MT) and Estonia (EE) as a reference.
+This document outlines the **simplified** process to extend the `EHR-BSI` package to support a new country. The system is now **config-driven**, meaning most countries can be added by only editing Excel files—no R coding required!
 
 Let's assume you are adding a new country with the two-letter code "XX".
 
-## Summary of Steps
+## Summary of Steps (Simplified!)
 
-1.  **Prepare a Data Dictionary**: Create a country-specific dictionary to map raw data to the package's standardized format.
-2.  **Add Lookup Tables**: If necessary, define lookup tables for country-specific codes and values.
-3.  **Create the Recoding Script**: Develop a new R script containing functions to clean the data and generate the four standard EHR-BSI tables (`Patient`, `Isolate`, `Res`, `EHRBSI`).
-4.  **Update the Main Orchestrator**: Modify the central `process_country_bsi` function to recognize the new country and execute its processing script.
-5.  **Test the Implementation**: Add a new section to `main.R` to run the pipeline for the new country.
+1.  **Create Country Excel File**: Copy the template and customize three tabs (Dictionary, Lookups, Config)
+2.  **Test the Implementation**: Use `process_country_bsi()` - it automatically works with your new country!
+3.  **(Optional) Add R Logic**: Only if you need complex transformations that can't be expressed in Excel
+
+**That's it!** No need to modify orchestrator code, create R recoding scripts, or write boilerplate functions.
 
 ---
 
-## Step 1: Prepare a Data Dictionary
+## Step 1: Create Country Excel File
 
-The package uses the `epiuf` framework, which relies on an Excel-based data dictionary to standardize column names and variable values.
+The package uses country-specific Excel files to manage column renaming, value mappings, and processing configuration.
 
--   Create a new Excel file named `dictionary_raw_BSI_XX.xlsx` and place it in the `reference/` directory.
--   Follow the structure of the existing dictionaries (`dictionary_raw_BSI_Malta.xlsx`, `dictionary_raw_BSI_Estonia.xlsx`) to define mappings for your country's raw data file.
+### Create the Excel File
 
-## Step 2: Add Lookup Tables (If Needed)
+-   Create a new Excel file named `XX.xlsx` and place it in the `reference/dictionaries/` directory.
+-   The file must contain **three tabs**: Dictionary, Lookups, and Config
 
-If your country's data uses local codes that need to be mapped to the package's standard values (e.g., for hospital wards, organism names, outcome codes), you must add lookup tables.
+#### Tab 1: Dictionary
 
--   Open the `reference/Lookup_Tables.R` file.
--   Add new data frames for your country's lookups. For example:
-    ```r
-    XX_PathogenCode_Lookup <- data.frame(
-      xx_pathogen_name = c("Staph. aureus", "E. coli"),
-      microorganism_code = c("115329001", "118941005")
+This tab handles column renaming from raw data to standardized EHR-BSI format.
+
+**Structure:**
+- Column A: `raw_column_name` - The original column name in your country's data
+- Column B: `standard_column_name` - The standardized EHR-BSI column name
+
+**Example:**
+| raw_column_name | standard_column_name |
+|-----------------|---------------------|
+| PatientCounter  | PatientId           |
+| Gender          | Sex                 |
+| Pathogen        | MicroorganismCode   |
+
+#### Tab 2: Lookups
+
+This tab contains all value mapping tables in a long format (stacked).
+
+**Structure:**
+- Column A: `lookup_name` - Name of the lookup table (e.g., "XX_HospType")
+- Column B: `from_value` - The original value in your data
+- Column C: `to_value` - The standardized value
+
+**Example:**
+| lookup_name | from_value | to_value |
+|-------------|------------|----------|
+| XX_HospType | HOSP_A     | TERT     |
+| XX_HospType | HOSP_B     | SEC      |
+| XX_Outcome  | DEAD       | D        |
+| XX_Outcome  | ALIVE      | A        |
+
+### Shared Lookups
+
+Include the standard Name_Lookup and Specialty_Lookup entries in your country's Lookups tab. These are shared across all countries but must be included in each country file.
+
+#### Tab 3: Config
+
+This tab contains **all processing configuration** in a simple key-value format. This is the **major simplification** - no R coding needed!
+
+**Structure:**
+- Column A: `config_key` - The configuration parameter name
+- Column B: `config_value` - The value for this parameter
+- Column C: `config_type` - The data type (string, numeric, boolean, list)
+
+**Example Config Tab:**
+| config_key | config_value | config_type |
+|------------|-------------|-------------|
+| date_format | %d/%m/%Y | string |
+| has_time | FALSE | boolean |
+| date_columns | DateOfSpecCollection,DateOfHospitalAdmission | list |
+| antibiotic_format | wide | string |
+| antibiotic_prefix | ab_ | string |
+| record_id_bsi | {HospitalId}-{year} | string |
+| record_id_patient | {PatientId}-{admit_date} | string |
+| terminology_clinical | ICD-10 | string |
+| terminology_microbiological | SNOMED-CT | string |
+| default_patient_LaboratoryCode | XX001 | string |
+| default_ehrbsi_ESurvBSI | 2 | numeric |
+
+**Complete examples:**
+- See `reference/dictionaries/MT_Config_Template.csv` for Malta (wide antibiotic format)
+- See `reference/dictionaries/EE_Config_Template.csv` for Estonia (long antibiotic format)
+- See `reference/dictionaries/CONFIG_REFERENCE.md` for all possible configuration keys
+
+**Key configuration sections:**
+1. **Date handling**: Format, time inclusion, columns to parse
+2. **Record IDs**: Templates for BSI, patient, and isolate IDs
+3. **Antibiotic format**: Wide (Malta-style) or long (Estonia-style) with test types
+4. **Terminology**: Clinical and microbiological coding systems
+5. **Lookups**: Which lookup tables to load
+6. **Lookup mappings**: How to apply lookups to columns
+7. **Table defaults**: Default values for patient, isolate, and EHRBSI tables
+8. **Cleanup**: Non-CDM columns to remove
+
+## Step 2: Test Your Configuration
+
+**That's it!** The system automatically recognizes your new country once the Excel file exists. Test it:
+
+```r
+# Load package
+devtools::load_all()
+
+# Load your raw data
+xx_data <- read.csv("path/to/your/data.csv")  # or readxl::read_xlsx() for Excel
+
+# Process the data - it just works!
+result <- process_country_bsi(
+  country = "XX",
+  input_data = xx_data,
+  episode_duration = 14,
+  calculate_episodes = TRUE,
+  write_to_file = TRUE,
+  write_to_file_path = "output/"
+)
+
+# Check results
+names(result)  # Should show: ehrbsi, patient, isolate, res
+head(result$patient)
+```
+
+**Verification checklist:**
+- ✓ Column names are correctly standardized (from Dictionary tab)
+- ✓ Lookups are applied correctly (from Lookups tab)
+- ✓ All four tables are generated (using Config tab settings)
+- ✓ Episode calculations complete successfully
+- ✓ Output Excel file is created
+
+**No orchestrator modifications needed!** The system is fully dynamic.
+
+## Step 3: (Optional) Add Custom R Logic
+
+**Only needed if you have complex transformations that can't be expressed in Excel.**
+
+Most countries don't need this step! But if you do:
+
+Add to `R/countryConfigs.R` in the `COUNTRY_R_TRANSFORMS` list:
+
+```r
+COUNTRY_R_TRANSFORMS <- list(
+  # ... existing countries ...
+  
+  XX = list(
+    field_transforms = list(
+      CustomField = function(data) {
+        # Your complex R logic here
+        dplyr::case_when(
+          data$field1 == "A" & data$field2 > 10 ~ "Category1",
+          data$field1 == "B" ~ "Category2",
+          TRUE ~ NA_character_
+        )
+      },
+      AnotherCustomField = function(data) {
+        # More custom logic
+        paste0(data$HospitalId, "_", data$UnitId)
+      }
     )
-    ```
+  )
+)
+```
 
-## Step 3: Create the Country-Specific Recoding Script
+**Examples of when you need R logic:**
+- Conditional logic based on multiple fields (see Malta's `patientType` transform)
+- Gap analysis between admissions (see Estonia's `PreviousAdmission` transform)
+- Complex string manipulations
+- Date calculations beyond simple parsing
 
-This is the most significant part of the process. You need to create an R script with a set of functions that handle the unique structure and format of your country's data.
+**Examples of what Config tab can handle (no R needed):**
+- Column renaming
+- Value lookups/mappings
+- Date format parsing
+- Record ID templating
+- Default values
+- Simple field mapping
 
--   Create a new file in the `R/` directory named `recodingXX.R`.
--   Inside this file, you must define five internal functions. These functions will be called by the main orchestrator. Use the existing `R/recodingMalta.R` and `R/recodingEstonia.R` files as a guide.
+## Summary
 
-#### 1. `.process_xx_basic_cleaning(raw_data, reporting_year)`
-   - **Purpose**: Perform initial data cleaning, transformations, and ID creation.
-   - **Key Tasks**:
-     - Parse dates into a standard format. Note the different approaches in Malta (`parse_dates_with_fallback`) and Estonia (`as.POSIXct`).
-     - Create the unique, hierarchical record IDs (`record_id_bsi`, `record_id_patient`, `record_id_isolate`).
-     - Recode variables using the lookup tables you defined in Step 2.
+The new system simplifies country onboarding to:
 
-#### 2. `.create_xx_patient_table(recoded_data)`
-   - **Purpose**: Generate the standardized `Patient` table.
-   - **Recommendation**: Use the shared `create_standard_patient_table()` function as a starting point, and then add or modify columns as required for your country's data. For an example of custom logic, see how `PreviousAdmission` is calculated in `.create_estonia_patient_table`.
+### Required (Everyone):
+1. **Excel file** (`reference/dictionaries/XX.xlsx`) - All three tabs:
+   - Dictionary: Column name mappings
+   - Lookups: Value mappings
+   - Config: Processing configuration
 
-#### 3. `.create_xx_isolate_table(recoded_data)`
-   - **Purpose**: Generate the standardized `Isolate` table.
-   - **Recommendation**: Use the shared `create_standard_isolate_table()` function as a base. You may need to add logic to map country-specific organism codes, as seen in `.create_malta_isolate_table`.
+### Optional (Complex Cases Only):
+2. **R transforms** (`COUNTRY_R_TRANSFORMS` in `R/countryConfigs.R`) - Only for complex logic
 
-#### 4. `.create_xx_res_table(recoded_data, ...)`
-   - **Purpose**: Generate the standardized `Res` (antimicrobial resistance) table.
-   - **This is the most complex function and is highly dependent on the source data format.**
-     - **Wide Format (like Malta)**: If your data has one column per antibiotic (e.g., `ab_PEN`, `ab_AMP`), you will need to pivot the data into a long format. See `.create_malta_res_table`.
-     - **Long Format (like Estonia)**: If your data is already in a long format (e.g., columns for `sensitivityTest`, `sensitivityResult`), you will need to parse these records to extract the antibiotic name, test type (MIC, Zone, etc.), and result. This is a more complex process; review `.create_estonia_res_table` carefully. This may also require additional dependencies like the `metadata_path` to map antibiotic names to the HAI standard.
+### Not Needed Anymore:
+- ❌ Country-specific recoding R files
+- ❌ Orchestrator modifications
+- ❌ Boilerplate wrapper functions
 
-#### 5. `.create_xx_ehrbsi_table(recoded_data, reporting_year, episode_duration)`
-   - **Purpose**: Generate the top-level `EHRBSI` summary table.
-   - **Recommendation**: Use the shared `create_base_ehrbsi_table()` function and then add or modify columns with country-specific metadata (e.g., `HospitalType`, `ProportionPopulationCovered`).
-
-## Step 4: Update the Main Orchestrator
-
-The main `process_country_bsi` function in `R/genericRecodeOrchestrator.R` must be updated to recognize the new country.
-
-1.  **Add to Country Validation**:
-    -   Find the line `if (!country %in% c("MT", "EE"))` and add your new country code:
-        ```r
-        if (!country %in% c("MT", "EE", "XX"))
-        ```
-
-2.  **Add the Country Processing Block**:
-    -   Add an `else if` block to the main processing section to call the five functions you created in `recodingXX.R`.
-        ```r
-        } else if (country == "XX") {
-          recoded_data <- .process_xx_basic_cleaning(raw_data, reporting_year)
-          
-          # Create the four tables
-          patient <- .create_xx_patient_table(recoded_data)
-          isolate <- .create_xx_isolate_table(recoded_data)
-          res <- .create_xx_res_table(recoded_data) # Add metadata_path if needed
-          ehrbsi <- .create_xx_ehrbsi_table(recoded_data, reporting_year, episode_duration)
-        }
-        ```
-
-## Step 5: Test the Implementation
-
-Finally, test your new implementation by running it from the `main.R` script.
-
--   Make sure `devtools::load_all()` is called at the top of the script. This will make the new functions in `R/recodingXX.R` available to the package.
--   Add a new block to `main.R` to call `process_country_bsi` for your country:
-    ```r
-    # Process data for country XX
-    result <- process_country_bsi(
-      country = "XX",
-      input_file = "your_raw_data_file.csv",
-      input_file_path = "path/to/your/data/",
-      # ... other parameters as needed ...
-      write_to_file = TRUE
-    )
-    ```
--   Run the script and check the console for errors and verify the contents of the generated Excel file. 
+**Benefits:**
+- ✅ 95% of countries need only Excel edits
+- ✅ No R coding expertise required for standard cases
+- ✅ Self-documenting configuration
+- ✅ Easy to maintain and update
+- ✅ Automatic recognition by system 

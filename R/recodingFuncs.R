@@ -3,6 +3,70 @@
 #' This file contains shared functions used by both Estonia and Malta
 #' recoding scripts to avoid code duplication and ensure consistency.
 
+#' Load country configuration from Excel file
+#'
+#' @param country_code Two-letter country code
+#' @param dictionary_path Optional path to country Excel file
+#'
+#' @return List containing configuration from Config tab
+#' @export
+load_country_config_from_excel <- function(country_code, dictionary_path = NULL) {
+  if (is.null(dictionary_path)) {
+    dictionary_path <- file.path("reference", "dictionaries", paste0(country_code, ".xlsx"))
+  }
+  
+  if (!file.exists(dictionary_path)) {
+    stop("Dictionary file not found: ", dictionary_path, call. = FALSE)
+  }
+  
+  # Try to read Config tab
+  config_raw <- tryCatch({
+    readxl::read_xlsx(dictionary_path, sheet = "Config")
+  }, error = function(e) {
+    return(NULL)  # Config tab optional for backward compatibility
+  })
+  
+  if (is.null(config_raw)) {
+    return(list())  # Return empty config if no Config tab
+  }
+  
+  # Validate structure
+  required_cols <- c("config_key", "config_value")
+  if (!all(required_cols %in% names(config_raw))) {
+    warning("Config tab missing required columns (config_key, config_value). Using empty config.", 
+            call. = FALSE)
+    return(list())
+  }
+  
+  # Parse config into list
+  config <- list()
+  for (i in seq_len(nrow(config_raw))) {
+    key <- config_raw$config_key[i]
+    value <- config_raw$config_value[i]
+    
+    # Skip NA keys
+    if (is.na(key)) next
+    
+    type <- if ("config_type" %in% names(config_raw) && !is.na(config_raw$config_type[i])) {
+      config_raw$config_type[i]
+    } else {
+      "string"
+    }
+    
+    # Type conversion
+    parsed_value <- switch(type,
+      "boolean" = as.logical(value),
+      "numeric" = as.numeric(value),
+      "list" = if (!is.na(value)) trimws(strsplit(as.character(value), ",")[[1]]) else character(0),
+      as.character(value)  # string default
+    )
+    
+    config[[key]] <- parsed_value
+  }
+  
+  return(config)
+}
+
 #' Validate that required columns exist in the data (Enhanced)
 #'
 #' @param data Data frame to validate
@@ -40,24 +104,18 @@ validate_required_columns <- function(data, required_cols, context_name = "datas
   }
 }
 
-#' Parse date columns with dictionary fallback (Enhanced)
+#' Parse date columns with specified format
 #'
 #' @param data Data frame containing date columns
-#' @param fallback_cols Character vector of date column names to use if dictionary unavailable
+#' @param fallback_cols Character vector of date column names to parse
 #' @param date_format Format string for date parsing (can include time)
 #' @param preserve_time Whether to preserve time component (returns POSIXct instead of Date)
 #'
 #' @return Data frame with parsed date columns
 parse_dates_with_fallback <- function(data, fallback_cols, date_format = "%d/%m/%Y", 
                                      preserve_time = FALSE) {
-  if (exists("getAnyDictionaryValue")) {
-    # Use dictionary if available
-    date_variables <- getAnyDictionaryValue(varname = "date", search = "type", value = "generic_name")
-    available_date_cols <- intersect(date_variables, names(data))
-  } else {
-    # Fallback to specified columns
-    available_date_cols <- intersect(fallback_cols, names(data))
-  }
+  # Parse specified date columns
+  available_date_cols <- intersect(fallback_cols, names(data))
   
   if (length(available_date_cols) > 0) {
     for (col in available_date_cols) {
@@ -442,6 +500,182 @@ get_standard_table_columns <- function(table_type) {
   )
 }
 
+#' Load country lookups from Excel file
+#'
+#' @param country_code Two-letter country code (e.g., "MT", "EE")
+#' @param dictionary_path Path to the country-specific Excel file (optional)
+#'
+#' @return List of lookup data.tables keyed by lookup name
+#' @export
+load_country_lookups_from_excel <- function(country_code, dictionary_path = NULL) {
+  # Set default path if not provided
+  if (is.null(dictionary_path)) {
+    dictionary_path <- file.path("reference", "dictionaries", paste0(country_code, ".xlsx"))
+  }
+  
+  # Check if file exists
+  if (!file.exists(dictionary_path)) {
+    stop("Dictionary file not found: ", dictionary_path, call. = FALSE)
+  }
+  
+  # Read the Lookups tab
+  tryCatch({
+    lookups_long <- readxl::read_xlsx(dictionary_path, sheet = "Lookups")
+  }, error = function(e) {
+    stop("Failed to read Lookups tab from ", dictionary_path, ": ", e$message, call. = FALSE)
+  })
+  
+  # Validate structure
+  required_cols <- c("lookup_name", "from_value", "to_value")
+  missing_cols <- setdiff(required_cols, names(lookups_long))
+  if (length(missing_cols) > 0) {
+    stop("Lookups tab missing required columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+  }
+  
+  # Convert to list of data.tables grouped by lookup_name
+  lookup_list <- list()
+  unique_lookup_names <- unique(lookups_long$lookup_name)
+  
+  for (lookup_name in unique_lookup_names) {
+    # Filter rows for this lookup
+    lookup_subset <- lookups_long[lookups_long$lookup_name == lookup_name, ]
+    
+    # Create data.table with appropriate column names based on lookup type
+    # Determine column names from the original lookup pattern
+    if (grepl("^Name_Lookup$", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        earsval = lookup_subset$from_value,
+        ehrval = lookup_subset$to_value
+      )
+    } else if (grepl("^Specialty_Lookup$", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        fromearsval = lookup_subset$from_value,
+        ehrval = lookup_subset$to_value
+      )
+    } else if (grepl("UnitSpecialty", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        malta_code = lookup_subset$from_value,
+        generic_code = lookup_subset$to_value
+      )
+    } else if (grepl("Outcome", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        malta_code = lookup_subset$from_value,
+        generic_code = lookup_subset$to_value
+      )
+    } else if (grepl("Malta_HospType", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        malta_hosptype = lookup_subset$from_value,
+        hosptype_code = lookup_subset$to_value
+      )
+    } else if (grepl("PathogenCode", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        malta_pathogen_name = lookup_subset$from_value,
+        microorganism_code = lookup_subset$to_value
+      )
+    } else if (grepl("Estonia_MecRes", lookup_name)) {
+      # Special case: MecRes has reversed structure (from = value, to = type)
+      lookup_dt <- data.table::data.table(
+        resistance_value = lookup_subset$from_value,
+        resistance_type = lookup_subset$to_value
+      )
+    } else if (grepl("Estonia_ResRecode", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        estonia_result = lookup_subset$from_value,
+        generic_result = lookup_subset$to_value
+      )
+    } else if (grepl("Ab_EST2ENG", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        estonia_name = lookup_subset$from_value,
+        english_name = lookup_subset$to_value
+      )
+    } else if (grepl("Ab_ENG2HAI", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        english_name = lookup_subset$from_value,
+        generic_name = lookup_subset$to_value
+      )
+    } else if (grepl("Estonia_HospType", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        estonia_hosptype = lookup_subset$from_value,
+        hosptype_code = lookup_subset$to_value
+      )
+    } else if (grepl("Estonia_HospGeog", lookup_name)) {
+      lookup_dt <- data.table::data.table(
+        estonia_hosptype = lookup_subset$from_value,
+        nuts3_code = lookup_subset$to_value
+      )
+    } else {
+      # Generic fallback
+      lookup_dt <- data.table::data.table(
+        from = lookup_subset$from_value,
+        to = lookup_subset$to_value
+      )
+    }
+    
+    # Remove country prefix from lookup name for consistency with existing code
+    clean_name <- sub("^(Malta|Estonia)_", "", lookup_name)
+    if (clean_name == "Name_Lookup" || clean_name == "Specialty_Lookup") {
+      clean_name <- lookup_name  # Keep full name for shared lookups
+    }
+    
+    lookup_list[[clean_name]] <- lookup_dt
+  }
+  
+  return(lookup_list)
+}
+
+#' Apply dictionary column renaming from Excel
+#'
+#' @param data Data frame with raw column names
+#' @param dictionary_path Path to the country-specific Excel file
+#'
+#' @return Data frame with standardized column names
+#' @export
+apply_dictionary_from_excel <- function(data, dictionary_path) {
+  # Check if file exists
+  if (!file.exists(dictionary_path)) {
+    warning("Dictionary file not found: ", dictionary_path, ". Proceeding without renaming.", call. = FALSE)
+    return(data)
+  }
+  
+  # Read the Dictionary tab
+  tryCatch({
+    dictionary <- readxl::read_xlsx(dictionary_path, sheet = "Dictionary")
+  }, error = function(e) {
+    warning("Failed to read Dictionary tab from ", dictionary_path, ": ", e$message, 
+            ". Proceeding without renaming.", call. = FALSE)
+    return(data)
+  })
+  
+  # Validate structure
+  required_cols <- c("raw_column_name", "standard_column_name")
+  missing_cols <- setdiff(required_cols, names(dictionary))
+  if (length(missing_cols) > 0) {
+    warning("Dictionary tab missing required columns: ", paste(missing_cols, collapse = ", "),
+            ". Proceeding without renaming.", call. = FALSE)
+    return(data)
+  }
+  
+  # Create a named vector for renaming
+  rename_map <- setNames(dictionary$standard_column_name, dictionary$raw_column_name)
+  
+  # Only rename columns that exist in the data
+  cols_to_rename <- intersect(names(data), names(rename_map))
+  
+  if (length(cols_to_rename) > 0) {
+    # Rename columns
+    for (old_name in cols_to_rename) {
+      new_name <- rename_map[[old_name]]
+      names(data)[names(data) == old_name] <- new_name
+    }
+    
+    message("Renamed ", length(cols_to_rename), " columns using dictionary")
+  } else {
+    message("No columns matched dictionary entries. Data may already be standardized.")
+  }
+  
+  return(data)
+}
+
 #' Apply a chain of lookups to a column
 #'
 #' @param data Data frame containing the column to recode
@@ -701,13 +935,21 @@ process_basic_cleaning <- function(raw_data, config, country_code) {
           )
         }
       } else {
-        recoded_data <- recode_with_lookup(
-          recoded_data, 
-          mapping_config$column, 
-          lookup_vec
-        )
+        # When no fallback, apply lookup to output column without modifying source
         if (mapping_config$column != mapping_config$output_column) {
-          recoded_data[[mapping_config$output_column]] <- recoded_data[[mapping_config$column]]
+          # Create new column with lookup applied, don't modify source
+          recoded_data[[mapping_config$output_column]] <- dplyr::recode(
+            recoded_data[[mapping_config$column]], 
+            !!!lookup_vec,
+            .default = recoded_data[[mapping_config$column]]
+          )
+        } else {
+          # Only modify in-place if output is same as input
+          recoded_data <- recode_with_lookup(
+            recoded_data, 
+            mapping_config$column, 
+            lookup_vec
+          )
         }
       }
     }
@@ -875,4 +1117,44 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
   res <- finalize_table(res, get_standard_table_columns("res"))
   
   return(res)
+}
+
+#' Process country BSI data using config-driven approach
+#'
+#' This generic processor works for any country with a valid configuration.
+#' It replaces the need for country-specific recoding files.
+#'
+#' @param raw_data Raw data frame
+#' @param country_code Two-letter country code
+#' @param episode_duration Episode duration in days
+#' @param metadata_path Path to metadata file
+#'
+#' @return List with ehrbsi, patient, isolate, res tables
+#' @export
+process_country_generic <- function(raw_data, country_code, episode_duration, metadata_path = NULL) {
+  # Get config (from Excel + R transforms)
+  config <- get_country_config(country_code)
+  
+  # Step 1: Basic cleaning
+  recoded_data <- process_basic_cleaning(raw_data, config, country_code)
+  
+  # Step 2: Create tables
+  patient <- create_standard_patient_table(recoded_data, config = config)
+  patient <- finalize_table(patient, get_standard_table_columns("patient"))
+  
+  isolate <- create_standard_isolate_table(recoded_data, config = config)
+  isolate <- finalize_table(isolate, get_standard_table_columns("isolate"))
+  
+  res <- create_standard_res_table(recoded_data, config, country_code, metadata_path)
+  
+  ehrbsi <- create_base_ehrbsi_table(recoded_data, country_code, episode_duration, 
+                                     record_id_col = "record_id_bsi", config = config)
+  ehrbsi <- finalize_table(ehrbsi, get_standard_table_columns("ehrbsi"))
+  
+  return(list(
+    ehrbsi = ehrbsi,
+    patient = patient,
+    isolate = isolate,
+    res = res
+  ))
 } 

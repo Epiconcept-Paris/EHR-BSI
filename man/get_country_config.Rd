@@ -2,21 +2,18 @@
 % Please edit documentation in R/countryConfigs.R
 \name{get_country_config}
 \alias{get_country_config}
-\title{Country-Specific Configuration for EHR-BSI Data Processing}
+\title{Get country configuration}
 \usage{
-get_country_config(country_code)
+get_country_config(country_code, dictionary_path = NULL)
 }
 \arguments{
 \item{country_code}{Two-letter country code (e.g., "MT", "EE")}
+
+\item{dictionary_path}{Optional path to Excel file}
 }
 \value{
 List containing country-specific configuration
 }
 \description{
-This file defines configuration objects for each country, enabling a unified
-data processing pipeline while accommodating country-specific requirements.
+Get country configuration
 }
-\keyword{Get}
-\keyword{configuration}
-\keyword{country}
-\keyword{internal}

@@ -3,7 +3,7 @@
 \docType{data}
 \name{COUNTRY_CONFIGS}
 \alias{COUNTRY_CONFIGS}
-\title{Country Configuration Objects}
+\title{Country Configuration Objects (Legacy)}
 \format{
 List of configuration objects, one per country
 }
@@ -11,6 +11,10 @@ List of configuration objects, one per country
 COUNTRY_CONFIGS
 }
 \description{
-Country Configuration Objects
+Country Configuration Objects (Legacy)
+}
+\note{
+This is maintained for backward compatibility. New countries should use
+Excel-based configuration with COUNTRY_R_TRANSFORMS for R-only logic.
 }
 \keyword{datasets}
