@@ -4,6 +4,43 @@ calculateEpisodes <- function(patient_df,
                               episodeDuration = 14){
   comm_codes <- unique(commensal_df$SNOMED.Code)
   
+  # Robust date coercion: supports Date/POSIX, ISO, EU/US, with/without time, and Excel serials
+  to_date <- function(x) {
+    if (inherits(x, "Date")) return(x)
+    if (inherits(x, "POSIXt")) return(as.Date(x))
+    # Excel serials or numeric-like strings
+    if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30"))
+    if (is.character(x)) {
+      xs <- trimws(x)
+      num_idx <- suppressWarnings(!is.na(as.numeric(xs)))
+      out <- rep(as.Date(NA), length(xs))
+      if (any(num_idx)) {
+        out[num_idx] <- as.Date(as.numeric(xs[num_idx]), origin = "1899-12-30")
+      }
+      # Try parsing remaining with a broad set of formats
+      try_formats <- c(
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+        "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
+        "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y",
+        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%Y",
+        "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d"
+      )
+      need_parse <- which(is.na(out))
+      if (length(need_parse) > 0) {
+        parsed <- suppressWarnings(try(as.POSIXlt(xs[need_parse], tz = "", tryFormats = try_formats), silent = TRUE))
+        if (!inherits(parsed, "try-error")) {
+          out[need_parse] <- as.Date(parsed)
+        }
+      }
+      return(out)
+    }
+    # Fallback: try generic parsing with safeguards
+    parsed <- suppressWarnings(try(as.POSIXlt(x, tz = "", tryFormats = c("%Y-%m-%d", "%d/%m/%Y")), silent = TRUE))
+    if (inherits(parsed, "try-error")) return(as.Date(NA))
+    as.Date(parsed)
+  }
+  
   isolates_flagged <- isolate_df %>%
     mutate(org_type = if_else(MicroorganismCode %in% comm_codes,
                               "CC", "RP"))
@@ -22,15 +59,15 @@ calculateEpisodes <- function(patient_df,
                         DateOfHospitalDischarge),
                by = "PatientId",
                relationship = "many-to-many"  ) %>%
-    # Convert dates to Date class for consistent comparison (handles POSIXct from Estonia)
-    filter(as.Date(DateOfSpecCollection) >= as.Date(DateOfHospitalAdmission),
+    # Convert dates to Date class for consistent comparison (handles POSIXct/character)
+    filter(to_date(DateOfSpecCollection) >= to_date(DateOfHospitalAdmission),
            is.na(DateOfHospitalDischarge) |
-             as.Date(DateOfSpecCollection) <= as.Date(DateOfHospitalDischarge))
+             to_date(DateOfSpecCollection) <= to_date(DateOfHospitalDischarge))
   
   ## ---- RULE 1  – recognised pathogens (one pos = onset) ----------------
   rule1 <- iso_in_admission %>%
     filter(org_type == "RP") %>%
-    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = DateOfSpecCollection,
+    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecCollection),
               MicroorganismCode, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
   ## ---- RULE 2  – ≥2 concordant CC in 3 days ----------------------------
@@ -38,10 +75,10 @@ calculateEpisodes <- function(patient_df,
     filter(org_type == "CC", !is.na(DateOfSpecCollection)) %>%
     arrange(PatientId, MicroorganismCode, DateOfSpecCollection) %>%
     group_by(PatientId, MicroorganismCode) %>%
-    mutate(cluster_first = flag_cc_clusters(DateOfSpecCollection, episodeDuration)) %>%
+    mutate(cluster_first = flag_cc_clusters(to_date(DateOfSpecCollection), episodeDuration)) %>%
     ungroup() %>%
     filter(cluster_first) %>%
-    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = DateOfSpecCollection,
+    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecCollection),
               MicroorganismCode, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
   bsi_core <- bind_rows(rule1, rule2) %>%
@@ -99,7 +136,7 @@ calculateEpisodes <- function(patient_df,
       ),
       EpisodeOrigin = if_else(EpisodeClass == "CA", "Community", "Healthcare"),
       # Add episodeYear extracted from EpisodeStartDate
-      episodeYear = as.numeric(format(EpisodeStartDate, "%Y"))
+      episodeYear = as.numeric(format(as.Date(EpisodeStartDate), "%Y"))
     )
   
   ## ── 4 · Return the enriched table ────────────────────────────────

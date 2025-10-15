@@ -116,16 +116,23 @@ parse_dates_with_fallback <- function(data, fallback_cols, date_format = "%d/%m/
                                      preserve_time = FALSE) {
   # Parse specified date columns
   available_date_cols <- intersect(fallback_cols, names(data))
+  # Normalize factor/character to character before parsing; guard against non-atomic types
+  coerce_to_char <- function(x) {
+    if (is.factor(x)) return(as.character(x))
+    if (inherits(x, "POSIXct") || inherits(x, "Date")) return(x)
+    if (!is.atomic(x)) return(as.character(x))
+    x
+  }
   
   if (length(available_date_cols) > 0) {
     for (col in available_date_cols) {
       tryCatch({
         if (preserve_time || grepl("%H|%M|%S", date_format)) {
           # Parse as POSIXct for datetime
-          data[[col]] <- as.POSIXct(data[[col]], format = date_format)
+          data[[col]] <- as.POSIXct(coerce_to_char(data[[col]]), format = date_format)
         } else {
           # Parse as Date for date-only
-          data[[col]] <- as.Date(data[[col]], format = date_format)
+          data[[col]] <- as.Date(coerce_to_char(data[[col]]), format = date_format)
         }
       }, error = function(e) {
         warning("Failed to parse date column '", col, "': ", e$message, call. = FALSE)
@@ -175,7 +182,7 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
     dplyr::mutate(
       AggregationLevel = "HOSP",
       DataSource = paste0(country_code, "-EHRBSI"),
-      DateUsedForStatistics = format(DateOfSpecCollection, "%Y"),
+      DateUsedForStatistics = format(as.Date(DateOfSpecCollection), "%Y"),
       EpisodeDuration = episode_duration,
       HospitalId = HospitalId,
       LaboratoryCode = NA_character_,
@@ -288,7 +295,7 @@ create_hierarchical_record_ids <- function(data, hospital_col = "HospitalId",
   if (admission_date_col %in% names(data)) {
     result <- result %>%
       dplyr::mutate(
-        admit_date_formatted = format(.data[[admission_date_col]], "%d%m%Y"),
+        admit_date_formatted = format(as.Date(.data[[admission_date_col]]), "%d%m%Y"),
         record_id_patient = paste0(.data[[patient_col]], "-", admit_date_formatted)
       ) %>%
       dplyr::select(-admit_date_formatted)
@@ -303,7 +310,7 @@ create_hierarchical_record_ids <- function(data, hospital_col = "HospitalId",
   if (specimen_date_col %in% names(data)) {
     result <- result %>%
       dplyr::mutate(
-        specimen_date_formatted = format(.data[[specimen_date_col]], "%d%m%Y"),
+        specimen_date_formatted = format(as.Date(.data[[specimen_date_col]]), "%d%m%Y"),
         record_id_isolate = paste0(.data[[patient_col]], "-", specimen_date_formatted)
       ) %>%
       dplyr::select(-specimen_date_formatted)
@@ -655,20 +662,47 @@ apply_dictionary_from_excel <- function(data, dictionary_path) {
     return(data)
   }
   
-  # Create a named vector for renaming
+  # Create a named vector for renaming (exact match)
   rename_map <- setNames(dictionary$standard_column_name, dictionary$raw_column_name)
   
-  # Only rename columns that exist in the data
+  # Phase 1: exact matches only
   cols_to_rename <- intersect(names(data), names(rename_map))
-  
+  renamed_count <- 0L
   if (length(cols_to_rename) > 0) {
-    # Rename columns
     for (old_name in cols_to_rename) {
       new_name <- rename_map[[old_name]]
       names(data)[names(data) == old_name] <- new_name
     }
-    
-    message("Renamed ", length(cols_to_rename), " columns using dictionary")
+    renamed_count <- length(cols_to_rename)
+  }
+  
+  # Phase 2: tolerant matches (case/space/punctuation-insensitive)
+  # This helps when Excel headers have subtle spacing differences like "L3_RSLT_CODE_NAME (SIR)"
+  norm <- function(x) tolower(gsub("[^a-z0-9]", "", trimws(as.character(x))))
+  raw_names <- names(rename_map)
+  still_unmatched <- setdiff(raw_names, cols_to_rename)
+  if (length(still_unmatched) > 0) {
+    norm_data <- setNames(vapply(names(data), norm, character(1)), names(data))
+    norm_raw  <- setNames(vapply(still_unmatched, norm, character(1)), still_unmatched)
+    tolerant_hits <- integer(0)
+    for (rn in names(norm_raw)) {
+      candidates <- names(norm_data)[norm_data == norm_raw[[rn]]]
+      if (length(candidates) == 1L) {
+        old <- candidates[[1]]
+        new <- rename_map[[rn]]
+        names(data)[names(data) == old] <- new
+        tolerant_hits <- c(tolerant_hits, 1L)
+      } else if (length(candidates) > 1L) {
+        warning("Ambiguous dictionary match for '", rn, "' -> candidates: ", paste(candidates, collapse = ", "))
+      }
+    }
+    if (length(tolerant_hits) > 0) {
+      renamed_count <- renamed_count + sum(tolerant_hits)
+    }
+  }
+  
+  if (renamed_count > 0) {
+    message("Renamed ", renamed_count, " columns using dictionary")
   } else {
     message("No columns matched dictionary entries. Data may already be standardized.")
   }
@@ -755,6 +789,17 @@ create_flexible_record_ids <- function(data, id_templates, config) {
   
   # Helper function to format dates
   format_date_for_id <- function(date_col, format_type = "date") {
+    # Ensure date_col is a Date or POSIXt object
+    if (!inherits(date_col, c("Date", "POSIXct", "POSIXlt"))) {
+      # Try to convert to Date if it's character or numeric
+      date_col <- tryCatch({
+        as.Date(date_col)
+      }, error = function(e) {
+        warning("Could not convert date column to Date object: ", e$message)
+        return(rep(NA, length(date_col)))
+      })
+    }
+    
     if (format_type == "datetime") {
       paste0(
         format(date_col, "%d%m%Y"), "_",
@@ -1016,6 +1061,22 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
     
   } else {
     # Estonia-style: long format with test classification
+    # Defensive: check required columns exist
+    required_long <- c(ab_config$test_column, ab_config$result_column, ab_config$value_column)
+    miss_long <- setdiff(required_long, names(recoded_data))
+    if (length(miss_long) > 0) {
+      # Try tolerant matches to suggest possible fixes
+      norm <- function(x) tolower(gsub("[^a-z0-9]", "", x))
+      nn <- setNames(vapply(names(recoded_data), norm, character(1)), names(recoded_data))
+      suggestions <- lapply(miss_long, function(m) {
+        mm <- norm(m)
+        close <- names(nn)[nn == mm]
+        if (length(close) == 0) close <- names(recoded_data)[agrepl(m, names(recoded_data), ignore.case = TRUE)]
+        paste0("'", m, "' -> ", ifelse(length(close) > 0, paste(close, collapse = ", "), "no close match"))
+      })
+      stop("Missing long-format antibiotic column(s): ", paste(miss_long, collapse = ", "),
+           ". Suggestions: ", paste(unlist(suggestions), collapse = "; "))
+    }
     res <- recoded_data %>%
       dplyr::filter(!is.na(.data[[ab_config$test_column]]) & .data[[ab_config$test_column]] != "") %>%
       dplyr::mutate(
@@ -1023,11 +1084,10 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
         ParentId = record_id_isolate
       )
     
-    # Classify test types
-    # Extract test type patterns from config for easier reference
-    grad_pattern <- ab_config$test_types$grad
-    mic_pattern <- ab_config$test_types$mic
-    zone_pattern <- ab_config$test_types$zone
+    # Classify test types (provide defensible defaults if missing)
+    grad_pattern <- ab_config$test_types$grad %||% " Grad$"
+    mic_pattern <- ab_config$test_types$mic %||% " MIK$"
+    zone_pattern <- ab_config$test_types$zone %||% " Disk$"
     
     res <- res %>%
       dplyr::mutate(
