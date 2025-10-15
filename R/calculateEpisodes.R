@@ -48,17 +48,18 @@ calculateEpisodes <- function(patient_df,
   ## ------------------------------------------------------------------
   ## 2.  Attach admission dates so we know which isolates belong where
   ## ------------------------------------------------------------------
+  # ParentId in isolate now links to patient's RecordId (not PatientId)
   iso_in_admission <- isolates_flagged %>%
-    mutate(PatientId = ParentId) %>%
-    select(-ParentId) %>%
     inner_join(patient_df %>%
                  select(AdmissionRecordId = RecordId,
                         PatientId,
                         HospitalId = ParentId,
                         DateOfHospitalAdmission,
                         DateOfHospitalDischarge),
-               by = "PatientId",
+               by = c("ParentId" = "AdmissionRecordId"),
                relationship = "many-to-many"  ) %>%
+    # Rename ParentId to AdmissionRecordId for downstream use
+    rename(AdmissionRecordId = ParentId) %>%
     # Convert dates to Date class for consistent comparison (handles POSIXct/character)
     filter(to_date(DateOfSpecCollection) >= to_date(DateOfHospitalAdmission),
            is.na(DateOfHospitalDischarge) |

@@ -648,13 +648,13 @@ create_standard_patient_table <- function(data, record_id_col = "record_id_patie
 #'
 #' @param data Source data frame
 #' @param record_id_col Name of isolate record ID column
-#' @param parent_id_col Name of parent (patient) record ID column
+#' @param parent_id_col Name of parent (patient) record ID column (defaults to record_id_patient to properly link to patient table's RecordId)
 #' @param country_defaults List of country-specific default values
 #' @param config Country configuration object (optional)
 #'
 #' @return Data frame with standard isolate table structure
 create_standard_isolate_table <- function(data, record_id_col = "record_id_isolate",
-                                         parent_id_col = "PatientId",
+                                         parent_id_col = "record_id_patient",
                                          country_defaults = list(), config = NULL) {
   
   # Set default values

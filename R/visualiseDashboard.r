@@ -587,11 +587,13 @@ visual_bsi_dashboard <- function(data = NULL) {
       if (!all(required_iso %in% names(iso)) || !all(required_pat %in% names(pat))) return(NULL)
       # keep isolate id explicitly
       iso$IsolateRecordId <- iso$RecordId
-      # join isolates to patient admissions by PatientId
+      # join isolates to patient admissions by record IDs
       keep_pat <- pat[, intersect(required_pat, names(pat)), drop = FALSE]
+      # Preserve original RecordId for joining before renaming
+      keep_pat$PatientRecordId <- keep_pat$RecordId
       names(keep_pat)[names(keep_pat) == "RecordId"] <- "AdmissionRecordId"
-      # Join isolates to admissions by ParentId (isolate PatientId) -> PatientId (patient)
-      merged <- merge(iso, keep_pat, by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+      # Join isolates to admissions by ParentId (isolate's parent) -> PatientRecordId (patient's RecordId)
+      merged <- merge(iso, keep_pat, by.x = "ParentId", by.y = "PatientRecordId", all.x = TRUE)
       if (!("DateOfSpecCollection" %in% names(merged))) return(NULL)
       # restrict to isolates within admission stay window
       in_admission <- (!is.na(merged$DateOfHospitalAdmission) & merged$DateOfSpecCollection >= merged$DateOfHospitalAdmission) &
@@ -1916,8 +1918,8 @@ visual_bsi_dashboard <- function(data = NULL) {
             if ("AdmissionRecordId" %in% names(ep) && "ParentId" %in% names(iso) && 
                 !is.null(pat) && "PatientId" %in% names(pat) && "RecordId" %in% names(pat)) {
               
-              # Join isolates to patients first
-              iso_pat <- merge(iso, pat, by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+              # Join isolates to patients first (ParentId links to patient's RecordId)
+              iso_pat <- merge(iso, pat, by.x = "ParentId", by.y = "RecordId", all.x = TRUE)
               # Then join to episodes
               if ("RecordId" %in% names(iso_pat)) {
                 iso_epi <- merge(iso_pat, ep, by.x = "RecordId", by.y = "AdmissionRecordId", all.x = TRUE)
@@ -1941,9 +1943,9 @@ visual_bsi_dashboard <- function(data = NULL) {
             iso$organism_label <- iso$MicroorganismCode
           }
           
-          if ("organism_label" %in% names(iso) && "ParentId" %in% names(iso) && "PatientId" %in% names(pat)) {
-            iso_specialty <- merge(iso, pat[, c("PatientId", specialty_col)], 
-                                   by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+          if ("organism_label" %in% names(iso) && "ParentId" %in% names(iso) && "RecordId" %in% names(pat)) {
+            iso_specialty <- merge(iso, pat[, c("RecordId", "PatientId", specialty_col)], 
+                                   by.x = "ParentId", by.y = "RecordId", all.x = TRUE)
             iso_specialty <- iso_specialty[!is.na(iso_specialty[[specialty_col]]), ]
             
             if (nrow(iso_specialty) > 0) {
@@ -1973,10 +1975,10 @@ visual_bsi_dashboard <- function(data = NULL) {
           if ("AdmissionRecordId" %in% names(iso_epi) && "RecordId" %in% names(pat)) {
             iso_specialty <- merge(iso_epi, pat[, c("RecordId", specialty_col)], 
                                    by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
-          } else if ("ParentId" %in% names(iso_epi) && "PatientId" %in% names(pat)) {
-            # Alternative join method
-            iso_specialty <- merge(iso_epi, pat[, c("PatientId", specialty_col)], 
-                                   by.x = "ParentId", by.y = "PatientId", all.x = TRUE)
+          } else if ("ParentId" %in% names(iso_epi) && "RecordId" %in% names(pat)) {
+            # Alternative join method (ParentId links to patient's RecordId)
+            iso_specialty <- merge(iso_epi, pat[, c("RecordId", "PatientId", specialty_col)], 
+                                   by.x = "ParentId", by.y = "RecordId", all.x = TRUE)
           } else {
             return(ggplot2::ggplot() + 
                      ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Cannot link pathogens to specialties", size = 6) +
