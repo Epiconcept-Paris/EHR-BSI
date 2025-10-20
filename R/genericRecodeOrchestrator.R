@@ -5,6 +5,8 @@
 #' @param dictionary_path Path to the data dictionary Excel file
 #' @param reporting_year Year for the DateUsedForStatistics field, defaults to current year
 #' @param episode_duration Duration for episode calculation in days, defaults to 14
+#' @param aggregation_level Level of aggregation for EHRBSI table. Options: "HOSP" (hospital), 
+#'   "HOSP-YEAR" (hospital-year), "LAB" (laboratory), "LAB-YEAR" (laboratory-year). Defaults to "HOSP".
 #' @param write_to_file Whether to write output files to disk
 #' @param write_to_file_path Path for output files, defaults to working directory
 #' @param return_format Whether to return "list" (default) or "separate" objects
@@ -53,6 +55,7 @@ process_country_bsi <- function(country,
                                write_to_file_path = NULL,
                                return_format = "list",
                                episode_duration = 14,
+                               aggregation_level = "HOSP",
                                calculate_episodes = TRUE) {
   
   # Validate country parameter using config system
@@ -66,6 +69,14 @@ process_country_bsi <- function(country,
   # Validate input data
   if (is.null(input_data)) {
     stop("input_data must be a valid data frame or list of data frames", call. = FALSE)
+  }
+  
+  # Validate aggregation_level
+  valid_agg_levels <- c("HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")
+  if (!aggregation_level %in% valid_agg_levels) {
+    stop("Invalid aggregation_level: ", aggregation_level, 
+         ". Must be one of: ", paste(valid_agg_levels, collapse = ", "), 
+         call. = FALSE)
   }
   
   # Set default dictionary path if not provided
@@ -127,7 +138,7 @@ process_country_bsi <- function(country,
   
   # Process the data using unified config-driven approach
   # This works for all countries with proper configuration
-  result <- process_country_generic(raw_data, country, episode_duration, metadata_path)
+  result <- process_country_generic(raw_data, country, episode_duration, metadata_path, aggregation_level)
   patient <- result$patient
   isolate <- result$isolate
   res <- result$res
@@ -146,8 +157,33 @@ process_country_bsi <- function(country,
     # Create a dataset with distinct episodes, dates of onset, origin of case etc
     eps_df <- calculateEpisodes(patient, isolate, commensal_df, episode_duration)
     
+    # Extract hospital-to-lab mapping BEFORE deduplication (if needed for LAB aggregation)
+    hospital_lab_map <- NULL
+    if (aggregation_level %in% c("LAB", "LAB-YEAR") && "LaboratoryCode" %in% names(ehrbsi)) {
+      hospital_lab_map <- ehrbsi %>%
+        dplyr::select(HospitalId, LaboratoryCode) %>%
+        dplyr::distinct()
+    }
+    
     # Aggregate to ehrbsi level
-    ehrbsi <- aggregateEpisodes(eps_df,ehrbsi)
+    ehrbsi <- aggregateEpisodes(eps_df, ehrbsi, aggregation_level, hospital_lab_map)
+    
+    # Deduplicate ehrbsi AFTER aggregation
+    # This is necessary when multiple hospitals map to the same lab
+    if (nrow(ehrbsi) > 0) {
+      ehrbsi <- ehrbsi %>%
+        dplyr::group_by(RecordId) %>%
+        dplyr::slice(1) %>%
+        dplyr::ungroup()
+    }
+  } else {
+    # If not calculating episodes, still need to deduplicate for LAB aggregation
+    if (aggregation_level %in% c("LAB", "LAB-YEAR") && nrow(ehrbsi) > 0) {
+      ehrbsi <- ehrbsi %>%
+        dplyr::group_by(RecordId) %>%
+        dplyr::slice(1) %>%
+        dplyr::ungroup()
+    }
   }
   
   

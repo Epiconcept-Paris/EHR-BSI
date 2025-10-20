@@ -84,16 +84,23 @@ get_country_config <- function(country_code, dictionary_path = NULL) {
 get_country_lookups <- function(country_code, dictionary_path = NULL) {
   config <- get_country_config(country_code)
   
-  # Load all lookups from Excel
+  # Load lookups: country-specific from Excel and shared from package/resources
   all_lookups <- load_country_lookups_from_excel(country_code, dictionary_path)
+  shared <- load_shared_lookups()
+  merged <- all_lookups
+  if (length(shared) > 0) {
+    for (nm in names(shared)) {
+      if (is.null(merged[[nm]])) merged[[nm]] <- shared[[nm]]
+    }
+  }
   
   # Filter to only the lookups specified in the config
   lookups <- list()
   for (lookup_name in config$lookups) {
-    if (lookup_name %in% names(all_lookups)) {
-      lookups[[lookup_name]] <- all_lookups[[lookup_name]]
+    if (lookup_name %in% names(merged)) {
+      lookups[[lookup_name]] <- merged[[lookup_name]]
     } else {
-      warning("Lookup table not found in Excel: ", lookup_name, call. = FALSE)
+      warning("Lookup table not found: ", lookup_name, call. = FALSE)
     }
   }
   
@@ -299,268 +306,64 @@ build_special_fields_from_excel <- function(excel_config) {
   return(special)
 }
 
-#' Country Configuration Objects (Legacy)
-#'
-#' @format List of configuration objects, one per country
-#' @note This is maintained for backward compatibility. New countries should use
-#'       Excel-based configuration with COUNTRY_R_TRANSFORMS for R-only logic.
-COUNTRY_CONFIGS <- list(
-  MT = list(
-    # Date format specifications
-    date_format = "%d/%m/%Y",
-    has_time = FALSE,
-    date_columns = c("DateOfSpecCollection", "DateOfHospitalAdmission", 
-                     "DateOfHospitalDischarge", "EpisodeStartDate_noncdm"),
-    
-    # Record ID templates
-    record_ids = list(
-      bsi = "{HospitalId}-{year}",
-      patient = "{PatientId}-{admit_date}",
-      isolate = "{PatientId}-{specimen_date}"
-    ),
-    
-    # Antibiotic data format
-    antibiotic = list(
-      format = "wide",
-      prefix = "ab_",
-      test_types = NULL  # Malta has single SIR column
-    ),
-    
-    # Terminology systems
-    terminology = list(
-      clinical = "SNOMED-CT",
-      clinical_spec = NA_character_,
-      microbiological = "SNOMED-CT",
-      microbiological_spec = NA_character_,
-      hospitalisation = "SNOMED-CT"
-    ),
-    
-    # Lookup tables to load
-    lookups = c("UnitSpecialty", "Outcome", "HospType", "PathogenCode"),
-    
-    # Lookup mappings configuration
-    lookup_mappings = list(
-      UnitSpecialty = list(
-        column = "UnitSpecialtyShort_noncdm",
-        from = "malta_code",
-        to = "generic_code",
-        output_column = "UnitSpecialtyShort"
-      ),
-      Outcome = list(
-        column = "OutcomeOfCase_noncdm",
-        from = "malta_code",
-        to = "generic_code",
-        output_column = "OutcomeOfCase",
-        fallback = "A"  # Default to "ALIVE"
-      ),
-      HospType = list(
-        column = "HospitalId",
-        from = "malta_hosptype",
-        to = "hosptype_code",
-        output_column = "HospitalType",
-        fallback = "NOT CODED"
-      ),
-      PathogenCode = list(
-        column = "MicroorganismCodeLabel",
-        from = "malta_pathogen_name",
-        to = "microorganism_code",
-        output_column = "MicroorganismCode",
-        fallback_prefix = "UNMAPPED: "
-      )
-    ),
-    
-    # Field transformations
-    field_transforms = list(
-      patientType = function(data) {
-        if ("patientType_noncdm" %in% names(data)) {
-          dplyr::case_when(
-            data$patientType_noncdm == "TRUE" ~ "INPAT",
-            data$patientType_noncdm == "FALSE" & 
-              (grepl("OP", data$sourceLocation_noncdm) | 
-               grepl("outpatients", tolower(data$sourceLocation_noncdm))) ~ "OUTPAT",
-            data$patientType_noncdm == "FALSE" ~ "OTH",
-            TRUE ~ NA_character_
-          )
+#' Load shared lookup tables (if available)
+#' @keywords internal
+load_shared_lookups <- function() {
+  out <- list()
+  tryCatch({
+    pkg_path <- system.file("reference", "dictionaries", "SharedLookups.xlsx", package = "EHRBSI", mustWork = FALSE)
+    fs_path <- if (!nzchar(pkg_path)) file.path("reference", "dictionaries", "SharedLookups.xlsx") else pkg_path
+    if (nzchar(fs_path) && file.exists(fs_path)) {
+      sheets <- readxl::excel_sheets(fs_path)
+      for (sh in sheets) {
+        df <- readxl::read_xlsx(fs_path, sheet = sh)
+        if (all(c("from_value", "to_value") %in% names(df))) {
+          vec <- df$to_value
+          names(vec) <- as.character(df$from_value)
+          out[[sh]] <- vec
         } else {
-          "INPAT"
-        }
-      },
-      PreviousAdmission = function(data) {
-        if ("PreviousAdmission_noncdm" %in% names(data)) {
-          dplyr::case_when(
-            data$PreviousAdmission_noncdm == TRUE ~ "OTH",
-            data$PreviousAdmission_noncdm == FALSE ~ "NO",
-            TRUE ~ NA_character_
-          )
-        } else {
-          NA_character_
-        }
-      },
-      HospitalSize = function(data) {
-        if ("HospitalId" %in% names(data)) {
-          dplyr::case_when(
-            data$HospitalId == "GO" ~ 320,
-            data$HospitalId == "MDH" ~ 1200,
-            data$HospitalId == "OC" ~ 70,
-            TRUE ~ NA_real_
-          )
-        } else {
-          NA_real_
-        }
-      },
-      GeoLocation = function(data) {
-        if ("HospitalId" %in% names(data)) {
-          dplyr::case_when(
-            data$HospitalId == "GO" ~ "Gozo",
-            data$HospitalId %in% c("MDH", "OC") ~ "Malta",
-            TRUE ~ NA_character_
-          )
-        } else {
-          NA_character_
+          out[[sh]] <- df
         }
       }
-    ),
-    
-    # Table-specific defaults
-    defaults = list(
-      patient = list(
-        HospitalisationAdmissionCodeSystem = "SNOMED-CT",
-        DateOfAdmissionCurrentWard = NA_character_,
-        LaboratoryCode = "MT001"
-      ),
-      isolate = list(
-        LaboratoryCode = "MT001",
-        Specimen = "BLOOD"
-      ),
-      ehrbsi = list(
-        ESurvBSI = "Automated (except denominators)",
-        ProportionPopulationCovered = 0.95,
-        LaboratoryCode = "MT001"
-      )
-    ),
-    
-    # Columns to remove after processing
-    noncdm_cleanup = c("UnitSpecialtyShort_noncdm", "sourceLocation_noncdm", 
-                       "OutcomeOfCase_noncdm", "HospitalType_noncdm", 
-                       "patientType_noncdm", "PreviousAdmission_noncdm", 
-                       "EpisodeStartDate_noncdm"),
-    
-    # Special field handling
-    special_fields = list(
-      DateOfSpecCollection = "EpisodeStartDate_noncdm"  # Use this if available
-    )
-  ),
-  
-  EE = list(
-    # Date format specifications
-    date_format = "%d/%m/%Y %H:%M",
-    has_time = TRUE,
-    date_columns = c("DateOfSpecCollection", "DateOfHospitalAdmission", 
-                     "DateOfHospitalDischarge"),
-    
-    # Record ID templates
-    record_ids = list(
-      bsi = "{HospitalId}-{year}",
-      patient = "{PatientId}-{admit_datetime}",
-      isolate = "{IsolateId}_{MicroorganismCode}"
-    ),
-    
-    # Antibiotic data format
-    antibiotic = list(
-      format = "long",
-      test_column = "sensitivityTest_noncdm",
-      result_column = "sensitivityResult_noncdm",
-      value_column = "sensitivityValue_noncdm",
-      unit_column = "sensitivityUnit_noncdm",
-      test_types = list(
-        mechanism = c("Karbapeneemide resistentsus", "Laia spektriga beetalaktamaasid",
-                      "Metitsilliin-resistentsus", "Staphylococcus aureus DNA"),
-        other = c("Mikroobide hulk külvis", "Mikroobi resistentsus- või virulentsusmehhanism"),
-        grad = " Grad$",
-        mic = " MIK$",
-        zone = " Disk$"
-      ),
-      translation_chain = c("EST2ENG", "ENG2HAI")  # Apply in this order
-    ),
-    
-    # Terminology systems
-    terminology = list(
-      clinical = "ICD-10",
-      clinical_spec = NA_character_,
-      microbiological = "SNOMED-CT",
-      microbiological_spec = NA_character_,
-      hospitalisation = "ICD-10"
-    ),
-    
-    # Lookup tables to load
-    lookups = c("MecRes", "ResRecode", "Ab_EST2ENG", "Ab_ENG2HAI", 
-                "HospType", "HospGeog"),
-    
-    # Lookup mappings configuration
-    lookup_mappings = list(
-      HospType = list(
-        column = "HospitalId",
-        from = "estonia_hosptype",
-        to = "hosptype_code",
-        output_column = "HospitalType"
-      ),
-      HospGeog = list(
-        column = "HospitalId",
-        from = "estonia_hosptype",
-        to = "nuts3_code",
-        output_column = "GeoLocation"
-      )
-    ),
-    
-    # Field transformations
-    field_transforms = list(
-      PreviousAdmission = function(data) {
-        # Estonia-specific gap analysis
-        data %>%
-          dplyr::arrange(PatientId, DateOfHospitalAdmission) %>%
-          dplyr::group_by(PatientId) %>%
-          dplyr::mutate(
-            gap_days = as.numeric(
-              difftime(DateOfHospitalAdmission, dplyr::lag(DateOfHospitalAdmission), 
-                      units = "days")
-            ),
-            prev_HospitalId = dplyr::lag(HospitalId),
-            PreviousAdmission = dplyr::case_when(
-              (gap_days > 0 & gap_days <= 3) & (HospitalId == prev_HospitalId) ~ "CURR",
-              (gap_days > 0 & gap_days <= 3) & (HospitalId != prev_HospitalId) ~ "OHOSP",
-              TRUE ~ NA_character_
-            )
-          ) %>%
-          dplyr::ungroup() %>%
-          dplyr::select(-gap_days, -prev_HospitalId)
-      },
-      UnitId = function(data) {
-        if (all(c("HospitalId", "UnitSpecialtyShort") %in% names(data))) {
-          paste0(data$HospitalId, "_", data$UnitSpecialtyShort)
-        } else {
-          NA_character_
-        }
-      }
-    ),
-    
-    # Table-specific defaults
-    defaults = list(
-      patient = list(),
-      isolate = list(),
-      ehrbsi = list(
-        ESurvBSI = 2,
-        HospitalSize = NA_real_,
-        ProportionPopulationCovered = 1
-      )
-    ),
-    
-    # Columns to remove after processing
-    noncdm_cleanup = c(),
-    
-    # Special field handling
-    special_fields = list()
-  )
-)
+    }
+  }, error = function(e) {})
+  out
+}
+
+#' Validate a country's configuration and provide friendly messages
+#' @param country_code Two-letter country code
+#' @param dictionary_path Optional path to Excel file
+#' @param strict If TRUE, fail on warnings
+#' @export
+validate_country_config <- function(country_code, dictionary_path = NULL, strict = FALSE) {
+  issues <- list(errors = character(0), warnings = character(0))
+  cfg <- tryCatch(get_country_config(country_code, dictionary_path), error = function(e) {
+    issues$errors <- c(issues$errors, e$message)
+    return(NULL)
+  })
+  if (is.null(cfg)) return(issues)
+  if (is.null(cfg$date_format) || !is.character(cfg$date_format)) {
+    issues$warnings <- c(issues$warnings, "date_format missing or invalid; using %d/%m/%Y by default")
+  }
+  if (is.null(cfg$record_ids) || any(!c("bsi", "patient", "isolate") %in% names(cfg$record_ids))) {
+    issues$errors <- c(issues$errors, "record_ids templates are incomplete (require bsi, patient, isolate)")
+  }
+  if (is.null(cfg$antibiotic) || is.null(cfg$antibiotic$format)) {
+    issues$errors <- c(issues$errors, "antibiotic configuration missing format (wide/long)")
+  } else if (identical(cfg$antibiotic$format, "long")) {
+    needed <- c("test_column", "result_column", "value_column")
+    miss <- needed[!needed %in% names(cfg$antibiotic)]
+    if (length(miss) > 0) issues$errors <- c(issues$errors, paste0("antibiotic long format missing: ", paste(miss, collapse = ", ")))
+  }
+  if (!is.null(cfg$lookups) && length(cfg$lookups) > 0) {
+    lk <- tryCatch(get_country_lookups(country_code, dictionary_path), error = function(e) NULL)
+    if (is.null(lk) || length(lk) == 0) {
+      issues$warnings <- c(issues$warnings, "No lookup tables could be loaded; check Lookups tab and shared lookups")
+    }
+  }
+  if (strict && length(issues$errors) > 0) stop(paste(issues$errors, collapse = "\n"), call. = FALSE)
+  issues
+}
 
 #' Country R-Only Transformations
 #'

@@ -12,6 +12,7 @@ process_country_bsi(
   write_to_file_path = NULL,
   return_format = "list",
   episode_duration = 14,
+  aggregation_level = "HOSP",
   calculate_episodes = TRUE
 )
 }
@@ -29,6 +30,9 @@ process_country_bsi(
 \item{return_format}{Whether to return "list" (default) or "separate" objects}
 
 \item{episode_duration}{Duration for episode calculation in days, defaults to 14}
+
+\item{aggregation_level}{Level of aggregation for EHRBSI table. Options: "HOSP" (hospital),
+"HOSP-YEAR" (hospital-year), "LAB" (laboratory), "LAB-YEAR" (laboratory-year). Defaults to "HOSP".}
 
 \item{calculate_episodes}{Whether to calculate episodes and aggregate results}
 

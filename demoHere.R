@@ -35,6 +35,7 @@ result <- process_country_bsi(
   episode_duration = 14,
   write_to_file = TRUE,
   return_format = "list",
+  aggregation_level = "LAB",
   calculate_episodes = TRUE
 )
 

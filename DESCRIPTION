@@ -23,6 +23,8 @@ Imports:
     devtools,
     shiny,
     bslib,
-    openxlsx
+    openxlsx,
+    miniUI,
+    rstudioapi
 Suggests: 
     testthat (>= 3.0.0)

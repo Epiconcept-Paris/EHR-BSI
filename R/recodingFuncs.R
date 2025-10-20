@@ -116,16 +116,23 @@ parse_dates_with_fallback <- function(data, fallback_cols, date_format = "%d/%m/
                                      preserve_time = FALSE) {
   # Parse specified date columns
   available_date_cols <- intersect(fallback_cols, names(data))
+  # Normalize factor/character to character before parsing; guard against non-atomic types
+  coerce_to_char <- function(x) {
+    if (is.factor(x)) return(as.character(x))
+    if (inherits(x, "POSIXct") || inherits(x, "Date")) return(x)
+    if (!is.atomic(x)) return(as.character(x))
+    x
+  }
   
   if (length(available_date_cols) > 0) {
     for (col in available_date_cols) {
       tryCatch({
         if (preserve_time || grepl("%H|%M|%S", date_format)) {
           # Parse as POSIXct for datetime
-          data[[col]] <- as.POSIXct(data[[col]], format = date_format)
+          data[[col]] <- as.POSIXct(coerce_to_char(data[[col]]), format = date_format)
         } else {
           # Parse as Date for date-only
-          data[[col]] <- as.Date(data[[col]], format = date_format)
+          data[[col]] <- as.Date(coerce_to_char(data[[col]]), format = date_format)
         }
       }, error = function(e) {
         warning("Failed to parse date column '", col, "': ", e$message, call. = FALSE)
@@ -148,9 +155,235 @@ create_lookup_vector <- function(lookup_table, value_col, key_col) {
     return(character(0))
   }
   
-  # Use data.table::copy() to ensure we don't modify package data
-  lookup_copy <- data.table::copy(lookup_table)
-  return(setNames(lookup_copy[[value_col]], lookup_copy[[key_col]]))
+  return(setNames(lookup_table[[value_col]], lookup_table[[key_col]]))
+}
+
+#' Check if a column exists in data frame
+#'
+#' @param data Data frame to check
+#' @param col Column name to check for
+#'
+#' @return Logical indicating if column exists
+has_column <- function(data, col) {
+  col %in% names(data)
+}
+
+#' Get column from data frame or return default value
+#'
+#' @param data Data frame to extract from
+#' @param col Column name to extract
+#' @param default Default value if column doesn't exist
+#'
+#' @return Column values or default value
+get_column_or_default <- function(data, col, default) {
+  if (has_column(data, col)) {
+    return(data[[col]])
+  } else {
+    return(default)
+  }
+}
+
+#' Format date column for use in record IDs
+#'
+#' @param date_col Date vector to format
+#' @param format_type Type of formatting: "date", "datetime", or "year"
+#'
+#' @return Character vector of formatted dates
+format_date_for_id <- function(date_col, format_type = "date") {
+  # Ensure date_col is a Date or POSIXt object
+  if (!inherits(date_col, c("Date", "POSIXct", "POSIXlt"))) {
+    # Try to convert to Date if it's character or numeric
+    date_col <- tryCatch({
+      as.Date(date_col)
+    }, error = function(e) {
+      warning("Could not convert date column to Date object: ", e$message)
+      return(rep(NA, length(date_col)))
+    })
+  }
+  
+  if (format_type == "datetime") {
+    paste0(
+      format(date_col, "%d%m%Y"), "_",
+      format(date_col, "%H_%M")
+    )
+  } else if (format_type == "year") {
+    format(date_col, "%Y")
+  } else {
+    format(date_col, "%d%m%Y")
+  }
+}
+
+#' Apply template substitution to create IDs
+#'
+#' @param template Character template with placeholders in {brackets}
+#' @param data Data frame containing columns for substitution
+#' @param substitution_map Named list mapping placeholder names to column names or formatted values
+#'
+#' @return Character vector of IDs with substitutions applied
+apply_template_substitution <- function(template, data, substitution_map) {
+  if (is.null(template) || length(template) == 0 || nrow(data) == 0) {
+    return(character(nrow(data)))
+  }
+  
+  # Initialize result with template repeated for each row
+  result <- rep(template, nrow(data))
+  
+  # Apply each substitution
+  for (placeholder in names(substitution_map)) {
+    pattern <- paste0("\\{", placeholder, "\\}")
+    replacement_col <- substitution_map[[placeholder]]
+    
+    # Handle both column names and pre-computed values
+    if (is.character(replacement_col) && length(replacement_col) == 1 && has_column(data, replacement_col)) {
+      replacement_values <- data[[replacement_col]]
+    } else if (length(replacement_col) == nrow(data)) {
+      replacement_values <- replacement_col
+    } else {
+      next  # Skip if neither a valid column nor matching length vector
+    }
+    
+    # Vectorized replacement
+    result <- mapply(
+      function(template_str, value) {
+        gsub(pattern, value, template_str)
+      },
+      result,
+      replacement_values,
+      USE.NAMES = FALSE
+    )
+  }
+  
+  return(result)
+}
+
+#' Find tolerant column name match
+#'
+#' @param raw_names Character vector of raw column names to find
+#' @param data_names Character vector of available column names in data
+#' @param norm_func Function to normalize names for comparison
+#'
+#' @return Named list with matches (name = raw_name, value = matched_data_name)
+find_tolerant_column_match <- function(raw_names, data_names, norm_func) {
+  matches <- list()
+  
+  norm_data <- setNames(vapply(data_names, norm_func, character(1)), data_names)
+  norm_raw <- setNames(vapply(raw_names, norm_func, character(1)), raw_names)
+  
+  for (rn in names(norm_raw)) {
+    candidates <- names(norm_data)[norm_data == norm_raw[[rn]]]
+    if (length(candidates) == 1L) {
+      matches[[rn]] <- candidates[[1]]
+    } else if (length(candidates) > 1L) {
+      warning("Ambiguous dictionary match for '", rn, "' -> candidates: ", 
+              paste(candidates, collapse = ", "), call. = FALSE)
+    }
+  }
+  
+  return(matches)
+}
+
+#' Apply a single lookup mapping to data
+#'
+#' @param data Data frame to modify
+#' @param mapping_config Mapping configuration with column, from, to, output_column, fallback settings
+#' @param lookup_table Lookup table data frame
+#'
+#' @return Modified data frame with lookup applied
+apply_single_lookup_mapping <- function(data, mapping_config, lookup_table) {
+  # Validate inputs
+  if (!has_column(data, mapping_config$column)) {
+    return(data)
+  }
+  
+  # Create lookup vector
+  lookup_vec <- create_lookup_vector(lookup_table, mapping_config$to, mapping_config$from)
+  
+  if (length(lookup_vec) == 0) {
+    return(data)
+  }
+  
+  # Determine output column (default to input column if not specified)
+  output_col <- mapping_config$output_column %||% mapping_config$column
+  
+  # Apply lookup based on fallback configuration
+  if (!is.null(mapping_config$fallback_prefix)) {
+    # Prefix unmapped values
+    data <- data %>%
+      dplyr::mutate(
+        !!output_col := dplyr::case_when(
+          .data[[mapping_config$column]] %in% names(lookup_vec) ~ 
+            lookup_vec[.data[[mapping_config$column]]],
+          !is.na(.data[[mapping_config$column]]) ~ 
+            paste0(mapping_config$fallback_prefix, .data[[mapping_config$column]]),
+          TRUE ~ NA_character_
+        )
+      )
+  } else if (!is.null(mapping_config$fallback)) {
+    # Use fallback value
+    data[[output_col]] <- dplyr::recode(
+      data[[mapping_config$column]], 
+      !!!lookup_vec, 
+      .default = mapping_config$fallback
+    )
+  } else {
+    # No fallback - keep original or map to new column
+    if (mapping_config$column != output_col) {
+      # Create new column with lookup applied, don't modify source
+      data[[output_col]] <- dplyr::recode(
+        data[[mapping_config$column]], 
+        !!!lookup_vec,
+        .default = data[[mapping_config$column]]
+      )
+    } else {
+      # Only modify in-place if output is same as input
+      data <- recode_with_lookup(data, mapping_config$column, lookup_vec)
+    }
+  }
+  
+  return(data)
+}
+
+#' Initialize standard resistance table columns
+#'
+#' @param res_data Base resistance data frame
+#' @param mechanism_cols Optional vector of mechanism result column names
+#'
+#' @return Data frame with all standard resistance columns initialized
+initialize_resistance_columns <- function(res_data, mechanism_cols = c()) {
+  # Define standard columns that should exist
+  standard_cols <- list(
+    ResultPCRmec = NA_character_,
+    ResultPbp2aAggl = NA_character_,
+    ResultESBL = NA_character_,
+    ResultCarbapenemase = NA_character_,
+    ZoneValue = NA_real_,
+    ZoneSIR = NA_character_,
+    ZoneSusceptibilitySign = NA_character_,
+    MICSusceptibilitySign = NA_character_,
+    MICValue = NA_real_,
+    MICSIR = NA_character_,
+    GradSusceptibilitySign = NA_character_,
+    GradValue = NA_real_,
+    GradSIR = NA_character_,
+    ZoneTestDiskLoad = NA_character_,
+    ReferenceGuidelinesSIR = NA_character_
+  )
+  
+  # Add standard columns if they don't exist
+  for (col in names(standard_cols)) {
+    if (!has_column(res_data, col)) {
+      res_data[[col]] <- standard_cols[[col]]
+    }
+  }
+  
+  # Ensure mechanism columns exist if specified
+  for (col in mechanism_cols) {
+    if (!has_column(res_data, col)) {
+      res_data[[col]] <- NA_character_
+    }
+  }
+  
+  return(res_data)
 }
 
 #' Create base EHRBSI table with common fields (Enhanced)
@@ -158,12 +391,14 @@ create_lookup_vector <- function(lookup_table, value_col, key_col) {
 #' @param data Source data frame
 #' @param country_code Two-letter country code (e.g., "EE", "MT")
 #' @param episode_duration Episode duration in days
-#' @param record_id_col Name of column containing record IDs
+#' @param record_id_col Name of column containing record IDs (DEPRECATED - not used with dynamic aggregation)
 #' @param config Country configuration object (optional)
+#' @param aggregation_level Aggregation level (e.g., "HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")
 #'
 #' @return Data frame with base EHRBSI structure
 create_base_ehrbsi_table <- function(data, country_code, episode_duration, 
-                                    record_id_col = "record_id_bsi", config = NULL) {
+                                    record_id_col = NULL, config = NULL,
+                                    aggregation_level = "HOSP") {
   # Get config if not provided
   if (is.null(config)) {
     config <- get_country_config(country_code)
@@ -171,14 +406,48 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
   
   term <- config$terminology
   
+  # Apply LaboratoryCode default from config BEFORE creating RecordId
+  # This ensures LAB aggregation works when LaboratoryCode is configured as a default
+  if (!("LaboratoryCode" %in% names(data))) {
+    # Check if there's a default value in config
+    if (!is.null(config$defaults$ehrbsi) && "LaboratoryCode" %in% names(config$defaults$ehrbsi)) {
+      data$LaboratoryCode <- config$defaults$ehrbsi$LaboratoryCode
+    } else {
+      data$LaboratoryCode <- NA_character_
+      if (aggregation_level %in% c("LAB", "LAB-YEAR")) {
+        warning("LaboratoryCode column not found in data and no default configured. Using HospitalId as fallback for LAB aggregation.", 
+                call. = FALSE)
+      }
+    }
+  } else {
+    # Check if LaboratoryCode is populated
+    if (all(is.na(data$LaboratoryCode)) && aggregation_level %in% c("LAB", "LAB-YEAR")) {
+      # Try to use default if available
+      if (!is.null(config$defaults$ehrbsi) && "LaboratoryCode" %in% names(config$defaults$ehrbsi)) {
+        data$LaboratoryCode <- config$defaults$ehrbsi$LaboratoryCode
+      } else {
+        warning("LaboratoryCode column exists but contains only NA values and no default configured. Using HospitalId as fallback for LAB aggregation.", 
+                call. = FALSE)
+      }
+    }
+  }
+  
   base_ehrbsi <- data %>%
     dplyr::mutate(
-      AggregationLevel = "HOSP",
+      AggregationLevel = aggregation_level,
       DataSource = paste0(country_code, "-EHRBSI"),
-      DateUsedForStatistics = format(DateOfSpecCollection, "%Y"),
+      DateUsedForStatistics = format(as.Date(DateOfSpecCollection), "%Y"),
       EpisodeDuration = episode_duration,
       HospitalId = HospitalId,
-      LaboratoryCode = NA_character_,
+      LaboratoryCode = if ("LaboratoryCode" %in% names(.)) LaboratoryCode else NA_character_,
+      # Create RecordId based on aggregation level (use dplyr::coalesce for vectorized NA handling)
+      RecordId = dplyr::case_when(
+        aggregation_level == "HOSP" ~ HospitalId,
+        aggregation_level == "HOSP-YEAR" ~ paste0(HospitalId, "-", format(as.Date(DateOfSpecCollection), "%Y")),
+        aggregation_level == "LAB" ~ dplyr::coalesce(LaboratoryCode, HospitalId),
+        aggregation_level == "LAB-YEAR" ~ paste0(dplyr::coalesce(LaboratoryCode, HospitalId), "-", format(as.Date(DateOfSpecCollection), "%Y")),
+        TRUE ~ HospitalId
+      ),
       MicrobiologicalTerminology = term$microbiological,
       MicrobiologicalTerminologySpec = term$microbiological_spec,
       NumberOfBloodCultureSets = NA_real_,
@@ -187,7 +456,6 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
       NumberOfHospitalPatientDays = NA_real_,
       NumberOfImportedHABSIs = NA_real_,
       NumberOfTotalBSIs = NA_real_,
-      RecordId = .data[[record_id_col]],
       RecordType = "EHRBSI",
       RecordTypeVersion = NA_character_,
       ReportingCountry = country_code,
@@ -288,7 +556,7 @@ create_hierarchical_record_ids <- function(data, hospital_col = "HospitalId",
   if (admission_date_col %in% names(data)) {
     result <- result %>%
       dplyr::mutate(
-        admit_date_formatted = format(.data[[admission_date_col]], "%d%m%Y"),
+        admit_date_formatted = format(as.Date(.data[[admission_date_col]]), "%d%m%Y"),
         record_id_patient = paste0(.data[[patient_col]], "-", admit_date_formatted)
       ) %>%
       dplyr::select(-admit_date_formatted)
@@ -303,7 +571,7 @@ create_hierarchical_record_ids <- function(data, hospital_col = "HospitalId",
   if (specimen_date_col %in% names(data)) {
     result <- result %>%
       dplyr::mutate(
-        specimen_date_formatted = format(.data[[specimen_date_col]], "%d%m%Y"),
+        specimen_date_formatted = format(as.Date(.data[[specimen_date_col]]), "%d%m%Y"),
         record_id_isolate = paste0(.data[[patient_col]], "-", specimen_date_formatted)
       ) %>%
       dplyr::select(-specimen_date_formatted)
@@ -382,11 +650,12 @@ create_standard_patient_table <- function(data, record_id_col = "record_id_patie
   # Create base patient table
   patient <- data %>%
     dplyr::mutate(
-      RecordId = if(record_id_col %in% names(.)) .data[[record_id_col]] else NA_character_,
-      ParentId = if(parent_id_col %in% names(.)) .data[[parent_id_col]] else NA_character_,
-      PatientSpecialty = if("PatientSpecialty" %in% names(.)) PatientSpecialty else defaults$PatientSpecialty,
-      patientType = if("patientType" %in% names(.)) patientType else defaults$patientType,
-      OutcomeOfCase = if("OutcomeOfCase" %in% names(.)) OutcomeOfCase else defaults$OutcomeOfCase,
+      RecordId = get_column_or_default(., record_id_col, NA_character_),
+      ParentId = get_column_or_default(., parent_id_col, NA_character_),
+      HospitalId = get_column_or_default(., "HospitalId", NA_character_),
+      PatientSpecialty = get_column_or_default(., "PatientSpecialty", defaults$PatientSpecialty),
+      patientType = get_column_or_default(., "patientType", defaults$patientType),
+      OutcomeOfCase = get_column_or_default(., "OutcomeOfCase", defaults$OutcomeOfCase),
       HospitalisationCode = defaults$HospitalisationCode,
       HospitalisationCodeLabel = defaults$HospitalisationCodeLabel,
       HospitalisationAdmissionCodeSystem = defaults$HospitalisationAdmissionCodeSystem,
@@ -415,13 +684,13 @@ create_standard_patient_table <- function(data, record_id_col = "record_id_patie
 #'
 #' @param data Source data frame
 #' @param record_id_col Name of isolate record ID column
-#' @param parent_id_col Name of parent (patient) record ID column
+#' @param parent_id_col Name of parent (patient) record ID column (defaults to record_id_patient to properly link to patient table's RecordId)
 #' @param country_defaults List of country-specific default values
 #' @param config Country configuration object (optional)
 #'
 #' @return Data frame with standard isolate table structure
 create_standard_isolate_table <- function(data, record_id_col = "record_id_isolate",
-                                         parent_id_col = "PatientId",
+                                         parent_id_col = "record_id_patient",
                                          country_defaults = list(), config = NULL) {
   
   # Set default values
@@ -444,10 +713,10 @@ create_standard_isolate_table <- function(data, record_id_col = "record_id_isola
   # Create base isolate table
   isolate <- data %>%
     dplyr::mutate(
-      RecordId = .data[[record_id_col]],
-      ParentId = .data[[parent_id_col]],
+      RecordId = get_column_or_default(., record_id_col, NA_character_),
+      ParentId = get_column_or_default(., parent_id_col, NA_character_),
       LaboratoryCode = defaults$LaboratoryCode,
-      Specimen = if("Specimen" %in% names(.)) Specimen else defaults$Specimen,
+      Specimen = get_column_or_default(., "Specimen", defaults$Specimen),
       MicroorganismCodeSystem = defaults$MicroorganismCodeSystem,
       MicroorganismCodeSystemSpec = defaults$MicroorganismCodeSystemSpec,
       MicroorganismCodeSystemVersion = defaults$MicroorganismCodeSystemVersion
@@ -465,7 +734,7 @@ get_standard_table_columns <- function(table_type) {
   
   switch(table_type,
     "patient" = c(
-      "RecordId", "ParentId", "UnitId", "UnitSpecialtyShort", "PatientSpecialty", 
+      "RecordId", "ParentId", "HospitalId", "UnitId", "UnitSpecialtyShort", "PatientSpecialty", 
       "DateOfAdmissionCurrentWard", "PatientId", "Age", "Sex", "patientType",
       "DateOfHospitalAdmission", "DateOfHospitalDischarge", "OutcomeOfCase",
       "HospitalisationCode", "HospitalisationCodeLabel",
@@ -532,6 +801,17 @@ load_country_lookups_from_excel <- function(country_code, dictionary_path = NULL
     stop("Lookups tab missing required columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
   }
   
+  # Check if new data-driven columns exist
+  has_column_metadata <- all(c("from_column", "to_column") %in% names(lookups_long))
+  
+  if (!has_column_metadata) {
+    # Issue deprecation warning
+    warning("Lookups tab missing 'from_column' and 'to_column' columns. ",
+            "Using legacy hardcoded column names. ",
+            "Run update_excel_lookups.R to update your Excel files to the new format.",
+            call. = FALSE)
+  }
+  
   # Convert to list of data.tables grouped by lookup_name
   lookup_list <- list()
   unique_lookup_names <- unique(lookups_long$lookup_name)
@@ -540,76 +820,25 @@ load_country_lookups_from_excel <- function(country_code, dictionary_path = NULL
     # Filter rows for this lookup
     lookup_subset <- lookups_long[lookups_long$lookup_name == lookup_name, ]
     
-    # Create data.table with appropriate column names based on lookup type
-    # Determine column names from the original lookup pattern
-    if (grepl("^Name_Lookup$", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        earsval = lookup_subset$from_value,
-        ehrval = lookup_subset$to_value
-      )
-    } else if (grepl("^Specialty_Lookup$", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        fromearsval = lookup_subset$from_value,
-        ehrval = lookup_subset$to_value
-      )
-    } else if (grepl("UnitSpecialty", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        malta_code = lookup_subset$from_value,
-        generic_code = lookup_subset$to_value
-      )
-    } else if (grepl("Outcome", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        malta_code = lookup_subset$from_value,
-        generic_code = lookup_subset$to_value
-      )
-    } else if (grepl("Malta_HospType", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        malta_hosptype = lookup_subset$from_value,
-        hosptype_code = lookup_subset$to_value
-      )
-    } else if (grepl("PathogenCode", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        malta_pathogen_name = lookup_subset$from_value,
-        microorganism_code = lookup_subset$to_value
-      )
-    } else if (grepl("Estonia_MecRes", lookup_name)) {
-      # Special case: MecRes has reversed structure (from = value, to = type)
-      lookup_dt <- data.table::data.table(
-        resistance_value = lookup_subset$from_value,
-        resistance_type = lookup_subset$to_value
-      )
-    } else if (grepl("Estonia_ResRecode", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        estonia_result = lookup_subset$from_value,
-        generic_result = lookup_subset$to_value
-      )
-    } else if (grepl("Ab_EST2ENG", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        estonia_name = lookup_subset$from_value,
-        english_name = lookup_subset$to_value
-      )
-    } else if (grepl("Ab_ENG2HAI", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        english_name = lookup_subset$from_value,
-        generic_name = lookup_subset$to_value
-      )
-    } else if (grepl("Estonia_HospType", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        estonia_hosptype = lookup_subset$from_value,
-        hosptype_code = lookup_subset$to_value
-      )
-    } else if (grepl("Estonia_HospGeog", lookup_name)) {
-      lookup_dt <- data.table::data.table(
-        estonia_hosptype = lookup_subset$from_value,
-        nuts3_code = lookup_subset$to_value
-      )
-    } else {
-      # Generic fallback
-      lookup_dt <- data.table::data.table(
-        from = lookup_subset$from_value,
-        to = lookup_subset$to_value
-      )
-    }
+    # Determine column names: use data-driven if available, otherwise use legacy patterns
+    if (has_column_metadata) {
+      # New data-driven approach: read column names from Excel
+      from_col <- unique(lookup_subset$from_column)[1]
+      to_col <- unique(lookup_subset$to_column)[1]
+      
+      if (is.na(from_col) || is.na(to_col)) {
+        warning("Missing column metadata for lookup '", lookup_name, "'. Using generic 'from/to' columns.",
+                call. = FALSE)
+        from_col <- "from"
+        to_col <- "to"
+      }}
+    
+    # Create data.table with determined column names
+    lookup_dt <- data.table::data.table(
+      from_value = lookup_subset$from_value,
+      to_value = lookup_subset$to_value
+    )
+    names(lookup_dt) <- c(from_col, to_col)
     
     # Remove country prefix from lookup name for consistency with existing code
     clean_name <- sub("^(Malta|Estonia)_", "", lookup_name)
@@ -655,20 +884,39 @@ apply_dictionary_from_excel <- function(data, dictionary_path) {
     return(data)
   }
   
-  # Create a named vector for renaming
+  # Create a named vector for renaming (exact match)
   rename_map <- setNames(dictionary$standard_column_name, dictionary$raw_column_name)
   
-  # Only rename columns that exist in the data
+  # Phase 1: exact matches only
   cols_to_rename <- intersect(names(data), names(rename_map))
-  
+  renamed_count <- 0L
   if (length(cols_to_rename) > 0) {
-    # Rename columns
     for (old_name in cols_to_rename) {
       new_name <- rename_map[[old_name]]
       names(data)[names(data) == old_name] <- new_name
     }
-    
-    message("Renamed ", length(cols_to_rename), " columns using dictionary")
+    renamed_count <- length(cols_to_rename)
+  }
+  
+  # Phase 2: tolerant matches (case/space/punctuation-insensitive)
+  # This helps when Excel headers have subtle spacing differences like "L3_RSLT_CODE_NAME (SIR)"
+  norm <- function(x) tolower(gsub("[^a-z0-9]", "", trimws(as.character(x))))
+  raw_names <- names(rename_map)
+  still_unmatched <- setdiff(raw_names, cols_to_rename)
+  if (length(still_unmatched) > 0) {
+    tolerant_matches <- find_tolerant_column_match(still_unmatched, names(data), norm)
+    if (length(tolerant_matches) > 0) {
+      for (rn in names(tolerant_matches)) {
+        old <- tolerant_matches[[rn]]
+        new <- rename_map[[rn]]
+        names(data)[names(data) == old] <- new
+      }
+      renamed_count <- renamed_count + length(tolerant_matches)
+    }
+  }
+  
+  if (renamed_count > 0) {
+    message("Renamed ", renamed_count, " columns using dictionary")
   } else {
     message("No columns matched dictionary entries. Data may already be standardized.")
   }
@@ -753,96 +1001,54 @@ apply_lookup_chain <- function(data, column_name, lookup_chain,
 create_flexible_record_ids <- function(data, id_templates, config) {
   result <- data
   
-  # Helper function to format dates
-  format_date_for_id <- function(date_col, format_type = "date") {
-    if (format_type == "datetime") {
-      paste0(
-        format(date_col, "%d%m%Y"), "_",
-        format(date_col, "%H_%M")
-      )
-    } else if (format_type == "year") {
-      format(date_col, "%Y")
-    } else {
-      format(date_col, "%d%m%Y")
-    }
-  }
-  
   # Create BSI-level record ID
-  if ("bsi" %in% names(id_templates)) {
+  if ("bsi" %in% names(id_templates) && has_column(data, "DateOfSpecCollection") && has_column(data, "HospitalId")) {
     template <- id_templates$bsi
-    if (!is.null(template) && length(template) > 0 && 
-        grepl("\\{year\\}", template) && "DateOfSpecCollection" %in% names(data)) {
-      result$sample_date_year <- format_date_for_id(result$DateOfSpecCollection, "year")
-      # Vectorized replacement
-      result$record_id_bsi <- mapply(
-        function(year, hosp) {
-          temp <- gsub("\\{year\\}", year, template)
-          gsub("\\{HospitalId\\}", hosp, temp)
-        },
-        result$sample_date_year,
-        result$HospitalId,
-        USE.NAMES = FALSE
+    if (!is.null(template) && length(template) > 0) {
+      substitutions <- list(
+        year = format_date_for_id(result$DateOfSpecCollection, "year"),
+        HospitalId = "HospitalId"
       )
+      result$record_id_bsi <- apply_template_substitution(template, result, substitutions)
     }
   }
   
   # Create patient-level record ID
-  if ("patient" %in% names(id_templates)) {
+  if ("patient" %in% names(id_templates) && has_column(data, "DateOfHospitalAdmission") && has_column(data, "PatientId")) {
     template <- id_templates$patient
-    if (!is.null(template) && length(template) > 0 &&
-        "DateOfHospitalAdmission" %in% names(data) && "PatientId" %in% names(data)) {
+    if (!is.null(template) && length(template) > 0) {
       # Safe check for has_time with default to FALSE
       has_time <- isTRUE(config$has_time)
-      if (has_time) {
-        result$admit_date_formatted <- format_date_for_id(result$DateOfHospitalAdmission, "datetime")
-      } else {
-        result$admit_date_formatted <- format_date_for_id(result$DateOfHospitalAdmission, "date")
-      }
-      # Vectorized replacement
-      result$record_id_patient <- mapply(
-        function(admit_dt, pat_id) {
-          temp <- gsub("\\{admit_date\\}", admit_dt, template)
-          temp <- gsub("\\{admit_datetime\\}", admit_dt, temp)
-          gsub("\\{PatientId\\}", pat_id, temp)
-        },
-        result$admit_date_formatted,
-        result$PatientId,
-        USE.NAMES = FALSE
+      format_type <- if (has_time) "datetime" else "date"
+      admit_formatted <- format_date_for_id(result$DateOfHospitalAdmission, format_type)
+      
+      substitutions <- list(
+        admit_date = admit_formatted,
+        admit_datetime = admit_formatted,
+        PatientId = "PatientId"
       )
-      result <- result %>% dplyr::select(-admit_date_formatted)
+      result$record_id_patient <- apply_template_substitution(template, result, substitutions)
     }
   }
   
   # Create isolate-level record ID
   if ("isolate" %in% names(id_templates)) {
     template <- id_templates$isolate
-    
-    # Check if template exists and is valid
     if (!is.null(template) && length(template) > 0) {
       # Check if template uses predefined isolate ID
-      if (grepl("\\{IsolateId\\}", template) && "IsolateId" %in% names(data) && "MicroorganismCode" %in% names(data)) {
-        result$record_id_isolate <- mapply(
-          function(iso_id, org_code) {
-            temp <- gsub("\\{IsolateId\\}", iso_id, template)
-            gsub("\\{MicroorganismCode\\}", org_code, temp)
-          },
-          result$IsolateId,
-          result$MicroorganismCode,
-          USE.NAMES = FALSE
+      if (grepl("\\{IsolateId\\}", template) && has_column(data, "IsolateId") && has_column(data, "MicroorganismCode")) {
+        substitutions <- list(
+          IsolateId = "IsolateId",
+          MicroorganismCode = "MicroorganismCode"
         )
-      } else if ("DateOfSpecCollection" %in% names(data) && "PatientId" %in% names(data)) {
+        result$record_id_isolate <- apply_template_substitution(template, result, substitutions)
+      } else if (has_column(data, "DateOfSpecCollection") && has_column(data, "PatientId")) {
         # Use date-based ID
-        result$specimen_date_formatted <- format_date_for_id(result$DateOfSpecCollection, "date")
-        result$record_id_isolate <- mapply(
-          function(spec_dt, pat_id) {
-            temp <- gsub("\\{specimen_date\\}", spec_dt, template)
-            gsub("\\{PatientId\\}", pat_id, temp)
-          },
-          result$specimen_date_formatted,
-          result$PatientId,
-          USE.NAMES = FALSE
+        substitutions <- list(
+          specimen_date = format_date_for_id(result$DateOfSpecCollection, "date"),
+          PatientId = "PatientId"
         )
-        result <- result %>% dplyr::select(-specimen_date_formatted)
+        result$record_id_isolate <- apply_template_substitution(template, result, substitutions)
       }
     }
   }
@@ -907,51 +1113,9 @@ process_basic_cleaning <- function(raw_data, config, country_code) {
   for (lookup_name in names(config$lookup_mappings)) {
     mapping_config <- config$lookup_mappings[[lookup_name]]
     
-    if (mapping_config$column %in% names(recoded_data) && lookup_name %in% names(lookups)) {
+    if (lookup_name %in% names(lookups)) {
       lookup_table <- lookups[[lookup_name]]
-      lookup_vec <- create_lookup_vector(lookup_table, mapping_config$to, mapping_config$from)
-      
-      # Apply lookup with fallback handling
-      if (!is.null(mapping_config$fallback)) {
-        # Safe check for fallback_prefix
-        if ("fallback_prefix" %in% names(mapping_config) && !is.null(mapping_config$fallback_prefix)) {
-          # Prefix unmapped values
-          recoded_data <- recoded_data %>%
-            dplyr::mutate(
-              !!mapping_config$output_column := dplyr::case_when(
-                .data[[mapping_config$column]] %in% names(lookup_vec) ~ 
-                  lookup_vec[.data[[mapping_config$column]]],
-                !is.na(.data[[mapping_config$column]]) ~ 
-                  paste0(mapping_config$fallback_prefix, .data[[mapping_config$column]]),
-                TRUE ~ NA_character_
-              )
-            )
-        } else {
-          # Use fallback value
-          recoded_data[[mapping_config$output_column]] <- dplyr::recode(
-            recoded_data[[mapping_config$column]], 
-            !!!lookup_vec, 
-            .default = mapping_config$fallback
-          )
-        }
-      } else {
-        # When no fallback, apply lookup to output column without modifying source
-        if (mapping_config$column != mapping_config$output_column) {
-          # Create new column with lookup applied, don't modify source
-          recoded_data[[mapping_config$output_column]] <- dplyr::recode(
-            recoded_data[[mapping_config$column]], 
-            !!!lookup_vec,
-            .default = recoded_data[[mapping_config$column]]
-          )
-        } else {
-          # Only modify in-place if output is same as input
-          recoded_data <- recode_with_lookup(
-            recoded_data, 
-            mapping_config$column, 
-            lookup_vec
-          )
-        }
-      }
+      recoded_data <- apply_single_lookup_mapping(recoded_data, mapping_config, lookup_table)
     }
   }
   
@@ -991,31 +1155,34 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
       dplyr::mutate(
         Antibiotic = Antibiotic %>%
           stringr::str_remove(paste0("^", ab_config$prefix)) %>%
-          stringr::str_remove_all("\\d+")
-      ) %>%
-      dplyr::mutate(
+          stringr::str_remove_all("\\d+"),
         RecordId = paste0(record_id_isolate, "_", Antibiotic),
-        ParentId = record_id_isolate,
-        ResultPCRmec = if ("ResultPCRmec" %in% names(.)) ResultPCRmec else NA_character_,
-        ResultPbp2aAggl = if ("ResultPbp2aAggl" %in% names(.)) ResultPbp2aAggl else NA_character_,
-        ResultESBL = if ("ResultESBL" %in% names(.)) ResultESBL else NA_character_,
-        ResultCarbapenemase = if ("ResultCarbapenemase" %in% names(.)) ResultCarbapenemase else NA_character_,
-        ZoneValue = NA_real_,
-        ZoneSIR = NA_character_,
-        ZoneSusceptibilitySign = NA_character_,
-        MICSusceptibilitySign = NA_character_,
-        MICValue = NA_real_,
-        MICSIR = NA_character_,
-        GradSusceptibilitySign = NA_character_,
-        GradValue = NA_real_,
-        GradSIR = NA_character_,
-        ZoneTestDiskLoad = NA_character_,
-        ReferenceGuidelinesSIR = NA_character_
+        ParentId = record_id_isolate
       ) %>%
       dplyr::filter(SIR != "")
     
+    # Initialize standard resistance columns
+    mechanism_cols <- c("ResultPCRmec", "ResultPbp2aAggl", "ResultESBL", "ResultCarbapenemase")
+    res <- initialize_resistance_columns(res, mechanism_cols)
+    
   } else {
     # Estonia-style: long format with test classification
+    # Defensive: check required columns exist
+    required_long <- c(ab_config$test_column, ab_config$result_column, ab_config$value_column)
+    miss_long <- setdiff(required_long, names(recoded_data))
+    if (length(miss_long) > 0) {
+      # Try tolerant matches to suggest possible fixes
+      norm <- function(x) tolower(gsub("[^a-z0-9]", "", x))
+      nn <- setNames(vapply(names(recoded_data), norm, character(1)), names(recoded_data))
+      suggestions <- lapply(miss_long, function(m) {
+        mm <- norm(m)
+        close <- names(nn)[nn == mm]
+        if (length(close) == 0) close <- names(recoded_data)[agrepl(m, names(recoded_data), ignore.case = TRUE)]
+        paste0("'", m, "' -> ", ifelse(length(close) > 0, paste(close, collapse = ", "), "no close match"))
+      })
+      stop("Missing long-format antibiotic column(s): ", paste(miss_long, collapse = ", "),
+           ". Suggestions: ", paste(unlist(suggestions), collapse = "; "))
+    }
     res <- recoded_data %>%
       dplyr::filter(!is.na(.data[[ab_config$test_column]]) & .data[[ab_config$test_column]] != "") %>%
       dplyr::mutate(
@@ -1023,11 +1190,10 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
         ParentId = record_id_isolate
       )
     
-    # Classify test types
-    # Extract test type patterns from config for easier reference
-    grad_pattern <- ab_config$test_types$grad
-    mic_pattern <- ab_config$test_types$mic
-    zone_pattern <- ab_config$test_types$zone
+    # Classify test types (provide defensible defaults if missing)
+    grad_pattern <- ab_config$test_types$grad %||% " Grad$"
+    mic_pattern <- ab_config$test_types$mic %||% " MIK$"
+    zone_pattern <- ab_config$test_types$zone %||% " Disk$"
     
     res <- res %>%
       dplyr::mutate(
@@ -1091,6 +1257,12 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
       dplyr::mutate(RecordId = RecordIdAb) %>%
       dplyr::select(-RecordIdAb)
     
+    # Get mechanism column names from mech_results (exclude RecordId)
+    mechanism_cols <- setdiff(names(mech_results), "RecordId")
+    
+    # Initialize standard resistance columns
+    res <- initialize_resistance_columns(res, mechanism_cols)
+    
     # Apply antibiotic name translation chain
     if (!is.null(ab_config$translation_chain)) {
       for (trans in ab_config$translation_chain) {
@@ -1128,10 +1300,11 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
 #' @param country_code Two-letter country code
 #' @param episode_duration Episode duration in days
 #' @param metadata_path Path to metadata file
+#' @param aggregation_level Aggregation level for EHRBSI table (e.g., "HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")
 #'
 #' @return List with ehrbsi, patient, isolate, res tables
 #' @export
-process_country_generic <- function(raw_data, country_code, episode_duration, metadata_path = NULL) {
+process_country_generic <- function(raw_data, country_code, episode_duration, metadata_path = NULL, aggregation_level = "HOSP") {
   # Get config (from Excel + R transforms)
   config <- get_country_config(country_code)
   
@@ -1148,8 +1321,13 @@ process_country_generic <- function(raw_data, country_code, episode_duration, me
   res <- create_standard_res_table(recoded_data, config, country_code, metadata_path)
   
   ehrbsi <- create_base_ehrbsi_table(recoded_data, country_code, episode_duration, 
-                                     record_id_col = "record_id_bsi", config = config)
+                                     record_id_col = "record_id_bsi", config = config,
+                                     aggregation_level = aggregation_level)
   ehrbsi <- finalize_table(ehrbsi, get_standard_table_columns("ehrbsi"))
+  
+  # NOTE: We do NOT deduplicate ehrbsi here anymore!
+  # Deduplication now happens AFTER episode aggregation in process_country_bsi()
+  # This preserves hospital-to-lab mappings needed for LAB aggregation
   
   return(list(
     ehrbsi = ehrbsi,

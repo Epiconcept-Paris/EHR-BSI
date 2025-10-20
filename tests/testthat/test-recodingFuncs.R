@@ -263,6 +263,7 @@ test_that("create_standard_patient_table uses defaults and country overrides", {
 test_that("create_standard_isolate_table uses defaults and country overrides", {
   source_data <- data.frame(
     record_id_isolate = "ISO1",
+    record_id_patient = "PAT1-01012023",  # Properly formatted parent ID
     PatientId = "PAT1",
     Specimen = "BLOOD" # This should be used over the default
   )
@@ -277,7 +278,7 @@ test_that("create_standard_isolate_table uses defaults and country overrides", {
   )
   
   expect_equal(result$RecordId, "ISO1")
-  expect_equal(result$ParentId, "PAT1")
+  expect_equal(result$ParentId, "PAT1-01012023")  # Should link to patient's RecordId
   expect_equal(result$Specimen, "BLOOD") # Value from data
   expect_equal(result$LaboratoryCode, "LAB_XYZ") # Value from override
   expect_equal(result$MicroorganismCodeSystem, "SNOMED-CT") # Value from default

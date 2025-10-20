@@ -1,0 +1,5 @@
+Name: EHR-BSI: Country Config Wizard
+Description: Guided wizard to author EHR-BSI country configuration (schema v2)
+Binding: config_wizard_app
+Interactive: true
+

@@ -47,7 +47,7 @@ test_that("Rule 1: Recognised pathogen creates a BSI case", {
     stringsAsFactors = FALSE
   )
   isolate_df <- data.frame(
-    RecordId = "ISO-1", ParentId = "PAT-1",
+    RecordId = "ISO-1", ParentId = "ADM-001",  # Links to patient's RecordId
     DateOfSpecCollection = as.Date("2023-01-03"), MicroorganismCode = "RP-1",
     stringsAsFactors = FALSE
   )
@@ -66,7 +66,7 @@ test_that("Rule 2: Two concordant CCs create a BSI case", {
     stringsAsFactors = FALSE
   )
   isolate_df <- data.frame(
-    RecordId = c("ISO-1", "ISO-2"), ParentId = c("PAT-1", "PAT-1"),
+    RecordId = c("ISO-1", "ISO-2"), ParentId = c("ADM-001", "ADM-001"),  # Both link to patient's RecordId
     DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-05")), # 2 days apart
     MicroorganismCode = c("CC-1", "CC-1"),
     stringsAsFactors = FALSE
@@ -86,7 +86,7 @@ test_that("A single common commensal does NOT create a BSI case", {
     stringsAsFactors = FALSE
   )
   isolate_df <- data.frame(
-    RecordId = "ISO-1", ParentId = "PAT-1",
+    RecordId = "ISO-1", ParentId = "ADM-001",  # Links to patient's RecordId
     DateOfSpecCollection = as.Date("2023-01-03"), MicroorganismCode = "CC-1",
     stringsAsFactors = FALSE
   )
@@ -109,7 +109,7 @@ test_that("Polymicrobial episode: isolates within 3 days are grouped", {
     stringsAsFactors = FALSE
   )
   isolate_df <- data.frame(
-    RecordId = c("ISO-1", "ISO-2"), ParentId = c("PAT-1", "PAT-1"),
+    RecordId = c("ISO-1", "ISO-2"), ParentId = c("ADM-001", "ADM-001"),  # Both link to patient's RecordId
     DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-05")), # 2 days apart
     MicroorganismCode = c("RP-1", "RP-2"),
     stringsAsFactors = FALSE
@@ -129,7 +129,7 @@ test_that("New episode started for different organism after 3 days", {
     stringsAsFactors = FALSE
   )
   isolate_df <- data.frame(
-    RecordId = c("ISO-1", "ISO-2"), ParentId = c("PAT-1", "PAT-1"),
+    RecordId = c("ISO-1", "ISO-2"), ParentId = c("ADM-001", "ADM-001"),  # Both link to patient's RecordId
     DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-10")), # 7 days apart
     MicroorganismCode = c("RP-1", "RP-2"),
     stringsAsFactors = FALSE
