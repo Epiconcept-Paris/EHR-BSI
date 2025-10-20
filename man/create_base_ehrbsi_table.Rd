@@ -8,8 +8,9 @@ create_base_ehrbsi_table(
   data,
   country_code,
   episode_duration,
-  record_id_col = "record_id_bsi",
-  config = NULL
+  record_id_col = NULL,
+  config = NULL,
+  aggregation_level = "HOSP"
 )
 }
 \arguments{
@@ -19,9 +20,11 @@ create_base_ehrbsi_table(
 
 \item{episode_duration}{Episode duration in days}
 
-\item{record_id_col}{Name of column containing record IDs}
+\item{record_id_col}{Name of column containing record IDs (DEPRECATED - not used with dynamic aggregation)}
 
 \item{config}{Country configuration object (optional)}
+
+\item{aggregation_level}{Aggregation level (e.g., "HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")}
 }
 \value{
 Data frame with base EHRBSI structure

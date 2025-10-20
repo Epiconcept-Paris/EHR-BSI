@@ -8,7 +8,8 @@ process_country_generic(
   raw_data,
   country_code,
   episode_duration,
-  metadata_path = NULL
+  metadata_path = NULL,
+  aggregation_level = "HOSP"
 )
 }
 \arguments{
@@ -19,6 +20,8 @@ process_country_generic(
 \item{episode_duration}{Episode duration in days}
 
 \item{metadata_path}{Path to metadata file}
+
+\item{aggregation_level}{Aggregation level for EHRBSI table (e.g., "HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")}
 }
 \value{
 List with ehrbsi, patient, isolate, res tables

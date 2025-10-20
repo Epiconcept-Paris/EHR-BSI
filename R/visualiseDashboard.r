@@ -60,6 +60,15 @@ visual_bsi_dashboard <- function(data = NULL) {
                           max = 365,
                           step = 1),
       
+      shiny::selectInput("aggregation_level", "Aggregation:",
+                         choices = list(
+                           "Hospital" = "HOSP",
+                           "Hospital-Year" = "HOSP-YEAR",
+                           "Laboratory" = "LAB",
+                           "Laboratory-Year" = "LAB-YEAR"
+                         ),
+                         selected = "HOSP"),
+      
       shiny::actionButton("process_data", "Process", 
                           class = "btn-primary",
                           style = "width: 100%;"),
@@ -739,10 +748,13 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Process the data
           # Use episode_duration from input, default to 14 if not available
           epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
+          # Use aggregation_level from input, default to HOSP if not available
+          agg_level <- if (!is.null(input$aggregation_level)) input$aggregation_level else "HOSP"
           result <- process_country_bsi(
             country = input$country,
             input_data = raw_data,
             episode_duration = epi_dur,
+            aggregation_level = agg_level,
             write_to_file = FALSE,
             calculate_episodes = TRUE
           )
