@@ -69,7 +69,7 @@ calculateEpisodes <- function(patient_df,
   rule1 <- iso_in_admission %>%
     filter(org_type == "RP") %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecCollection),
-              MicroorganismCode, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
+              MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
   ## ---- RULE 2  – ≥2 concordant CC in 3 days ----------------------------
   rule2 <- iso_in_admission %>%
@@ -80,7 +80,7 @@ calculateEpisodes <- function(patient_df,
     ungroup() %>%
     filter(cluster_first) %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecCollection),
-              MicroorganismCode, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
+              MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
   bsi_core <- bind_rows(rule1, rule2) %>%
     distinct()
@@ -147,6 +147,35 @@ calculateEpisodes <- function(patient_df,
     distinct()
   
   
+  ## ── 5 · Create episode summary table (one row per episode with pathogen info) ────
+  # Get all pathogens per episode from bsi_core (before deduplication)
+  episode_pathogens <- bsi_core %>%
+    arrange(PatientId, OnsetDate) %>%
+    group_by(PatientId) %>%
+    group_modify(~assign_episodes(.x, episodeDuration)) %>%
+    ungroup() %>%
+    mutate(EpisodeId = paste0(EpisodeStartDate, "-", PatientId, "-",
+                              sprintf("%01d", EpisodeNumber))) %>%
+    group_by(EpisodeId) %>%
+    summarise(
+      # Use MicroorganismCodeLabel if available, fallback to MicroorganismCode
+      Pathogens = if ("MicroorganismCodeLabel" %in% names(cur_data())) {
+        paste(sort(unique(MicroorganismCodeLabel)), collapse = "; ")
+      } else {
+        paste(sort(unique(MicroorganismCode)), collapse = "; ")
+      },
+      PathogenCount = n_distinct(MicroorganismCode),
+      Polymicrobial = n_distinct(MicroorganismCode) > 1,
+      .groups = "drop"
+    )
+  
+  # Join with episode metadata
+  episode_summary <- epi_full %>%
+    select(EpisodeId, EpisodeStartDate, EpisodeClass, EpisodeOrigin, episodeYear, 
+           AdmissionRecordId, PatientId, HospitalId) %>%
+    distinct() %>%
+    left_join(episode_pathogens, by = "EpisodeId")
+  
   
   # Basic df for calculating some stats
   calc_df <- epi_full %>%
@@ -162,7 +191,7 @@ calculateEpisodes <- function(patient_df,
       "VS HOSP-ACQUIRED: ", sum(calc_df$EpisodeOrigin=="Healthcare"), "(",
       round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(calc_df$EpisodeId)))*100),1),"%)")
   
-  return(epi_full)
+  return(list(episodes = epi_full, episode_summary = episode_summary))
   
 }
 

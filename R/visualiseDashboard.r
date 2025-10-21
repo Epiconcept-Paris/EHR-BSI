@@ -233,7 +233,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::div(
                   shiny::h5("Monomicrobial Episodes"),
                   shiny::div(
-                    shiny::h6("Top 10 most frequent pathogens in monomicrobial episodes", 
+                    shiny::h6("Top 20 most frequent pathogens in monomicrobial episodes", 
                               style = "text-align: center; margin-bottom: 20px;"),
                     shiny::plotOutput("pathogens_monomicrobial", height = "400px")
                   )
@@ -246,13 +246,13 @@ visual_bsi_dashboard <- function(data = NULL) {
                     style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
                     shiny::div(
                       style = "flex: 1; min-width: 400px;",
-                      shiny::h6("Top 10 most frequent pathogens in polymicrobial episodes", 
+                      shiny::h6("Top 20 most frequent pathogens in polymicrobial episodes", 
                                 style = "text-align: center;"),
                       shiny::plotOutput("pathogens_polymicrobial_individual", height = "350px")
                     ),
                     shiny::div(
                       style = "flex: 1; min-width: 400px;",
-                      shiny::h6("Top 10 pathogen combinations in polymicrobial episodes", 
+                      shiny::h6("Top 20 pathogen combinations in polymicrobial episodes", 
                                 style = "text-align: center;"),
                       shiny::plotOutput("pathogens_polymicrobial_combinations", height = "350px")
                     )
@@ -426,6 +426,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       current_data = data,
       processing = FALSE,
       episodes = NULL,
+      episode_summary = NULL,  # Episode-level summary table (one row per episode with pathogen info)
       raw_data_stats = NULL,  # Store raw data statistics before processing
       processed_data_stats = NULL,  # Store processed data statistics after processing
       country = NULL  # Store country code for download filename
@@ -520,12 +521,29 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Use episode_duration from input, default to 14 if not available
       epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
       eps <- tryCatch({
-        calculateEpisodes(
+        # Prefer non-contaminant isolates table if available, else filter by Contaminant column
+        iso_df <- cur$isolate
+        if (!is.null(cur$isolate_noncontaminant)) {
+          iso_df <- cur$isolate_noncontaminant
+        } else if ("Contaminant" %in% names(iso_df)) {
+          keep_idx <- is.na(iso_df$Contaminant) | iso_df$Contaminant == FALSE
+          iso_df <- iso_df[which(keep_idx), , drop = FALSE]
+        }
+        result <- calculateEpisodes(
           patient_df = cur$patient,
-          isolate_df = cur$isolate,
+          isolate_df = iso_df,
           commensal_df = comm_df,
           episodeDuration = epi_dur
         )
+        # calculateEpisodes now returns a list with episodes and episode_summary
+        # Store episode_summary separately
+        if (is.list(result) && "episode_summary" %in% names(result)) {
+          values$episode_summary <- result$episode_summary
+          return(result$episodes)
+        } else {
+          # Backward compatibility: if it returns just a data frame
+          return(result)
+        }
       }, error = function(e) NULL)
       
       return(eps)
@@ -620,6 +638,17 @@ visual_bsi_dashboard <- function(data = NULL) {
         merged <- merged[which(in_episode), , drop = FALSE]
       }
       if (nrow(merged) == 0) return(merged)
+      
+      # Filter out contaminants if they were identified
+      if (!is.null(values$contaminant_isolate_ids) && length(values$contaminant_isolate_ids) > 0) {
+        if ("IsolateRecordId" %in% names(merged)) {
+          merged <- merged[!merged$IsolateRecordId %in% values$contaminant_isolate_ids, , drop = FALSE]
+        } else if ("RecordId" %in% names(merged)) {
+          merged <- merged[!merged$RecordId %in% values$contaminant_isolate_ids, , drop = FALSE]
+        }
+      }
+      
+      if (nrow(merged) == 0) return(merged)
       merged$organism_label <- if ("MicroorganismCodeLabel" %in% names(merged)) merged$MicroorganismCodeLabel else merged$MicroorganismCode
       merged
     })
@@ -654,6 +683,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         if (length(dup_cols) > 0) {
           merged_fallback <- merged_fallback[, !names(merged_fallback) %in% dup_cols, drop = FALSE]
         }
+        
+        # Filter out contaminants from fallback path
+        if (!is.null(values$contaminant_isolate_ids) && length(values$contaminant_isolate_ids) > 0) {
+          if ("RecordId" %in% names(merged_fallback)) {
+            merged_fallback <- merged_fallback[!merged_fallback$RecordId %in% values$contaminant_isolate_ids, , drop = FALSE]
+          }
+        }
+        
         # Carry organism label
         if ("MicroorganismCodeLabel" %in% names(merged_fallback)) {
           merged_fallback$organism_label <- merged_fallback$MicroorganismCodeLabel
@@ -738,13 +775,6 @@ visual_bsi_dashboard <- function(data = NULL) {
             raw_data <- read.csv(file_path)
           }
           
-          # Store raw data statistics before processing
-          values$raw_data_stats <- list(
-            total_records = nrow(raw_data),
-            total_patients = length(unique(raw_data$PatientId)),
-            upload_timestamp = Sys.time()
-          )
-          
           # Process the data
           # Use episode_duration from input, default to 14 if not available
           epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
@@ -760,39 +790,147 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
           
           values$current_data <- result
+          
+          # Store raw data statistics from processed data
+          values$raw_data_stats <- list(
+            total_records = if (!is.null(result$isolate) && "IsolateId" %in% names(result$isolate)) {
+              length(unique(result$isolate$IsolateId))
+            } else if (!is.null(result$isolate)) {
+              nrow(result$isolate)
+            } else {
+              0
+            },
+            total_patients = if (!is.null(result$patient) && "PatientId" %in% names(result$patient)) {
+              length(unique(result$patient$PatientId))
+            } else {
+              0
+            },
+            upload_timestamp = Sys.time()
+          )
           values$country <- input$country  # Store country code for download
           # Compute episodes if possible
           values$episodes <- compute_episodes_if_possible(result)
           
-          # Calculate contamination statistics
+          # Calculate contamination statistics (robust string matching, independent of episodes)
           contaminants_count <- 0
-          if (!is.null(result$isolate) && !is.null(values$episodes)) {
+          contaminant_isolate_ids <- c()
+
+          if (!is.null(result$isolate)) {
             # Load commensal list to identify contaminants
             comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
             if (comm_path == "" || !file.exists(comm_path)) {
               comm_path <- "reference/CommonCommensals.csv"
             }
             comm_df <- tryCatch(utils::read.csv(comm_path, stringsAsFactors = FALSE), error = function(e) NULL)
-            
-            if (!is.null(comm_df) && "MicroorganismCode" %in% names(result$isolate)) {
-              # Estimate contaminants as total isolates minus those in episodes
-              contaminants_count <- max(0, values$raw_data_stats$total_records - nrow(result$isolate))
+
+            # Helper to coerce to character without scientific notation
+            to_chr <- function(x) {
+              if (is.null(x)) return(character(0))
+              if (is.numeric(x)) return(format(x, scientific = FALSE, trim = TRUE))
+              as.character(x)
             }
-          } else {
-            contaminants_count <- values$raw_data_stats$total_records - (if (!is.null(result$isolate)) nrow(result$isolate) else 0)
+
+            if (!is.null(comm_df)) {
+              # Normalise commensal codes and terms
+              code_col <- if ("SNOMED.Code" %in% names(comm_df)) "SNOMED.Code" else "SNOMED Code"
+              term_col <- if ("SNOMED.Preferred.Term" %in% names(comm_df)) "SNOMED.Preferred.Term" else "SNOMED Preferred Term"
+              comm_codes <- tolower(trimws(to_chr(comm_df[[code_col]])))
+              comm_terms <- tolower(trimws(to_chr(comm_df[[term_col]])))
+
+              if ("MicroorganismCode" %in% names(result$isolate) && !is.null(result$patient) && 
+                  "RecordId" %in% names(result$patient) && "PatientId" %in% names(result$patient)) {
+                # Join isolates to patient to get PatientId
+                pid_map <- result$patient[, c("RecordId", "PatientId")]
+                names(pid_map) <- c("PatientRecordId", "PatientId")
+                join_cols <- intersect(c("RecordId", "ParentId", "MicroorganismCode", "MicroorganismCodeLabel", "DateOfSpecCollection"), names(result$isolate))
+                iso_core <- result$isolate[, join_cols, drop = FALSE]
+                names(pid_map)[1] <- "ParentId"
+                iso_pid <- merge(iso_core, pid_map, by = "ParentId", all.x = TRUE)
+
+                # Helper for date coercion
+                to_date <- function(x) { if (inherits(x, "Date")) return(x); if (inherits(x, "POSIXt")) return(as.Date(x)); if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30")); as.Date(x) }
+
+                iso_pid$DateOfSpecCollection <- to_date(iso_pid$DateOfSpecCollection)
+                iso_codes <- tolower(trimws(to_chr(iso_pid$MicroorganismCode)))
+                iso_labels <- if ("MicroorganismCodeLabel" %in% names(iso_pid)) tolower(trimws(to_chr(iso_pid$MicroorganismCodeLabel))) else rep("", nrow(iso_pid))
+                is_commensal <- (iso_codes %in% comm_codes) | (iso_labels %in% comm_terms)
+
+                # Determine if each commensal isolate has another within 3 days for the same patient+organism
+                has_pair <- rep(FALSE, nrow(iso_pid))
+                split_idx <- split(seq_len(nrow(iso_pid)), list(iso_pid$PatientId, iso_pid$MicroorganismCode), drop = TRUE)
+                for (idx in split_idx) {
+                  if (length(idx) < 2) next
+                  ord <- order(iso_pid$DateOfSpecCollection[idx])
+                  ii <- idx[ord]
+                  d <- iso_pid$DateOfSpecCollection[ii]
+                  # differences in days to neighbours
+                  lead_diff <- c(as.numeric(diff(d)), NA)
+                  lag_diff  <- c(NA, as.numeric(diff(d)))
+                  pair_vec <- (!is.na(lead_diff) & lead_diff <= 2) | (!is.na(lag_diff) & lag_diff <= 2)
+                  has_pair[ii] <- pair_vec | has_pair[ii]
+                }
+
+                is_contaminant_local <- is_commensal & !has_pair
+
+                # Map back to isolate rows by RecordId
+                if ("RecordId" %in% names(result$isolate) && "RecordId" %in% names(iso_pid)) {
+                  contam_ids <- iso_pid$RecordId[which(is_contaminant_local)]
+                  contaminant_isolate_ids <- unique(contam_ids)
+                  # Attach Contaminant column to main isolate table
+                  result$isolate$Contaminant <- result$isolate$RecordId %in% contaminant_isolate_ids
+                } else {
+                  # Fallback: attach by row order if RecordId missing
+                  contam_rows <- which(is_contaminant_local)
+                  result$isolate$Contaminant <- FALSE
+                  result$isolate$Contaminant[contam_rows] <- TRUE
+                  contaminant_isolate_ids <- contam_rows
+                }
+                contaminants_count <- length(contaminant_isolate_ids)
+                # Ensure current_data gets updated isolate with Contaminant column
+                values$current_data$isolate <- result$isolate
+              }
+            }
+          }
+
+          # Store contaminant IDs for later filtering
+          values$contaminant_isolate_ids <- contaminant_isolate_ids
+          # Build non-contaminant isolates table and attach to current_data
+          if (!is.null(result$isolate)) {
+            if (!"Contaminant" %in% names(result$isolate)) {
+              result$isolate$Contaminant <- if (!is.null(contaminant_isolate_ids) && length(contaminant_isolate_ids) > 0 && "RecordId" %in% names(result$isolate)) result$isolate$RecordId %in% contaminant_isolate_ids else FALSE
+            }
+            non_contam_idx <- is.na(result$isolate$Contaminant) | result$isolate$Contaminant == FALSE
+            result$isolate_noncontaminant <- result$isolate[which(non_contam_idx), , drop = FALSE]
+            values$current_data <- result
+            # Re-compute episodes now that we have a contaminants flag/non-contaminant table
+            values$episodes <- compute_episodes_if_possible(values$current_data)
           }
           
           # Store processed data statistics
+          # Calculate final_patients from non-contaminant isolates
+          final_patients_count <- if (!is.null(result$patient) && "PatientId" %in% names(result$patient)) {
+            length(unique(result$patient$PatientId))
+          } else {
+            0
+          }
+          if (!is.null(result$patient) && !is.null(result$isolate_noncontaminant) && nrow(result$isolate_noncontaminant) > 0 && "ParentId" %in% names(result$isolate_noncontaminant) && "PatientId" %in% names(result$patient)) {
+            # Get unique patient IDs from non-contaminant isolates
+            iso_parents <- unique(result$isolate_noncontaminant$ParentId)
+            patients_with_noncontam <- result$patient[result$patient$RecordId %in% iso_parents, ]
+            if ("PatientId" %in% names(patients_with_noncontam)) {
+              final_patients_count <- length(unique(patients_with_noncontam$PatientId))
+            }
+          }
           values$processed_data_stats <- list(
-            final_isolates = if (!is.null(result$isolate)) nrow(result$isolate) else 0,
-            final_patients = if (!is.null(result$patient)) length(unique(result$patient$PatientId)) else 0,
+            final_isolates = if (!is.null(result$isolate)) max(nrow(result$isolate) - contaminants_count, 0) else 0,
+            final_patients = final_patients_count,
             contaminants_removed = contaminants_count,
             episodes_count = if (!is.null(values$episodes)) length(unique(values$episodes$EpisodeId)) else 0,
             facilities_count = if (!is.null(result$ehrbsi) && "HospitalId" %in% names(result$ehrbsi)) length(unique(result$ehrbsi$HospitalId)) else 0,
             total_bc_sets = if (!is.null(result$ehrbsi) && "NumberOfBloodCultureSets" %in% names(result$ehrbsi)) 
               sum(result$ehrbsi$NumberOfBloodCultureSets, na.rm = TRUE) else 0,
-            patient_days = if (!is.null(result$ehrbsi) && "NumberOfHospitalDischarges" %in% names(result$ehrbsi)) 
-              sum(result$ehrbsi$NumberOfHospitalDischarges, na.rm = TRUE) * 5 else 0  # Estimate patient days
+            patient_days = if (!is.null(result$ehrbsi) && "NumberOfHospitalPatientDays" %in% names(result$ehrbsi)) 
+              sum(result$ehrbsi$NumberOfHospitalPatientDays, na.rm = TRUE) * 5 else 0  # Estimate patient days
           )
           
           shiny::removeNotification("processing")
@@ -812,16 +950,58 @@ visual_bsi_dashboard <- function(data = NULL) {
               res <- readxl::read_xlsx(file_path, sheet = "Res")
               
               ## setting right types for columns or adding default values to non mandatory columns
+              # Ensure required isolate columns exist
+              if(!("DateOfSpecCollection" %in% names(isolate))) {
+                stop("Isolate table must have DateOfSpecCollection column")
+              }
+              if(!("MicroorganismCode" %in% names(isolate))) {
+                stop("Isolate table must have MicroorganismCode column")
+              }
+              if(!("ParentId" %in% names(isolate))) {
+                stop("Isolate table must have ParentId column (linking to Patient RecordId)")
+              }
+              
               isolate[["DateOfSpecCollection"]] <- as.Date(isolate$DateOfSpecCollection)
+              
+              # Ensure required patient columns exist
+              if(!("RecordId" %in% names(patient))) {
+                stop("Patient table must have RecordId column")
+              }
+              if(!("DateOfHospitalAdmission" %in% names(patient))) {
+                stop("Patient table must have DateOfHospitalAdmission column")
+              }
+              
               patient[["DateOfHospitalAdmission"]] <- as.Date(patient$DateOfHospitalAdmission)	
               if(!("DateOfHospitalDischarge" %in% names(patient)))
                 patient[["DateOfHospitalDischarge"]] <- NA
               else
                 patient[["DateOfHospitalDischarge"]] <- as.Date(patient$DateOfHospitalDischarge)
               
-              ## assigning the patient id as patient record id on patients to ensure joins works properly
-              # TODO: Find a better fix to this by changing the join in compute_episodes
-              patient$PatientId <- patient$RecordId  
+              # Ensure required columns exist in patient table
+              # PatientId: unique identifier for each patient (stays same across admissions)
+              if(!("PatientId" %in% names(patient))) {
+                # If no PatientId column, assume one admission per patient and use RecordId
+                if("RecordId" %in% names(patient)) {
+                  patient[["PatientId"]] <- patient$RecordId
+                  message("Note: Patient table missing PatientId column. Using RecordId as PatientId (assuming one admission per patient).")
+                } else {
+                  stop("Patient table must have either PatientId or RecordId column")
+                }
+              }
+              
+              # HospitalId: identifier for the hospital (required for episode calculation)
+              if(!("HospitalId" %in% names(patient))) {
+                # Try to get HospitalId from isolate table if available
+                if("HospitalId" %in% names(isolate) && "RecordId" %in% names(patient) && "ParentId" %in% names(isolate)) {
+                  # Join HospitalId from isolate to patient by matching RecordId to ParentId
+                  hosp_map <- isolate[, c("ParentId", "HospitalId")]
+                  hosp_map <- hosp_map[!duplicated(hosp_map$ParentId), ]
+                  patient <- merge(patient, hosp_map, by.x = "RecordId", by.y = "ParentId", all.x = TRUE)
+                } else {
+                  # Set to NA if can't determine
+                  patient[["HospitalId"]] <- NA_character_
+                }
+              }
               
               values$current_data <- list(
                 ehrbsi = as.data.frame(ehrbsi),
@@ -832,8 +1012,16 @@ visual_bsi_dashboard <- function(data = NULL) {
               
               # For reporting template, the data is already processed
               # Set both raw and processed stats to the same values
-              total_isolates <- nrow(isolate)
-              total_patients <- length(unique(patient$PatientId))
+              total_isolates <- if ("IsolateId" %in% names(isolate)) {
+                length(unique(isolate$IsolateId))
+              } else {
+                nrow(isolate)
+              }
+              total_patients <- if ("PatientId" %in% names(patient)) {
+                length(unique(patient$PatientId))
+              } else {
+                0
+              }
               
               values$raw_data_stats <- list(
                 total_records = total_isolates,
@@ -844,16 +1032,90 @@ visual_bsi_dashboard <- function(data = NULL) {
               # Compute episodes if possible
               values$episodes <- compute_episodes_if_possible(values$current_data)
               
+              # Identify contaminants for reporting templates (direct commensal match)
+              comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
+              if (comm_path == "" || !file.exists(comm_path)) {
+                comm_path <- "reference/CommonCommensals.csv"
+              }
+              comm_df <- tryCatch(utils::read.csv(comm_path, stringsAsFactors = FALSE), error = function(e) NULL)
+              to_chr <- function(x) { if (is.null(x)) return(character(0)); if (is.numeric(x)) return(format(x, scientific = FALSE, trim = TRUE)); as.character(x) }
+              contaminants_count <- 0
+              contaminant_isolate_ids <- c()
+              if (!is.null(comm_df) && "MicroorganismCode" %in% names(isolate) && 
+                  "RecordId" %in% names(patient) && "PatientId" %in% names(patient)) {
+                code_col <- if ("SNOMED.Code" %in% names(comm_df)) "SNOMED.Code" else "SNOMED Code"
+                term_col <- if ("SNOMED.Preferred.Term" %in% names(comm_df)) "SNOMED.Preferred.Term" else "SNOMED Preferred Term"
+                comm_codes <- tolower(trimws(to_chr(comm_df[[code_col]])))
+                comm_terms <- tolower(trimws(to_chr(comm_df[[term_col]])))
+
+                # Add PatientId for grouping and coerce dates
+                pid_map <- patient[, c("RecordId", "PatientId")]
+                names(pid_map) <- c("ParentId", "PatientId")
+                iso_pid <- merge(isolate, pid_map, by = "ParentId", all.x = TRUE)
+                to_date <- function(x) { if (inherits(x, "Date")) return(x); if (inherits(x, "POSIXt")) return(as.Date(x)); if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30")); as.Date(x) }
+                iso_pid$DateOfSpecCollection <- to_date(iso_pid$DateOfSpecCollection)
+                iso_codes <- tolower(trimws(to_chr(iso_pid$MicroorganismCode)))
+                iso_labels <- if ("MicroorganismCodeLabel" %in% names(iso_pid)) tolower(trimws(to_chr(iso_pid$MicroorganismCodeLabel))) else rep("", nrow(iso_pid))
+                is_commensal <- (iso_codes %in% comm_codes) | (iso_labels %in% comm_terms)
+
+                # Pair detection within 3 days per patient+organism
+                has_pair <- rep(FALSE, nrow(iso_pid))
+                split_idx <- split(seq_len(nrow(iso_pid)), list(iso_pid$PatientId, iso_pid$MicroorganismCode), drop = TRUE)
+                for (idx in split_idx) {
+                  if (length(idx) < 2) next
+                  ord <- order(iso_pid$DateOfSpecCollection[idx])
+                  ii <- idx[ord]
+                  d <- iso_pid$DateOfSpecCollection[ii]
+                  lead_diff <- c(as.numeric(diff(d)), NA)
+                  lag_diff  <- c(NA, as.numeric(diff(d)))
+                  pair_vec <- (!is.na(lead_diff) & lead_diff <= 2) | (!is.na(lag_diff) & lag_diff <= 2)
+                  has_pair[ii] <- pair_vec | has_pair[ii]
+                }
+
+                is_contaminant_local <- is_commensal & !has_pair
+                if ("RecordId" %in% names(iso_pid)) {
+                  contaminant_isolate_ids <- unique(iso_pid$RecordId[which(is_contaminant_local)])
+                  # Attach Contaminant column back to isolates table
+                  isolate$Contaminant <- isolate$RecordId %in% contaminant_isolate_ids
+                } else {
+                  isolate$Contaminant <- FALSE
+                }
+                contaminants_count <- sum(isolate$Contaminant, na.rm = TRUE)
+                values$current_data$isolate <- isolate
+              }
+              values$contaminant_isolate_ids <- contaminant_isolate_ids
+              # Build non-contaminant isolates table for template flow
+              if (!"Contaminant" %in% names(isolate)) {
+                isolate$Contaminant <- if (!is.null(contaminant_isolate_ids) && length(contaminant_isolate_ids) > 0 && "RecordId" %in% names(isolate)) isolate$RecordId %in% contaminant_isolate_ids else FALSE
+              }
+              values$current_data$isolate <- isolate
+              values$current_data$isolate_noncontaminant <- isolate[which(is.na(isolate$Contaminant) | isolate$Contaminant == FALSE), , drop = FALSE]
+              # Re-compute episodes using the non-contaminant isolates
+              values$episodes <- compute_episodes_if_possible(values$current_data)
+
+              # Calculate final_patients from non-contaminant isolates
+              final_patients_count <- total_patients
+              if (!is.null(values$current_data$isolate_noncontaminant) && nrow(values$current_data$isolate_noncontaminant) > 0 && 
+                  "ParentId" %in% names(values$current_data$isolate_noncontaminant) && 
+                  "RecordId" %in% names(patient) && "PatientId" %in% names(patient)) {
+                # Get unique patient IDs from non-contaminant isolates
+                iso_parents <- unique(values$current_data$isolate_noncontaminant$ParentId)
+                patients_with_noncontam <- patient[patient$RecordId %in% iso_parents, ]
+                if ("PatientId" %in% names(patients_with_noncontam)) {
+                  final_patients_count <- length(unique(patients_with_noncontam$PatientId))
+                }
+              }
+
               values$processed_data_stats <- list(
-                final_isolates = total_isolates,
-                final_patients = total_patients,
-                contaminants_removed = 0,  # Already processed data
+                final_isolates = max(total_isolates - contaminants_count, 0),
+                final_patients = final_patients_count,
+                contaminants_removed = contaminants_count,
                 episodes_count = if (!is.null(values$episodes)) length(unique(values$episodes$EpisodeId)) else 0,
                 facilities_count = if ("HospitalId" %in% names(ehrbsi)) length(unique(ehrbsi$HospitalId)) else 0,
                 total_bc_sets = if ("NumberOfBloodCultureSets" %in% names(ehrbsi)) 
                   sum(ehrbsi$NumberOfBloodCultureSets, na.rm = TRUE) else 0,
-                patient_days = if ("NumberOfHospitalDischarges" %in% names(ehrbsi)) 
-                  sum(ehrbsi$NumberOfHospitalDischarges, na.rm = TRUE) * 5 else 0
+                patient_days = if ("NumberOfHospitalPatientDays" %in% names(ehrbsi)) 
+                  sum(ehrbsi$NumberOfHospitalPatientDays, na.rm = TRUE) * 5 else 0
               )
               
               # Try to infer country from filename or default to "DATA"
@@ -1041,13 +1303,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       
       # Count unique patients, not just rows
-      total_patients <- if (!is.null(values$current_data$patient) && "PatientId" %in% names(values$current_data$patient)) {
-        length(unique(values$current_data$patient$PatientId))
-      } else if (!is.null(values$current_data$patient)) {
-        nrow(values$current_data$patient)
-      } else {
-        "unknown"
-      }
+      total_patients <- length(unique(values$current_data$patient$PatientId))
       total_episodes <- length(unique(ep$EpisodeId))
       
       # Calculate episodes per 1000 patient days (approximate)
@@ -1068,12 +1324,9 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::div(
           style = "font-size: 14px; color: #495057;",
           shiny::HTML(paste0(
-            "Total sample size of <strong>", total_patients, 
-            "</strong> patients, 3,042 patients with <strong>", 
+            "</strong> There were <strong>", 
             total_episodes, 
-            "</strong> episodes remained in the dataset after applying episode definitions (<strong>", 
-            ep_per_1000, 
-            "</strong> episodes/1000 patient days)."
+            "</strong> episodes. <strong>"
           ))
         )
       )
@@ -1194,51 +1447,41 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Pathogen analysis for monomicrobial episodes
     output$pathogens_monomicrobial <- shiny::renderPlot({
-      shiny::req(values$current_data)
+      shiny::req(values$episode_summary)
       
-      # Try to get isolate data joined with episodes, fallback to just isolates
-      org_df <- isolate_with_episode()
-      if (is.null(org_df) || nrow(org_df) == 0) {
-        # Fallback to using just isolate data if episode joining fails
-        if (!is.null(values$current_data$isolate)) {
-          org_df <- values$current_data$isolate
-          if ("MicroorganismCodeLabel" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCodeLabel
-          } else if ("MicroorganismCode" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCode
-          } else {
-            return(ggplot2::ggplot() + 
-                     ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
-                     ggplot2::theme_void())
-          }
-        } else {
-          return(ggplot2::ggplot() + 
-                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
-                   ggplot2::theme_void())
-        }
-      }
+      # Use episode_summary table which has one row per episode
+      ep_sum <- values$episode_summary
       
-      # Filter for monomicrobial episodes if possible
-      if ("Polymicrobial" %in% names(org_df)) {
-        mono_df <- org_df[!org_df$Polymicrobial, ]
-      } else {
-        # If no polymicrobial info, use a subset to simulate monomicrobial (88.3% based on reference)
-        mono_df <- org_df[sample(nrow(org_df), round(nrow(org_df) * 0.883)), ]
-      }
-      
-      if (nrow(mono_df) == 0 || !("organism_label" %in% names(mono_df))) {
+      if (is.null(ep_sum) || nrow(ep_sum) == 0) {
         return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No monomicrobial data available", size = 6) +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No episode data available", size = 6) +
                  ggplot2::theme_void())
       }
       
-      # Get top 10 organisms
-      org_counts <- sort(table(mono_df$organism_label), decreasing = TRUE)
-      top_10 <- head(org_counts, 10)
+      # Filter for monomicrobial episodes (PathogenCount == 1 or Polymicrobial == FALSE)
+      if ("Polymicrobial" %in% names(ep_sum)) {
+        mono_df <- ep_sum[!ep_sum$Polymicrobial, ]
+      } else if ("PathogenCount" %in% names(ep_sum)) {
+        mono_df <- ep_sum[ep_sum$PathogenCount == 1, ]
+      } else {
+        return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial flag available", size = 6) +
+                 ggplot2::theme_void())
+      }
+      
+      if (nrow(mono_df) == 0 || !("Pathogens" %in% names(mono_df))) {
+        return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No monomicrobial episodes available", size = 6) +
+                 ggplot2::theme_void())
+      }
+      
+      # Count episodes by pathogen (Pathogens column contains single pathogen for monomicrobial)
+      org_counts <- sort(table(mono_df$Pathogens), decreasing = TRUE)
+      top_20 <- head(org_counts, 20)
       
       df <- data.frame(
-        Organism = names(top_10),
-        Count = as.numeric(top_10),
+        Organism = names(top_20),
+        Count = as.numeric(top_20),
         stringsAsFactors = FALSE
       )
       
@@ -1259,9 +1502,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         "Candida albicans" = "#FF1493", "C. albicans" = "#FF1493"
       )
       
-      # Assign colors
+      # Assign colors - use predefined colors first, generate distinct colors for the rest
       df$Color <- pathogen_colors[df$Organism]
-      df$Color[is.na(df$Color)] <- "#808080"  # Gray for unknown organisms
+      missing_colors <- which(is.na(df$Color))
+      if (length(missing_colors) > 0) {
+        # Generate distinct colors for organisms without predefined colors
+        additional_colors <- grDevices::rainbow(length(missing_colors), s = 0.6, v = 0.8)
+        df$Color[missing_colors] <- additional_colors
+      }
       
       # Reverse order for plotting (top organism at top)
       df$Organism <- factor(df$Organism, levels = rev(df$Organism))
@@ -1278,51 +1526,46 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Pathogen analysis for polymicrobial episodes - individual pathogens
     output$pathogens_polymicrobial_individual <- shiny::renderPlot({
-      shiny::req(values$current_data)
+      shiny::req(values$episode_summary)
       
-      # Try to get isolate data joined with episodes, fallback to just isolates
-      org_df <- isolate_with_episode()
-      if (is.null(org_df) || nrow(org_df) == 0) {
-        # Fallback to using just isolate data if episode joining fails
-        if (!is.null(values$current_data$isolate)) {
-          org_df <- values$current_data$isolate
-          if ("MicroorganismCodeLabel" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCodeLabel
-          } else if ("MicroorganismCode" %in% names(org_df)) {
-            org_df$organism_label <- org_df$MicroorganismCode
-          } else {
-            return(ggplot2::ggplot() + 
-                     ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No organism data available", size = 6) +
-                     ggplot2::theme_void())
-          }
-        } else {
-          return(ggplot2::ggplot() + 
-                   ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No isolate data available", size = 6) +
-                   ggplot2::theme_void())
-        }
-      }
+      # Use episode_summary table which has one row per episode
+      ep_sum <- values$episode_summary
       
-      # Filter for polymicrobial episodes if possible
-      if ("Polymicrobial" %in% names(org_df)) {
-        poly_df <- org_df[org_df$Polymicrobial, ]
-      } else {
-        # If no polymicrobial info, use a subset to simulate polymicrobial (11.7% based on reference)
-        poly_df <- org_df[sample(nrow(org_df), round(nrow(org_df) * 0.117)), ]
-      }
-      
-      if (nrow(poly_df) == 0 || !("organism_label" %in% names(poly_df))) {
+      if (is.null(ep_sum) || nrow(ep_sum) == 0) {
         return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial data available", size = 6) +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No episode data available", size = 6) +
                  ggplot2::theme_void())
       }
       
-      # Get top 10 organisms in polymicrobial episodes
-      org_counts <- sort(table(poly_df$organism_label), decreasing = TRUE)
-      top_10 <- head(org_counts, 10)
+      # Filter for polymicrobial episodes
+      if ("Polymicrobial" %in% names(ep_sum)) {
+        poly_df <- ep_sum[ep_sum$Polymicrobial, ]
+      } else if ("PathogenCount" %in% names(ep_sum)) {
+        poly_df <- ep_sum[ep_sum$PathogenCount > 1, ]
+      } else {
+        return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial flag available", size = 6) +
+                 ggplot2::theme_void())
+      }
+      
+      if (nrow(poly_df) == 0 || !("Pathogens" %in% names(poly_df))) {
+        return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial episodes available", size = 6) +
+                 ggplot2::theme_void())
+      }
+      
+      # Split pathogen combinations and count individual pathogens
+      # Pathogens column contains "pathogen1; pathogen2; ..." for polymicrobial episodes
+      all_pathogens <- unlist(strsplit(poly_df$Pathogens, "; ", fixed = TRUE))
+      all_pathogens <- trimws(all_pathogens)
+      
+      # Count occurrence of each pathogen in polymicrobial episodes
+      org_counts <- sort(table(all_pathogens), decreasing = TRUE)
+      top_20 <- head(org_counts, 20)
       
       df <- data.frame(
-        Organism = names(top_10),
-        Count = as.numeric(top_10),
+        Organism = names(top_20),
+        Count = as.numeric(top_20),
         stringsAsFactors = FALSE
       )
       
@@ -1342,8 +1585,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         "S. haemolyticus" = "#8B008B", "Staphylococcus haemolyticus" = "#8B008B"
       )
       
+      # Assign colors - use predefined colors first, generate distinct colors for the rest
       df$Color <- pathogen_colors[df$Organism]
-      df$Color[is.na(df$Color)] <- "#808080"
+      missing_colors <- which(is.na(df$Color))
+      if (length(missing_colors) > 0) {
+        # Generate distinct colors for organisms without predefined colors
+        additional_colors <- grDevices::rainbow(length(missing_colors), s = 0.6, v = 0.8)
+        df$Color[missing_colors] <- additional_colors
+      }
       
       df$Organism <- factor(df$Organism, levels = rev(df$Organism))
       
@@ -1359,55 +1608,60 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Pathogen combinations in polymicrobial episodes
     output$pathogens_polymicrobial_combinations <- shiny::renderPlot({
-      shiny::req(values$current_data)
-      org_df <- isolate_with_episode()
-      if (is.null(org_df) || nrow(org_df) == 0) {
+      shiny::req(values$episode_summary)
+      
+      # Use episode_summary table which has one row per episode
+      ep_sum <- values$episode_summary
+      
+      if (is.null(ep_sum) || nrow(ep_sum) == 0) {
         return(ggplot2::ggplot() + 
                  ggplot2::annotate("text", x = 0.5, y = 0.5, 
                                    label = "No episode data available", size = 6) +
                  ggplot2::theme_void())
       }
       
-      # Try to analyze actual polymicrobial combinations
-      if ("EpisodeId" %in% names(org_df) && "organism_label" %in% names(org_df) && "Polymicrobial" %in% names(org_df)) {
-        # Filter for polymicrobial episodes
-        poly_df <- org_df[!is.na(org_df$Polymicrobial) & org_df$Polymicrobial == TRUE, ]
+      # Filter for polymicrobial episodes
+      if ("Polymicrobial" %in% names(ep_sum)) {
+        poly_df <- ep_sum[ep_sum$Polymicrobial, ]
+      } else if ("PathogenCount" %in% names(ep_sum)) {
+        poly_df <- ep_sum[ep_sum$PathogenCount > 1, ]
+      } else {
+        return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial flag available", size = 6) +
+                 ggplot2::theme_void())
+      }
+      
+      if (nrow(poly_df) > 0 && "Pathogens" %in% names(poly_df)) {
+        # Count pathogen combinations (Pathogens column already contains sorted combinations)
+        combo_counts <- as.data.frame(table(poly_df$Pathogens))
+        names(combo_counts) <- c("Combination", "Count")
+        combo_counts <- combo_counts[order(combo_counts$Count, decreasing = TRUE), ]
         
-        if (nrow(poly_df) > 0) {
-          # Group by episode and create combination strings
-          episode_combos <- aggregate(organism_label ~ EpisodeId, data = poly_df, 
-                                      FUN = function(x) paste(sort(unique(x)), collapse = " | "))
+        # Take top 20
+        if (nrow(combo_counts) > 20) combo_counts <- head(combo_counts, 20)
+        
+        if (nrow(combo_counts) > 0) {
+          # Assign colors
+          combo_counts$Color <- rainbow(nrow(combo_counts))
+          combo_counts$Combination <- factor(combo_counts$Combination, levels = rev(combo_counts$Combination))
           
-          # Count combinations
-          combo_counts <- as.data.frame(table(episode_combos$organism_label))
-          names(combo_counts) <- c("Combination", "Count")
-          combo_counts <- combo_counts[order(combo_counts$Count, decreasing = TRUE), ]
-          
-          # Take top 10
-          if (nrow(combo_counts) > 10) combo_counts <- head(combo_counts, 10)
-          
-          if (nrow(combo_counts) > 0) {
-            # Assign colors
-            combo_counts$Color <- rainbow(nrow(combo_counts))
-            combo_counts$Combination <- factor(combo_counts$Combination, levels = rev(combo_counts$Combination))
-            
-            return(ggplot2::ggplot(combo_counts, ggplot2::aes(x = Combination, y = Count, fill = Combination)) +
-                     ggplot2::geom_bar(stat = "identity", alpha = 0.8) +
-                     ggplot2::coord_flip() +
-                     ggplot2::theme_minimal() +
-                     ggplot2::theme(legend.position = "none", 
-                                    axis.text.y = ggplot2::element_text(size = 8)) +
-                     ggplot2::labs(x = NULL, y = "Frequency") +
-                     ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3))
-          }
+          return(ggplot2::ggplot(combo_counts, ggplot2::aes(x = Combination, y = Count, fill = Combination)) +
+                   ggplot2::geom_bar(stat = "identity", alpha = 0.8) +
+                   ggplot2::coord_flip() +
+                   ggplot2::theme_minimal() +
+                   ggplot2::theme(legend.position = "none", 
+                                  axis.text.y = ggplot2::element_text(size = 8)) +
+                   ggplot2::labs(x = NULL, y = "Frequency") +
+                   ggplot2::geom_text(ggplot2::aes(label = Count), hjust = -0.1, size = 3))
         }
       }
       
       # Return empty plot with message if no polymicrobial data
-      ggplot2::ggplot() + 
+      p <- ggplot2::ggplot() + 
         ggplot2::annotate("text", x = 0.5, y = 0.5, 
                           label = "No polymicrobial episode combinations available", size = 5) +
         ggplot2::theme_void()
+      return(p)
     })
     
     # Infection type analysis
@@ -1806,7 +2060,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Create summary of specialty distribution
       spec_summary <- table(specialty_counts$NumSpecialties)
-      total_patients <- sum(spec_summary)
+      total_patients <- length(unique(pat_clean$PatientId))
       
       pie_data <- data.frame(
         NumSpecialties = paste(names(spec_summary), ifelse(names(spec_summary) == "1", "Speciality", "Specialities")),
@@ -2138,7 +2392,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Demographics summary
     output$demographics_summary <- shiny::renderUI({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (is.null(pat) || !all(c("Age", "Sex") %in% names(pat))) {
         return(shiny::div(
           style = "background: #f8f9fa; 
@@ -2160,11 +2414,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       
       # Count unique patients
-      total_patients <- if ("PatientId" %in% names(pat)) {
-        length(unique(pat$PatientId))
-      } else {
-        nrow(pat)
-      }
+      total_patients <- length(unique(pat$PatientId))
       
       shiny::div(
         style = "background: #f8f9fa; 
@@ -2181,9 +2431,9 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::div(
           style = "font-size: 14px; color: #495057;",
           shiny::HTML(paste0(
-            "The pilot included blood cultures from <strong>", 
+            "The raw dataset included blood cultures from <strong>", 
             format(total_patients, big.mark = ","), 
-            "</strong> patients."
+            "</strong> patients. Demographic data on these patients is shown below."
           ))
         )
       )
@@ -2192,7 +2442,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Gender table
     output$gender_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (!("Sex" %in% names(pat))) return(data.frame())
       
       # Clean and categorize gender data
@@ -2218,7 +2468,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Age table
     output$age_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (!("Age" %in% names(pat))) return(data.frame())
       
       # Clean age data and create groups
@@ -2245,7 +2495,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Gender pie chart
     output$gender_pie <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (!("Sex" %in% names(pat))) {
         return(ggplot2::ggplot() + ggplot2::theme_void())
       }
@@ -2283,7 +2533,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Age pie chart
     output$age_pie <- shiny::renderPlot({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (!("Age" %in% names(pat))) {
         return(ggplot2::ggplot() + ggplot2::theme_void())
       }
@@ -2330,7 +2580,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Age statistics
     output$age_stats <- shiny::renderUI({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (!("Age" %in% names(pat))) {
         return(shiny::div(
           style = "background: #f8f9fa; 
@@ -2457,7 +2707,7 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     output$patient_table <- DT::renderDT({
       shiny::req(values$current_data, values$current_data$patient)
-      pat <- filtered_patient_data()  # Use filtered patient data
+      pat <- values$current_data$patient  # Use all patient data (unfiltered)
       if (is.null(pat)) return(data.frame())
       pat
     }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
@@ -2585,17 +2835,13 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::div(
           style = "font-size: 14px; color: #495057;",
           shiny::HTML(paste0(
-            "After cleaning and pre-processing, a total of <strong>", 
+            "After removing contaminants (common commensals occurring just once per patient in any 3 day period), a total of <strong>", 
             format(final_isolates, big.mark = ","), 
             "</strong> blood culture isolates from <strong>", 
             format(final_patients, big.mark = ","), 
-            "</strong> patients remained in the dataset. After exclusion of contaminants, <strong>",
-            format(final_isolates, big.mark = ","), 
-            "</strong> entries were grouped into <strong>", 
+            "</strong> patients and <strong>",
             format(episodes_count, big.mark = ","), 
-            "</strong> episodes in <strong>", 
-            format(final_patients, big.mark = ","), 
-            "</strong> patients."
+            "</strong> episodes remained in the dataset. <strong>"
           ))
         )
       )
