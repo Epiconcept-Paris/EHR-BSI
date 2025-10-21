@@ -155,7 +155,16 @@ process_country_bsi <- function(country,
     }
     
     # Create a dataset with distinct episodes, dates of onset, origin of case etc
-    eps_df <- calculateEpisodes(patient, isolate, commensal_df, episode_duration)
+    eps_result <- calculateEpisodes(patient, isolate, commensal_df, episode_duration)
+    
+    # Extract episodes data frame from the returned list
+    eps_df <- if (is.list(eps_result) && "episodes" %in% names(eps_result)) {
+      result$episode_summary <- eps_result$episode_summary  # Store episode_summary in result
+      eps_result$episodes
+    } else {
+      # Backward compatibility: if it returns just a data frame
+      eps_result
+    }
     
     # Extract hospital-to-lab mapping BEFORE deduplication (if needed for LAB aggregation)
     hospital_lab_map <- NULL
