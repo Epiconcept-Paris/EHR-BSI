@@ -48,7 +48,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::conditionalPanel(
         condition = "input.file_type == 'raw'",
         shiny::radioButtons("country", NULL,
-                            choices = list("EE" = "EE", 
+                            choices = list("CZ" = "CZ",
+                                           "EE" = "EE", 
                                            "MT" = "MT"),
                             selected = "EE",
                             inline = TRUE)
@@ -78,6 +79,9 @@ visual_bsi_dashboard <- function(data = NULL) {
         condition = "output.data_available",
         shiny::downloadButton("download_data", "Download",
                               class = "btn-success",
+                              style = "width: 100%; margin-top: 5px;"),
+        shiny::downloadButton("download_pdf", "Export PDF Report",
+                              class = "btn-info",
                               style = "width: 100%; margin-top: 5px;")
       ),
       
@@ -811,98 +815,25 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Compute episodes if possible
           values$episodes <- compute_episodes_if_possible(result)
           
-          # Calculate contamination statistics (robust string matching, independent of episodes)
+          # The isolate table already has Contaminant column from process_country_bsi()
+          # Calculate contamination statistics
           contaminants_count <- 0
           contaminant_isolate_ids <- c()
 
-          if (!is.null(result$isolate)) {
-            # Load commensal list to identify contaminants
-            comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
-            if (comm_path == "" || !file.exists(comm_path)) {
-              comm_path <- "reference/CommonCommensals.csv"
-            }
-            comm_df <- tryCatch(utils::read.csv(comm_path, stringsAsFactors = FALSE), error = function(e) NULL)
-
-            # Helper to coerce to character without scientific notation
-            to_chr <- function(x) {
-              if (is.null(x)) return(character(0))
-              if (is.numeric(x)) return(format(x, scientific = FALSE, trim = TRUE))
-              as.character(x)
-            }
-
-            if (!is.null(comm_df)) {
-              # Normalise commensal codes and terms
-              code_col <- if ("SNOMED.Code" %in% names(comm_df)) "SNOMED.Code" else "SNOMED Code"
-              term_col <- if ("SNOMED.Preferred.Term" %in% names(comm_df)) "SNOMED.Preferred.Term" else "SNOMED Preferred Term"
-              comm_codes <- tolower(trimws(to_chr(comm_df[[code_col]])))
-              comm_terms <- tolower(trimws(to_chr(comm_df[[term_col]])))
-
-              if ("MicroorganismCode" %in% names(result$isolate) && !is.null(result$patient) && 
-                  "RecordId" %in% names(result$patient) && "PatientId" %in% names(result$patient)) {
-                # Join isolates to patient to get PatientId
-                pid_map <- result$patient[, c("RecordId", "PatientId")]
-                names(pid_map) <- c("PatientRecordId", "PatientId")
-                join_cols <- intersect(c("RecordId", "ParentId", "MicroorganismCode", "MicroorganismCodeLabel", "DateOfSpecCollection"), names(result$isolate))
-                iso_core <- result$isolate[, join_cols, drop = FALSE]
-                names(pid_map)[1] <- "ParentId"
-                iso_pid <- merge(iso_core, pid_map, by = "ParentId", all.x = TRUE)
-
-                # Helper for date coercion
-                to_date <- function(x) { if (inherits(x, "Date")) return(x); if (inherits(x, "POSIXt")) return(as.Date(x)); if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30")); as.Date(x) }
-
-                iso_pid$DateOfSpecCollection <- to_date(iso_pid$DateOfSpecCollection)
-                iso_codes <- tolower(trimws(to_chr(iso_pid$MicroorganismCode)))
-                iso_labels <- if ("MicroorganismCodeLabel" %in% names(iso_pid)) tolower(trimws(to_chr(iso_pid$MicroorganismCodeLabel))) else rep("", nrow(iso_pid))
-                is_commensal <- (iso_codes %in% comm_codes) | (iso_labels %in% comm_terms)
-
-                # Determine if each commensal isolate has another within 3 days for the same patient+organism
-                has_pair <- rep(FALSE, nrow(iso_pid))
-                split_idx <- split(seq_len(nrow(iso_pid)), list(iso_pid$PatientId, iso_pid$MicroorganismCode), drop = TRUE)
-                for (idx in split_idx) {
-                  if (length(idx) < 2) next
-                  ord <- order(iso_pid$DateOfSpecCollection[idx])
-                  ii <- idx[ord]
-                  d <- iso_pid$DateOfSpecCollection[ii]
-                  # differences in days to neighbours
-                  lead_diff <- c(as.numeric(diff(d)), NA)
-                  lag_diff  <- c(NA, as.numeric(diff(d)))
-                  pair_vec <- (!is.na(lead_diff) & lead_diff <= 2) | (!is.na(lag_diff) & lag_diff <= 2)
-                  has_pair[ii] <- pair_vec | has_pair[ii]
-                }
-
-                is_contaminant_local <- is_commensal & !has_pair
-
-                # Map back to isolate rows by RecordId
-                if ("RecordId" %in% names(result$isolate) && "RecordId" %in% names(iso_pid)) {
-                  contam_ids <- iso_pid$RecordId[which(is_contaminant_local)]
-                  contaminant_isolate_ids <- unique(contam_ids)
-                  # Attach Contaminant column to main isolate table
-                  result$isolate$Contaminant <- result$isolate$RecordId %in% contaminant_isolate_ids
-                } else {
-                  # Fallback: attach by row order if RecordId missing
-                  contam_rows <- which(is_contaminant_local)
-                  result$isolate$Contaminant <- FALSE
-                  result$isolate$Contaminant[contam_rows] <- TRUE
-                  contaminant_isolate_ids <- contam_rows
-                }
-                contaminants_count <- length(contaminant_isolate_ids)
-                # Ensure current_data gets updated isolate with Contaminant column
-                values$current_data$isolate <- result$isolate
-              }
-            }
+          if (!is.null(result$isolate) && "Contaminant" %in% names(result$isolate)) {
+            # Contaminant column already exists from process_country_bsi()
+            contaminant_isolate_ids <- result$isolate$RecordId[which(result$isolate$Contaminant)]
+            contaminants_count <- length(contaminant_isolate_ids)
           }
 
           # Store contaminant IDs for later filtering
           values$contaminant_isolate_ids <- contaminant_isolate_ids
           # Build non-contaminant isolates table and attach to current_data
           if (!is.null(result$isolate)) {
-            if (!"Contaminant" %in% names(result$isolate)) {
-              result$isolate$Contaminant <- if (!is.null(contaminant_isolate_ids) && length(contaminant_isolate_ids) > 0 && "RecordId" %in% names(result$isolate)) result$isolate$RecordId %in% contaminant_isolate_ids else FALSE
-            }
             non_contam_idx <- is.na(result$isolate$Contaminant) | result$isolate$Contaminant == FALSE
             result$isolate_noncontaminant <- result$isolate[which(non_contam_idx), , drop = FALSE]
             values$current_data <- result
-            # Re-compute episodes now that we have a contaminants flag/non-contaminant table
+            # Episodes are already calculated in process_country_bsi() using non-contaminant isolates
             values$episodes <- compute_episodes_if_possible(values$current_data)
           }
           
@@ -1029,68 +960,31 @@ visual_bsi_dashboard <- function(data = NULL) {
                 upload_timestamp = Sys.time()
               )
               
-              # Compute episodes if possible
-              values$episodes <- compute_episodes_if_possible(values$current_data)
-              
-              # Identify contaminants for reporting templates (direct commensal match)
+              # Detect contaminants using centralized function
+              # If Contaminant column doesn't exist (e.g., old formatted template), detect it
               comm_path <- system.file("reference", "CommonCommensals.csv", package = "EHRBSI", mustWork = FALSE)
               if (comm_path == "" || !file.exists(comm_path)) {
                 comm_path <- "reference/CommonCommensals.csv"
               }
-              comm_df <- tryCatch(utils::read.csv(comm_path, stringsAsFactors = FALSE), error = function(e) NULL)
-              to_chr <- function(x) { if (is.null(x)) return(character(0)); if (is.numeric(x)) return(format(x, scientific = FALSE, trim = TRUE)); as.character(x) }
-              contaminants_count <- 0
-              contaminant_isolate_ids <- c()
-              if (!is.null(comm_df) && "MicroorganismCode" %in% names(isolate) && 
-                  "RecordId" %in% names(patient) && "PatientId" %in% names(patient)) {
-                code_col <- if ("SNOMED.Code" %in% names(comm_df)) "SNOMED.Code" else "SNOMED Code"
-                term_col <- if ("SNOMED.Preferred.Term" %in% names(comm_df)) "SNOMED.Preferred.Term" else "SNOMED Preferred Term"
-                comm_codes <- tolower(trimws(to_chr(comm_df[[code_col]])))
-                comm_terms <- tolower(trimws(to_chr(comm_df[[term_col]])))
-
-                # Add PatientId for grouping and coerce dates
-                pid_map <- patient[, c("RecordId", "PatientId")]
-                names(pid_map) <- c("ParentId", "PatientId")
-                iso_pid <- merge(isolate, pid_map, by = "ParentId", all.x = TRUE)
-                to_date <- function(x) { if (inherits(x, "Date")) return(x); if (inherits(x, "POSIXt")) return(as.Date(x)); if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30")); as.Date(x) }
-                iso_pid$DateOfSpecCollection <- to_date(iso_pid$DateOfSpecCollection)
-                iso_codes <- tolower(trimws(to_chr(iso_pid$MicroorganismCode)))
-                iso_labels <- if ("MicroorganismCodeLabel" %in% names(iso_pid)) tolower(trimws(to_chr(iso_pid$MicroorganismCodeLabel))) else rep("", nrow(iso_pid))
-                is_commensal <- (iso_codes %in% comm_codes) | (iso_labels %in% comm_terms)
-
-                # Pair detection within 3 days per patient+organism
-                has_pair <- rep(FALSE, nrow(iso_pid))
-                split_idx <- split(seq_len(nrow(iso_pid)), list(iso_pid$PatientId, iso_pid$MicroorganismCode), drop = TRUE)
-                for (idx in split_idx) {
-                  if (length(idx) < 2) next
-                  ord <- order(iso_pid$DateOfSpecCollection[idx])
-                  ii <- idx[ord]
-                  d <- iso_pid$DateOfSpecCollection[ii]
-                  lead_diff <- c(as.numeric(diff(d)), NA)
-                  lag_diff  <- c(NA, as.numeric(diff(d)))
-                  pair_vec <- (!is.na(lead_diff) & lead_diff <= 2) | (!is.na(lag_diff) & lag_diff <= 2)
-                  has_pair[ii] <- pair_vec | has_pair[ii]
-                }
-
-                is_contaminant_local <- is_commensal & !has_pair
-                if ("RecordId" %in% names(iso_pid)) {
-                  contaminant_isolate_ids <- unique(iso_pid$RecordId[which(is_contaminant_local)])
-                  # Attach Contaminant column back to isolates table
-                  isolate$Contaminant <- isolate$RecordId %in% contaminant_isolate_ids
-                } else {
-                  isolate$Contaminant <- FALSE
-                }
-                contaminants_count <- sum(isolate$Contaminant, na.rm = TRUE)
+              
+              if (!"Contaminant" %in% names(isolate)) {
+                # Detect contaminants using the centralized function
+                isolate <- detect_contaminants(isolate, patient, comm_path)
                 values$current_data$isolate <- isolate
               }
+              
+              # Calculate contamination statistics
+              contaminants_count <- 0
+              contaminant_isolate_ids <- c()
+              if ("Contaminant" %in% names(isolate)) {
+                contaminant_isolate_ids <- isolate$RecordId[which(isolate$Contaminant)]
+                contaminants_count <- sum(isolate$Contaminant, na.rm = TRUE)
+              }
+              
               values$contaminant_isolate_ids <- contaminant_isolate_ids
               # Build non-contaminant isolates table for template flow
-              if (!"Contaminant" %in% names(isolate)) {
-                isolate$Contaminant <- if (!is.null(contaminant_isolate_ids) && length(contaminant_isolate_ids) > 0 && "RecordId" %in% names(isolate)) isolate$RecordId %in% contaminant_isolate_ids else FALSE
-              }
-              values$current_data$isolate <- isolate
               values$current_data$isolate_noncontaminant <- isolate[which(is.na(isolate$Contaminant) | isolate$Contaminant == FALSE), , drop = FALSE]
-              # Re-compute episodes using the non-contaminant isolates
+              # Compute episodes using the non-contaminant isolates
               values$episodes <- compute_episodes_if_possible(values$current_data)
 
               # Calculate final_patients from non-contaminant isolates
@@ -1204,6 +1098,68 @@ visual_bsi_dashboard <- function(data = NULL) {
           shiny::removeNotification("download_prep")
           error_msg <- paste("Error preparing download:", e$message)
           shiny::showNotification(error_msg, type = "error", duration = 5)
+        })
+      }
+    )
+    
+    # Download handler for PDF report
+    output$download_pdf <- shiny::downloadHandler(
+      filename = function() {
+        country_code <- if (!is.null(values$country)) values$country else "DATA"
+        paste0(country_code, "_BSI_Report_", format(Sys.Date(), "%Y%m%d"), ".pdf")
+      },
+      content = function(file) {
+        shiny::req(values$current_data)
+        
+        # Show notification while preparing PDF
+        shiny::showNotification("Preparing PDF report... This may take a moment.", 
+                               type = "message", duration = NULL, id = "pdf_prep")
+        
+        tryCatch({
+          # Create a temporary R Markdown file
+          temp_rmd <- tempfile(fileext = ".Rmd")
+          temp_dir <- dirname(temp_rmd)
+          
+          # Get all the data needed for the report
+          current_data <- values$current_data
+          episodes_data <- values$episodes
+          episode_summary_data <- values$episode_summary
+          raw_stats <- values$raw_data_stats
+          processed_stats <- values$processed_data_stats
+          
+          # Get filtered data using reactive functions
+          ep_tbl <- if (!is.null(episodes_data)) episodes_data else NULL
+          
+          # Build the R Markdown content
+          rmd_content <- build_pdf_report_rmd(
+            current_data, episodes_data, episode_summary_data,
+            raw_stats, processed_stats, ep_tbl
+          )
+          
+          # Write the R Markdown file
+          writeLines(rmd_content, temp_rmd)
+          
+          # Render to PDF
+          rmarkdown::render(
+            temp_rmd,
+            output_format = rmarkdown::pdf_document(
+              toc = TRUE,
+              toc_depth = 2,
+              number_sections = TRUE
+            ),
+            output_file = file,
+            envir = new.env(),
+            quiet = TRUE
+          )
+          
+          shiny::removeNotification("pdf_prep")
+          shiny::showNotification("PDF report ready!", type = "message", duration = 2)
+          
+        }, error = function(e) {
+          shiny::removeNotification("pdf_prep")
+          error_msg <- paste("Error generating PDF:", e$message)
+          shiny::showNotification(error_msg, type = "error", duration = 10)
+          message("PDF Generation Error: ", e$message)
         })
       }
     )

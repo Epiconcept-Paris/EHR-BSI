@@ -458,20 +458,31 @@ COUNTRY_R_TRANSFORMS <- list(
   
   CZ = list(
     field_transforms = list(
-      DateOfSpecCollection = function(data) {
-        # Czech Republic: construct date from day, month, year columns
-        if (all(c("DateOfSpecCollection-DAY", "DateOfSpecCollection-MONTH", "DateOfSpecCollection-YEAR") %in% names(data))) {
-          # Construct date string and parse
-          date_str <- paste(
-            data$`DateOfSpecCollection-YEAR`,
-            sprintf("%02d", as.numeric(data$`DateOfSpecCollection-MONTH`)),
-            sprintf("%02d", as.numeric(data$`DateOfSpecCollection-DAY`)),
-            sep = "-"
-          )
-          return(as.Date(date_str, format = "%Y-%m-%d"))
+      DateOfHospitalDischarge = function(data) {
+        # Czech Republic: create dummy discharge date as admission + 1 day
+        # (data doesn't currently have discharge dates)
+        # TEMPORARY # TEMPORARY # TEMPORARY 
+        if ("DateOfHospitalAdmission" %in% names(data)) {
+          return(as.Date(data$DateOfHospitalAdmission) + 1)
         } else {
           # Return a vector of NAs with the correct length
           return(rep(as.Date(NA), nrow(data)))
+        }
+      },
+      MicroorganismCodeLabel = function(data) {
+        # Czech Republic: construct full organism name from two parts
+        # e.g., "Escherichia" + "coli" = "Escherichia coli"
+        if (all(c("MicroorganismCodeLabel1", "MicroorganismCodeLabel2") %in% names(data))) {
+          # Concatenate with space, handling NAs
+          label1 <- ifelse(is.na(data$MicroorganismCodeLabel1), "", as.character(data$MicroorganismCodeLabel1))
+          label2 <- ifelse(is.na(data$MicroorganismCodeLabel2), "", as.character(data$MicroorganismCodeLabel2))
+          # Trim extra spaces from concatenation
+          full_label <- trimws(paste(label1, label2))
+          # Return NA for completely empty strings
+          return(ifelse(full_label == "", NA_character_, full_label))
+        } else {
+          # Return a vector of NAs with the correct length
+          return(rep(NA_character_, nrow(data)))
         }
       }
     )

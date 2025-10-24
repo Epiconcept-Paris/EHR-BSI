@@ -144,6 +144,10 @@ process_country_bsi <- function(country,
   res <- result$res
   ehrbsi <- result$ehrbsi
   
+  # Detect contaminants and add Contaminant column to isolate table
+  # This ensures ALL isolates are preserved in the formatted template with contaminant flags
+  isolate <- detect_contaminants(isolate, patient, commensal_path)
+  
   if(calculate_episodes){
     
     # Load commensal data based on file extension
@@ -154,8 +158,13 @@ process_country_bsi <- function(country,
       commensal_df <- read.csv(commensal_path)
     }
     
+    # Filter out contaminants before episode calculation
+    # This ensures episode counts are based on clinically relevant isolates only
+    isolate_noncontaminant <- isolate[is.na(isolate$Contaminant) | isolate$Contaminant == FALSE, ]
+    
     # Create a dataset with distinct episodes, dates of onset, origin of case etc
-    eps_result <- calculateEpisodes(patient, isolate, commensal_df, episode_duration)
+    # Use non-contaminant isolates for episode calculation
+    eps_result <- calculateEpisodes(patient, isolate_noncontaminant, commensal_df, episode_duration)
     
     # Extract episodes data frame from the returned list
     eps_df <- if (is.list(eps_result) && "episodes" %in% names(eps_result)) {
@@ -197,6 +206,8 @@ process_country_bsi <- function(country,
   
   
   # Create output list
+  # Note: isolate table includes ALL isolates with Contaminant column
+  # This preserves full data in the formatted template for reproducibility
   result <- list(
     ehrbsi = ehrbsi,
     patient = patient,

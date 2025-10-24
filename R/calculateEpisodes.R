@@ -252,6 +252,10 @@ aggregateEpisodes <- function(eps_df, ehrbsi, aggregation_level = "HOSP", hospit
       pivot_wider(names_from = EpisodeClass,
                   values_from = countEps,
                   id_cols = c(RecordId)) %>%
+      # Ensure all episode class columns exist (even if 0 episodes of that type)
+      mutate(CA = if ("CA" %in% names(.)) CA else 0,
+             `HO-HA` = if ("HO-HA" %in% names(.)) `HO-HA` else 0,
+             `IMP-HA` = if ("IMP-HA" %in% names(.)) `IMP-HA` else 0) %>%
       mutate(NumberOfCABSIs = case_when(
                is.na(CA) ~ 0,
                TRUE ~ CA
@@ -280,6 +284,10 @@ aggregateEpisodes <- function(eps_df, ehrbsi, aggregation_level = "HOSP", hospit
       pivot_wider(names_from = EpisodeClass,
                   values_from = countEps,
                   id_cols = c(RecordId)) %>%
+      # Ensure all episode class columns exist (even if 0 episodes of that type)
+      mutate(CA = if ("CA" %in% names(.)) CA else 0,
+             `HO-HA` = if ("HO-HA" %in% names(.)) `HO-HA` else 0,
+             `IMP-HA` = if ("IMP-HA" %in% names(.)) `IMP-HA` else 0) %>%
       mutate(NumberOfCABSIs = case_when(
                is.na(CA) ~ 0,
                TRUE ~ CA

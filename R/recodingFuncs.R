@@ -1339,4 +1339,132 @@ process_country_generic <- function(raw_data, country_code, episode_duration, me
     isolate = isolate,
     res = res
   ))
+}
+
+#' Detect contaminant isolates based on commensal organisms
+#'
+#' Identifies potential contaminant isolates using the following criteria:
+#' - Isolate is a commensal organism (from CommonCommensals.csv)
+#' - No other isolate of the same organism for the same patient within 2 days
+#'
+#' @param isolate_df Isolate data frame with RecordId, ParentId, MicroorganismCode, MicroorganismCodeLabel, DateOfSpecCollection
+#' @param patient_df Patient data frame with RecordId and PatientId
+#' @param commensal_path Path to the CommonCommensals.csv file
+#'
+#' @return The isolate_df with an added Contaminant column (TRUE/FALSE)
+#' @export
+detect_contaminants <- function(isolate_df, patient_df, commensal_path = "reference/CommonCommensals.csv") {
+  
+  # Initialize Contaminant column as FALSE
+  isolate_df$Contaminant <- FALSE
+  
+  # Validation checks
+  if (is.null(isolate_df) || nrow(isolate_df) == 0) {
+    return(isolate_df)
+  }
+  
+  if (is.null(patient_df) || nrow(patient_df) == 0) {
+    warning("Patient data not available; cannot detect contaminants")
+    return(isolate_df)
+  }
+  
+  if (!all(c("MicroorganismCode", "ParentId", "RecordId") %in% names(isolate_df))) {
+    warning("Required columns missing from isolate data; cannot detect contaminants")
+    return(isolate_df)
+  }
+  
+  if (!all(c("RecordId", "PatientId") %in% names(patient_df))) {
+    warning("Required columns missing from patient data; cannot detect contaminants")
+    return(isolate_df)
+  }
+  
+  # Load commensal data
+  if (!file.exists(commensal_path)) {
+    warning("Commensal file not found at: ", commensal_path, "; cannot detect contaminants")
+    return(isolate_df)
+  }
+  
+  comm_df <- tryCatch({
+    utils::read.csv(commensal_path, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    warning("Failed to load commensal file: ", e$message)
+    return(NULL)
+  })
+  
+  if (is.null(comm_df)) {
+    return(isolate_df)
+  }
+  
+  # Helper to coerce to character without scientific notation
+  to_chr <- function(x) {
+    if (is.null(x)) return(character(0))
+    if (is.numeric(x)) return(format(x, scientific = FALSE, trim = TRUE))
+    as.character(x)
+  }
+  
+  # Helper for date coercion
+  to_date <- function(x) {
+    if (inherits(x, "Date")) return(x)
+    if (inherits(x, "POSIXt")) return(as.Date(x))
+    if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30"))
+    as.Date(x)
+  }
+  
+  # Normalise commensal codes and terms
+  code_col <- if ("SNOMED.Code" %in% names(comm_df)) "SNOMED.Code" else "SNOMED Code"
+  term_col <- if ("SNOMED.Preferred.Term" %in% names(comm_df)) "SNOMED.Preferred.Term" else "SNOMED Preferred Term"
+  comm_codes <- tolower(trimws(to_chr(comm_df[[code_col]])))
+  comm_terms <- tolower(trimws(to_chr(comm_df[[term_col]])))
+  
+  # Join isolates to patient to get PatientId
+  pid_map <- patient_df[, c("RecordId", "PatientId")]
+  names(pid_map) <- c("ParentId", "PatientId")
+  
+  iso_pid <- merge(isolate_df, pid_map, by = "ParentId", all.x = TRUE)
+  
+  # Coerce dates
+  if ("DateOfSpecCollection" %in% names(iso_pid)) {
+    iso_pid$DateOfSpecCollection <- to_date(iso_pid$DateOfSpecCollection)
+  } else {
+    warning("DateOfSpecCollection not found; cannot detect contaminants based on temporal pairing")
+    return(isolate_df)
+  }
+  
+  # Identify commensal organisms
+  iso_codes <- tolower(trimws(to_chr(iso_pid$MicroorganismCode)))
+  iso_labels <- if ("MicroorganismCodeLabel" %in% names(iso_pid)) {
+    tolower(trimws(to_chr(iso_pid$MicroorganismCodeLabel)))
+  } else {
+    rep("", nrow(iso_pid))
+  }
+  is_commensal <- (iso_codes %in% comm_codes) | (iso_labels %in% comm_terms)
+  
+  # Determine if each commensal isolate has another within 2 days for the same patient+organism
+  has_pair <- rep(FALSE, nrow(iso_pid))
+  split_idx <- split(seq_len(nrow(iso_pid)), list(iso_pid$PatientId, iso_pid$MicroorganismCode), drop = TRUE)
+  
+  for (idx in split_idx) {
+    if (length(idx) < 2) next
+    ord <- order(iso_pid$DateOfSpecCollection[idx])
+    ii <- idx[ord]
+    d <- iso_pid$DateOfSpecCollection[ii]
+    # Differences in days to neighbours
+    lead_diff <- c(as.numeric(diff(d)), NA)
+    lag_diff  <- c(NA, as.numeric(diff(d)))
+    pair_vec <- (!is.na(lead_diff) & lead_diff <= 2) | (!is.na(lag_diff) & lag_diff <= 2)
+    has_pair[ii] <- pair_vec | has_pair[ii]
+  }
+  
+  # Contaminant = commensal without a pair
+  is_contaminant_local <- is_commensal & !has_pair
+  
+  # Map back to original isolate_df by RecordId
+  if ("RecordId" %in% names(iso_pid)) {
+    contaminant_ids <- unique(iso_pid$RecordId[which(is_contaminant_local)])
+    isolate_df$Contaminant <- isolate_df$RecordId %in% contaminant_ids
+  } else {
+    warning("RecordId not found; cannot map contaminants back to original data")
+  }
+  
+  return(isolate_df)
 } 
