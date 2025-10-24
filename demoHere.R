@@ -26,7 +26,7 @@ devtools::load_all()
 
 
 # Load Malta data
-malta_data <- read.csv("C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Malta/data/raw/BSI_REPORT_Malta.csv")
+malta_data <- read.csv("file_path_here")
 
 # Make the raw reporting template tables for MALTA (inc episode calc)
 result <- process_country_bsi(
@@ -46,7 +46,7 @@ devtools::document()
 devtools::load_all()
 
 # Load EE data
-estonia_data <- read_xlsx("C:/Users/j.humphreys/Documents/Development/epi_ehr_bsi/Estonia/data/raw/BSI_REPORT_2024_share.xlsx")
+estonia_data <- read_xlsx("file_path_here")
 
 
 # Make the raw reporting template tables for ESTONIA (inc episode calc)
@@ -58,4 +58,29 @@ result <- process_country_bsi(
   return_format = "list",
   calculate_episodes = TRUE
 )
+
+
+
+
+
+# CZECH REPUBLIC --
+
+# Load CZ data
+czech_data <- read_xlsx("file_path_here")
+
+# Load package for testing
+devtools::document()
+devtools::load_all()
+
+# Make the raw reporting template tables for CZECH (inc episode calc)
+result <- process_country_bsi(
+  country = "CZ",
+  input_data = czech_data,
+  episode_duration = 14,
+  write_to_file = TRUE,
+  return_format = "list",
+  calculate_episodes = TRUE
+)
+
+
 

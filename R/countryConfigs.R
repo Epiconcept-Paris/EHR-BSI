@@ -19,7 +19,7 @@ build_country_config <- function(country_code, dictionary_path = NULL) {
   # Get R-only config (field_transforms mainly) - fallback to old system if new not found
   r_config <- if (exists("COUNTRY_R_TRANSFORMS") && country_code %in% names(COUNTRY_R_TRANSFORMS)) {
     COUNTRY_R_TRANSFORMS[[country_code]]
-  } else if (country_code %in% names(COUNTRY_CONFIGS)) {
+  } else if (exists("COUNTRY_CONFIGS") && country_code %in% names(COUNTRY_CONFIGS)) {
     # Backward compatibility: use old COUNTRY_CONFIGS
     return(COUNTRY_CONFIGS[[country_code]])
   } else {
@@ -451,6 +451,27 @@ COUNTRY_R_TRANSFORMS <- list(
           paste0(data$HospitalId, "_", data$UnitSpecialtyShort)
         } else {
           NA_character_
+        }
+      }
+    )
+  ),
+  
+  CZ = list(
+    field_transforms = list(
+      DateOfSpecCollection = function(data) {
+        # Czech Republic: construct date from day, month, year columns
+        if (all(c("DateOfSpecCollection-DAY", "DateOfSpecCollection-MONTH", "DateOfSpecCollection-YEAR") %in% names(data))) {
+          # Construct date string and parse
+          date_str <- paste(
+            data$`DateOfSpecCollection-YEAR`,
+            sprintf("%02d", as.numeric(data$`DateOfSpecCollection-MONTH`)),
+            sprintf("%02d", as.numeric(data$`DateOfSpecCollection-DAY`)),
+            sep = "-"
+          )
+          return(as.Date(date_str, format = "%Y-%m-%d"))
+        } else {
+          # Return a vector of NAs with the correct length
+          return(rep(as.Date(NA), nrow(data)))
         }
       }
     )

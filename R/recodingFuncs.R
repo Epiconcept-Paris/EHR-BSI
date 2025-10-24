@@ -867,13 +867,17 @@ apply_dictionary_from_excel <- function(data, dictionary_path) {
   }
   
   # Read the Dictionary tab
-  tryCatch({
-    dictionary <- readxl::read_xlsx(dictionary_path, sheet = "Dictionary")
+  dictionary <- tryCatch({
+    readxl::read_xlsx(dictionary_path, sheet = "Dictionary")
   }, error = function(e) {
     warning("Failed to read Dictionary tab from ", dictionary_path, ": ", e$message, 
             ". Proceeding without renaming.", call. = FALSE)
-    return(data)
+    return(NULL)
   })
+  
+  if (is.null(dictionary)) {
+    return(data)
+  }
   
   # Validate structure
   required_cols <- c("raw_column_name", "standard_column_name")
