@@ -4,16 +4,17 @@ format:
   pdf:
     documentclass: article
     geometry:
-      - top=2cm
-      - bottom=2cm
+      - landscape
+      - top=1.5cm
+      - bottom=1.5cm
       - left=2cm
       - right=2cm
     toc: true
     toc-depth: 2
     number-sections: true
     colorlinks: true
-    fig-width: 7
-    fig-height: 5
+    fig-width: 10
+    fig-height: 5.5
 params:
   report_data: NULL
   country: "DATA"
@@ -27,7 +28,8 @@ knitr::opts_chunk$set(
   message = FALSE,
   warning = FALSE,
   fig.align = 'center',
-  dpi = 300
+  dpi = 300,
+  out.width = "100%"
 )
 
 # Load required libraries
@@ -112,7 +114,7 @@ cat("\n\n")
 cat(generate_processed_data_summary(processed_stats, for_markdown = TRUE))
 ```
 
-```{r data-cleaning-pie, fig.width=6, fig.height=5}
+```{r data-cleaning-pie, fig.width=7, fig.height=5.5}
 # Plot data cleaning pie chart
 if (!is.null(raw_stats) && !is.null(processed_stats)) {
   print(plot_data_cleaning_pie(raw_stats, processed_stats))
@@ -143,7 +145,7 @@ patient_data <- params$report_data$patient
 cat(generate_demographics_summary(patient_data, for_markdown = TRUE))
 ```
 
-```{r demographics-plots, eval=has_demographics, fig.show='hold', out.width='45%'}
+```{r demographics-plots, eval=has_demographics, fig.show='hold', out.width='48%', fig.width=5, fig.height=4.5}
 # Gender distribution
 print(plot_gender_distribution(patient_data))
 
@@ -252,7 +254,7 @@ cat("### Episode type\n\n")
 cat(generate_episodes_composition_summary(episodes_data, for_markdown = TRUE))
 ```
 
-```{r episodes-composition-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.height=3.5}
+```{r episodes-composition-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.width=3.5, fig.height=4}
 # Plot three pie charts for episode composition
 print(plot_episode_composition(episodes_data, filter_class = NULL))
 print(plot_episode_composition(episodes_data, filter_class = "HA"))
@@ -263,7 +265,7 @@ print(plot_episode_composition(episodes_data, filter_class = "CA"))
 
 ### Monomicrobial Episodes
 
-```{r monomicrobial-pathogens, eval=has_episodes, fig.width=7, fig.height=6}
+```{r monomicrobial-pathogens, eval=has_episodes, fig.width=10, fig.height=6}
 episode_summary <- as_df_safe(rd$episode_summary)
 has_summary <- !is.null(episode_summary) && tryCatch(NROW(episode_summary) > 0, error = function(e) FALSE)
 if (has_summary) {
@@ -279,7 +281,7 @@ cat("**Note:** Detailed pathogen analysis requires episode summary data which is
 
 ### Polymicrobial Episodes
 
-```{r polymicrobial-pathogens, eval=has_episodes, fig.show='hold', out.width='48%', fig.height=5}
+```{r polymicrobial-pathogens, eval=has_episodes, fig.show='hold', out.width='48%', fig.width=5, fig.height=5.5}
 episode_summary <- as_df_safe(rd$episode_summary)
 has_summary <- !is.null(episode_summary) && tryCatch(NROW(episode_summary) > 0, error = function(e) FALSE)
 if (has_summary) {
@@ -300,7 +302,7 @@ cat("**Note:** Detailed pathogen analysis requires episode summary data which is
 cat(generate_infection_type_summary(episodes_data, for_markdown = TRUE))
 ```
 
-```{r infection-type-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.height=3.5}
+```{r infection-type-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.width=3.5, fig.height=4}
 # Plot three pie charts for infection type
 print(plot_infection_type(episodes_data, filter_class = NULL))
 print(plot_infection_type(episodes_data, filter_class = "HA"))
@@ -388,14 +390,14 @@ if ("AdmissionRecordId" %in% names(episodes_data) && "RecordId" %in% names(patie
 
 ## Number of Specialties per Patient and Episode
 
-```{r specialty-pies, eval=has_context, fig.show='hold', out.width='48%', fig.height=4}
+```{r specialty-pies, eval=has_context, fig.show='hold', out.width='48%', fig.width=5, fig.height=5}
 print(plot_specialty_per_patient(patient_data, specialty_col))
 print(plot_specialty_per_episode(episodes_data, patient_data, specialty_col))
 ```
 
 ## Top 20 Pathogen Distribution by Specialty
 
-```{r pathogen-specialty, eval=has_context, fig.width=8, fig.height=6}
+```{r pathogen-specialty, eval=has_context, fig.width=10, fig.height=6}
 # Prepare isolate data with specialty information
 if (!is.null(rd$isolate)) {
   iso <- rd$isolate
@@ -517,7 +519,7 @@ if (!is.null(hospital_id) && !is.null(date_filter)) {
 
 ## Ward-Level Episode Analysis
 
-```{r hospital-ward-plots, eval=has_hospital_analysis, fig.width=7, fig.height=6}
+```{r hospital-ward-plots, eval=has_hospital_analysis, fig.width=10, fig.height=5.5}
 # Merge episodes with patient data to get ward info
 if ("AdmissionRecordId" %in% names(hospital_episodes) && 
     "RecordId" %in% names(hospital_patient) &&
