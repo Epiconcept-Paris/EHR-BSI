@@ -3,7 +3,8 @@
 #'
 #' This function creates a Shiny app with full interactive controls for
 #' exploring BSI data with dropdowns, sliders, and filters. The app now includes
-#' data upload functionality for both raw BSI data and reporting templates.
+#' data upload functionality for both raw BSI data and reporting templates,
+#' as well as PDF report generation.
 #'
 #' @param data A list of data.frames. Expected to have an `ehrbsi` data.frame. 
 #'   Optional - if not provided, users can upload data through the app interface.
@@ -15,6 +16,7 @@
 #'   \item Interactive visualization with customizable axes, colors, and filters
 #'   \item Data table exploration and summary statistics
 #'   \item Collapsible sidebar to maximize visualization space
+#'   \item PDF report generation with current filtered state and visualizations
 #' }
 #' @import shiny
 #' @import bslib
@@ -79,6 +81,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         condition = "output.data_available",
         shiny::downloadButton("download_data", "Download",
                               class = "btn-success",
+                              style = "width: 100%; margin-top: 5px;")
+      ),
+      
+      # PDF Report download button - only shows when data is available
+      shiny::conditionalPanel(
+        condition = "output.data_available",
+        shiny::downloadButton("download_pdf_report", "Download PDF Report",
+                              class = "btn-info",
                               style = "width: 100%; margin-top: 5px;")
       ),
       
@@ -3078,6 +3088,19 @@ visual_bsi_dashboard <- function(data = NULL) {
       selected_hospital <- input$hospital_analysis_hospital
       selected_date <- input$hospital_analysis_date
       
+      # Normalize selected date to a year string for consistent filtering
+      selected_year <- tryCatch({
+        if (inherits(selected_date, "Date")) {
+          format(selected_date, "%Y")
+        } else if (is.numeric(selected_date)) {
+          as.character(selected_date)
+        } else if (!is.null(selected_date) && grepl("^\\d{4}$", as.character(selected_date))) {
+          as.character(selected_date)
+        } else {
+          format(as.Date(selected_date), "%Y")
+        }
+      }, error = function(e) as.character(selected_date))
+      
       # Filter EHRBSI table
       ehrbsi_filtered <- NULL
       if (!is.null(values$current_data$ehrbsi)) {
@@ -3097,11 +3120,11 @@ visual_bsi_dashboard <- function(data = NULL) {
         if ("HospitalId" %in% names(patient)) {
           # Get year from DateOfHospitalAdmission if available, otherwise use all patients from hospital
           if ("DateOfHospitalAdmission" %in% names(patient)) {
-            patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-            patient_filtered <- patient[
-              patient$HospitalId == selected_hospital & 
-              patient$admission_year == selected_date, , drop = FALSE
-            ]
+          patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
+          patient_filtered <- patient[
+            patient$HospitalId == selected_hospital & 
+            patient$admission_year == selected_year, , drop = FALSE
+          ]
           } else {
             patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
           }
@@ -3410,6 +3433,257 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(filtered$res)
       filtered$res
     }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    
+    # ==========================
+    # PDF Report Generation
+    # ==========================
+    
+    # Download handler for PDF report
+    output$download_pdf_report <- shiny::downloadHandler(
+      filename = function() {
+        country_code <- if (!is.null(values$country)) values$country else "DATA"
+        paste0("BSI_Report_", country_code, "_", format(Sys.Date(), "%Y%m%d"), ".pdf")
+      },
+      content = function(file) {
+        # Show notification
+        shiny::showNotification("Generating PDF report... This may take a moment.", 
+                               type = "message", duration = NULL, id = "pdf_gen")
+        
+        tryCatch({
+          # Prepare report data snapshot
+          # Use unfiltered episodes for PDF (or filtered if user prefers)
+          episodes_for_pdf <- tryCatch({
+            episodes_tbl()
+          }, error = function(e) {
+            values$episodes  # Fall back to unfiltered episodes
+          })
+          
+          # If episodes_tbl() returns NULL, use base episodes
+          if (is.null(episodes_for_pdf) || (is.data.frame(episodes_for_pdf) && nrow(episodes_for_pdf) == 0)) {
+            episodes_for_pdf <- values$episodes
+          }
+          
+          report_data <- list(
+            ehrbsi = values$current_data$ehrbsi,
+            patient = values$current_data$patient,
+            isolate = values$current_data$isolate,
+            res = values$current_data$res,
+            episodes = episodes_for_pdf,
+            episode_summary = values$episode_summary,
+            raw_stats = values$raw_data_stats,
+            processed_stats = values$processed_data_stats,
+            country = values$country,
+            hospital_data = NULL,
+            hospital_id = NULL,
+            date_filter = NULL
+          )
+          
+          # Always attempt to attach hospital-specific snapshot to the report.
+          # If UI inputs are NULL (e.g., user never opened the Hospital tab),
+          # derive sensible defaults from available data and build the snapshot inline.
+          tryCatch({
+            selected_hospital <- input$hospital_analysis_hospital
+            selected_date <- input$hospital_analysis_date
+
+            # Derive defaults when inputs are not available
+            if (is.null(selected_hospital) || is.null(selected_date)) {
+              ehrbsi_df <- values$current_data$ehrbsi
+              # Hospital default from EHRBSI or Episodes
+              if (is.null(selected_hospital)) {
+                if (!is.null(ehrbsi_df) && "HospitalId" %in% names(ehrbsi_df)) {
+                  h <- sort(unique(ehrbsi_df$HospitalId))
+                  h <- h[!is.na(h)]
+                  if (length(h) > 0) selected_hospital <- h[1]
+                }
+                if (is.null(selected_hospital) && !is.null(values$episodes) &&
+                    "HospitalId" %in% names(values$episodes)) {
+                  h <- sort(unique(values$episodes$HospitalId))
+                  h <- h[!is.na(h)]
+                  if (length(h) > 0) selected_hospital <- h[1]
+                }
+              }
+
+              # Date default from EHRBSI DateUsedForStatistics or Episodes year
+              if (is.null(selected_date)) {
+                if (!is.null(ehrbsi_df) && "DateUsedForStatistics" %in% names(ehrbsi_df)) {
+                  d <- sort(unique(ehrbsi_df$DateUsedForStatistics))
+                  d <- d[!is.na(d)]
+                  if (length(d) > 0) selected_date <- d[length(d)]
+                } else if (!is.null(ehrbsi_df) && "Year" %in% names(ehrbsi_df)) {
+                  y <- sort(unique(ehrbsi_df$Year))
+                  y <- y[!is.na(y)]
+                  if (length(y) > 0) selected_date <- y[length(y)]
+                } else if (!is.null(values$episodes) &&
+                           "episodeYear" %in% names(values$episodes)) {
+                  y <- sort(unique(values$episodes$episodeYear))
+                  y <- y[!is.na(y)]
+                  if (length(y) > 0) selected_date <- y[length(y)]
+                }
+              }
+            }
+
+            # Build snapshot using the same rules as hospital_filtered_data(),
+            # with robust year normalization to match Patient admissions
+            selected_year <- tryCatch({
+              if (inherits(selected_date, "Date")) {
+                format(selected_date, "%Y")
+              } else if (is.numeric(selected_date)) {
+                as.character(selected_date)
+              } else if (!is.null(selected_date) && grepl("^\\d{4}$", as.character(selected_date))) {
+                as.character(selected_date)
+              } else {
+                format(as.Date(selected_date), "%Y")
+              }
+            }, error = function(e) as.character(selected_date))
+
+            ehrbsi_filtered <- NULL
+            if (!is.null(values$current_data$ehrbsi)) {
+              ehrbsi <- values$current_data$ehrbsi
+              if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi) &&
+                  !is.null(selected_hospital) && !is.null(selected_date)) {
+                ehrbsi_filtered <- ehrbsi[
+                  ehrbsi$HospitalId == selected_hospital &
+                    ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
+                ]
+              }
+            }
+
+            patient_filtered <- NULL
+            if (!is.null(values$current_data$patient)) {
+              patient <- values$current_data$patient
+              if ("HospitalId" %in% names(patient)) {
+                if ("DateOfHospitalAdmission" %in% names(patient)) {
+                  patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
+                  patient_filtered <- patient[
+                    patient$HospitalId == selected_hospital &
+                      patient$admission_year == selected_year, , drop = FALSE
+                  ]
+                } else {
+                  patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
+                }
+              }
+            }
+
+            isolate_filtered <- NULL
+            if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
+              isolate <- values$current_data$isolate
+              if ("ParentId" %in% names(isolate) && "RecordId" %in% names(patient_filtered)) {
+                isolate_filtered <- isolate[isolate$ParentId %in% patient_filtered$RecordId, , drop = FALSE]
+              }
+            }
+
+            res_filtered <- NULL
+            if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
+              res <- values$current_data$res
+              if ("ParentId" %in% names(res) && "RecordId" %in% names(isolate_filtered)) {
+                res_filtered <- res[res$ParentId %in% isolate_filtered$RecordId, , drop = FALSE]
+              }
+            }
+
+            episodes_filtered <- NULL
+            if (!is.null(values$episodes) && !is.null(patient_filtered)) {
+              episodes <- values$episodes
+              if ("AdmissionRecordId" %in% names(episodes) && "RecordId" %in% names(patient_filtered)) {
+                episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_filtered$RecordId, , drop = FALSE]
+              }
+            }
+
+            report_data$hospital_data <- list(
+              ehrbsi = ehrbsi_filtered,
+              patient = patient_filtered,
+              isolate = isolate_filtered,
+              res = res_filtered,
+              episodes = episodes_filtered
+            )
+            report_data$hospital_id <- selected_hospital
+            report_data$date_filter <- selected_date
+          }, error = function(e) {
+            # If hospital filtering fails, just skip it
+            NULL
+          })
+          
+          # Get template path
+          template_path <- system.file("reports", "bsi_report.qmd", package = "EHRBSI")
+          
+          # If package not installed, try relative path
+          if (template_path == "" || !file.exists(template_path)) {
+            template_path <- "inst/reports/bsi_report.qmd"
+          }
+          
+          if (!file.exists(template_path)) {
+            stop("PDF report template not found. Please ensure inst/reports/bsi_report.qmd exists.")
+          }
+          
+          # Get reportModules.R path
+          module_path <- system.file("R", "reportModules.R", package = "EHRBSI")
+          if (module_path == "" || !file.exists(module_path)) {
+            module_path <- "R/reportModules.R"
+          }
+          
+          if (!file.exists(module_path)) {
+            stop("reportModules.R not found. Please ensure R/reportModules.R exists.")
+          }
+          
+          # Convert to absolute path
+          module_path <- normalizePath(module_path, winslash = "/")
+          
+          # Create temporary directory for rendering
+          temp_dir <- tempdir()
+          temp_qmd <- file.path(temp_dir, "bsi_report_temp.qmd")
+          
+          # Copy template to temp location
+          file.copy(template_path, temp_qmd, overwrite = TRUE)
+          
+          # Set working directory to temp for rendering
+          old_wd <- getwd()
+          setwd(temp_dir)
+          
+          tryCatch({
+            # Render PDF using quarto
+            quarto::quarto_render(
+              input = temp_qmd,
+              output_format = "pdf",
+              execute_params = list(
+                report_data = report_data,
+                country = if (!is.null(values$country)) values$country else "DATA",
+                report_date = as.character(Sys.time()),
+                module_path = module_path
+              ),
+              quiet = FALSE  # Set to FALSE for debugging
+            )
+            
+            # Find the generated PDF (Quarto creates .pdf from .qmd)
+            pdf_file <- sub("\\.qmd$", ".pdf", basename(temp_qmd))
+            rendered_file <- file.path(temp_dir, pdf_file)
+            
+            # Move the rendered file to the download location
+            if (file.exists(rendered_file)) {
+              file.copy(rendered_file, file, overwrite = TRUE)
+              unlink(rendered_file)
+            } else {
+              stop("PDF file was not created at expected location: ", rendered_file)
+            }
+          }, finally = {
+            # Restore working directory
+            setwd(old_wd)
+          })
+          
+          # Clean up temp file
+          if (file.exists(temp_qmd)) {
+            unlink(temp_qmd)
+          }
+          
+          shiny::removeNotification("pdf_gen")
+          shiny::showNotification("PDF report generated successfully!", type = "message", duration = 3)
+          
+        }, error = function(e) {
+          shiny::removeNotification("pdf_gen")
+          error_msg <- paste("Error generating PDF report:", e$message)
+          shiny::showNotification(error_msg, type = "error", duration = 10)
+          stop(e)
+        })
+      }
+    )
   }
   
   # Launch the app

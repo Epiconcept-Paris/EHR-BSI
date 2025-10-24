@@ -25,6 +25,9 @@ Imports:
     bslib,
     openxlsx,
     miniUI,
-    rstudioapi
+    rstudioapi,
+    DT,
+    rmarkdown,
+    knitr
 Suggests: 
     testthat (>= 3.0.0)

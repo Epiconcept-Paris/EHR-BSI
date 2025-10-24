@@ -16,7 +16,8 @@ Launches a Shiny application.
 \description{
 This function creates a Shiny app with full interactive controls for
 exploring BSI data with dropdowns, sliders, and filters. The app now includes
-data upload functionality for both raw BSI data and reporting templates.
+data upload functionality for both raw BSI data and reporting templates,
+as well as PDF report generation.
 }
 \details{
 The app supports:
@@ -26,5 +27,6 @@ The app supports:
 \item Interactive visualization with customizable axes, colors, and filters
 \item Data table exploration and summary statistics
 \item Collapsible sidebar to maximize visualization space
+\item PDF report generation with current filtered state and visualizations
 }
 }
