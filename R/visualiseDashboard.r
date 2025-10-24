@@ -360,7 +360,101 @@ visual_bsi_dashboard <- function(data = NULL) {
             shiny::p("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
           )
         ),
-        # 6) Data Table
+        # 6) Hospital analysis
+        shiny::tabPanel(
+          "Hospital analysis",
+          shiny::conditionalPanel(
+            condition = "output.hospital_analysis_available",
+            shiny::div(
+              shiny::h3("Hospital-Level Ward Analysis"),
+              
+              # Filter controls
+              shiny::div(
+                style = "display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-end;",
+                shiny::div(
+                  style = "flex: 1; min-width: 200px;",
+                  shiny::selectInput("hospital_analysis_hospital", 
+                                     "Select Hospital:",
+                                     choices = c(),
+                                     selected = NULL)
+                ),
+                shiny::div(
+                  style = "flex: 1; min-width: 200px;",
+                  shiny::selectInput("hospital_analysis_date", 
+                                     "Date Used For Statistics:",
+                                     choices = c(),
+                                     selected = NULL)
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Summary section
+              shiny::div(
+                shiny::h4("Hospital Summary"),
+                shiny::htmlOutput("hospital_analysis_summary")
+              ),
+              
+              shiny::hr(),
+              
+              # Ward-level visualizations
+              shiny::div(
+                shiny::h4("Ward-Level Episode Analysis"),
+                
+                # Episode counts by ward
+                shiny::div(
+                  shiny::h5("Total Episodes by Ward"),
+                  shiny::plotOutput("hospital_ward_episodes_total", height = "400px")
+                ),
+                
+                shiny::hr(),
+                
+                # Episode types by ward
+                shiny::div(
+                  shiny::h5("Episode Types by Ward"),
+                  shiny::p("Distribution of monomicrobial, polymicrobial, and unspecified episodes per ward"),
+                  shiny::plotOutput("hospital_ward_episodes_types", height = "500px")
+                ),
+                
+                shiny::hr(),
+                
+                # Episode origin by ward
+                shiny::div(
+                  shiny::h5("Episode Origin by Ward"),
+                  shiny::p("Distribution of Healthcare-acquired vs Community-acquired episodes per ward"),
+                  shiny::plotOutput("hospital_ward_episodes_origin", height = "500px")
+                ),
+                
+                shiny::hr(),
+                
+                # Detailed ward summary table
+                shiny::div(
+                  shiny::h5("Ward Summary Table"),
+                  DT::DTOutput("hospital_ward_summary_table")
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Filtered data tables
+              shiny::div(
+                shiny::h4("Filtered Data Tables"),
+                shiny::p("Data filtered for selected hospital and date"),
+                shiny::tabsetPanel(
+                  shiny::tabPanel("EHRBSI", DT::DTOutput("hospital_filtered_ehrbsi")),
+                  shiny::tabPanel("Patient", DT::DTOutput("hospital_filtered_patient")),
+                  shiny::tabPanel("Isolate", DT::DTOutput("hospital_filtered_isolate")),
+                  shiny::tabPanel("Res", DT::DTOutput("hospital_filtered_res"))
+                )
+              )
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.hospital_analysis_available",
+            shiny::p("Hospital analysis requires EHRBSI, patient, isolate, and res tables with episodes computed.")
+          )
+        ),
+        # 7) Data Table
         shiny::tabPanel("Data Table", 
                         shiny::tabsetPanel(
                           shiny::tabPanel("EHRBSI", 
@@ -505,6 +599,17 @@ visual_bsi_dashboard <- function(data = NULL) {
     })
     shiny::outputOptions(output, "denom_available", suspendWhenHidden = FALSE)
     
+    # Hospital analysis available (requires ehrbsi, patient, isolate, res, and episodes)
+    output$hospital_analysis_available <- shiny::reactive({
+      !is.null(values$episodes) &&
+        !is.null(values$current_data) &&
+        !is.null(values$current_data$ehrbsi) &&
+        !is.null(values$current_data$patient) &&
+        !is.null(values$current_data$isolate) &&
+        !is.null(values$current_data$res)
+    })
+    shiny::outputOptions(output, "hospital_analysis_available", suspendWhenHidden = FALSE)
+    
     # Helper: compute episodes if possible
     compute_episodes_if_possible <- function(cur) {
       if (is.null(cur) || is.null(cur$patient) || is.null(cur$isolate)) return(NULL)
@@ -540,7 +645,33 @@ visual_bsi_dashboard <- function(data = NULL) {
         # Store episode_summary separately
         if (is.list(result) && "episode_summary" %in% names(result)) {
           values$episode_summary <- result$episode_summary
-          return(result$episodes)
+          episodes_df <- result$episodes
+          
+          # Add EpisodeType column to episodes by merging from episode_summary
+          if (!is.null(result$episode_summary) && "EpisodeId" %in% names(episodes_df) && 
+              "EpisodeId" %in% names(result$episode_summary)) {
+            
+            # Create EpisodeType from Polymicrobial flag
+            ep_sum <- result$episode_summary
+            if ("Polymicrobial" %in% names(ep_sum)) {
+              ep_sum$EpisodeType <- ifelse(ep_sum$Polymicrobial, "Polymicrobial", "Monomicrobial")
+            } else if ("PathogenCount" %in% names(ep_sum)) {
+              ep_sum$EpisodeType <- ifelse(ep_sum$PathogenCount == 1, "Monomicrobial",
+                                          ifelse(ep_sum$PathogenCount > 1, "Polymicrobial", "Unspecified"))
+            } else {
+              ep_sum$EpisodeType <- "Unspecified"
+            }
+            
+            # Merge EpisodeType into episodes
+            episodes_df <- merge(episodes_df, 
+                                ep_sum[, c("EpisodeId", "EpisodeType"), drop = FALSE],
+                                by = "EpisodeId", all.x = TRUE)
+            
+            # Fill any missing with "Unspecified"
+            episodes_df$EpisodeType[is.na(episodes_df$EpisodeType)] <- "Unspecified"
+          }
+          
+          return(episodes_df)
         } else {
           # Backward compatibility: if it returns just a data frame
           return(result)
@@ -574,6 +705,37 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::updateSelectInput(session, "episode_hospital_filter",
                                  choices = hospitals,
                                  selected = hospitals)
+      }
+    })
+    
+    # Update hospital analysis dropdown choices when data changes
+    shiny::observe({
+      if (!is.null(values$current_data) && !is.null(values$current_data$ehrbsi)) {
+        ehrbsi <- values$current_data$ehrbsi
+        
+        # Get unique hospitals
+        hospitals <- if ("HospitalId" %in% names(ehrbsi)) {
+          h <- sort(unique(ehrbsi$HospitalId))
+          h[!is.na(h)]
+        } else {
+          c()
+        }
+        
+        # Get unique dates used for statistics
+        dates <- if ("DateUsedForStatistics" %in% names(ehrbsi)) {
+          d <- sort(unique(ehrbsi$DateUsedForStatistics))
+          d[!is.na(d)]
+        } else {
+          c()
+        }
+        
+        # Update dropdowns
+        shiny::updateSelectInput(session, "hospital_analysis_hospital",
+                                 choices = hospitals,
+                                 selected = if (length(hospitals) > 0) hospitals[1] else NULL)
+        shiny::updateSelectInput(session, "hospital_analysis_date",
+                                 choices = dates,
+                                 selected = if (length(dates) > 0) dates[length(dates)] else NULL)
       }
     })
     
@@ -2903,6 +3065,351 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
+    
+    # ==========================
+    # Hospital Analysis Tab Logic
+    # ==========================
+    
+    # Reactive: Filtered data for hospital analysis
+    hospital_filtered_data <- shiny::reactive({
+      shiny::req(input$hospital_analysis_hospital, input$hospital_analysis_date)
+      shiny::req(values$current_data)
+      
+      selected_hospital <- input$hospital_analysis_hospital
+      selected_date <- input$hospital_analysis_date
+      
+      # Filter EHRBSI table
+      ehrbsi_filtered <- NULL
+      if (!is.null(values$current_data$ehrbsi)) {
+        ehrbsi <- values$current_data$ehrbsi
+        if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi)) {
+          ehrbsi_filtered <- ehrbsi[
+            ehrbsi$HospitalId == selected_hospital & 
+            ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
+          ]
+        }
+      }
+      
+      # Filter patient table
+      patient_filtered <- NULL
+      if (!is.null(values$current_data$patient)) {
+        patient <- values$current_data$patient
+        if ("HospitalId" %in% names(patient)) {
+          # Get year from DateOfHospitalAdmission if available, otherwise use all patients from hospital
+          if ("DateOfHospitalAdmission" %in% names(patient)) {
+            patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
+            patient_filtered <- patient[
+              patient$HospitalId == selected_hospital & 
+              patient$admission_year == selected_date, , drop = FALSE
+            ]
+          } else {
+            patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
+          }
+        }
+      }
+      
+      # Filter isolate table based on patient records
+      isolate_filtered <- NULL
+      if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
+        isolate <- values$current_data$isolate
+        if ("ParentId" %in% names(isolate) && "RecordId" %in% names(patient_filtered)) {
+          patient_record_ids <- patient_filtered$RecordId
+          isolate_filtered <- isolate[isolate$ParentId %in% patient_record_ids, , drop = FALSE]
+        }
+      }
+      
+      # Filter res table based on isolate records
+      res_filtered <- NULL
+      if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
+        res <- values$current_data$res
+        if ("ParentId" %in% names(res) && "RecordId" %in% names(isolate_filtered)) {
+          isolate_record_ids <- isolate_filtered$RecordId
+          res_filtered <- res[res$ParentId %in% isolate_record_ids, , drop = FALSE]
+        }
+      }
+      
+      # Filter episodes based on patient records
+      episodes_filtered <- NULL
+      if (!is.null(values$episodes) && !is.null(patient_filtered)) {
+        episodes <- values$episodes
+        if ("AdmissionRecordId" %in% names(episodes) && "RecordId" %in% names(patient_filtered)) {
+          patient_record_ids <- patient_filtered$RecordId
+          episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_record_ids, , drop = FALSE]
+        }
+      }
+      
+      list(
+        ehrbsi = ehrbsi_filtered,
+        patient = patient_filtered,
+        isolate = isolate_filtered,
+        res = res_filtered,
+        episodes = episodes_filtered
+      )
+    })
+    
+    # Output: Hospital analysis summary
+    output$hospital_analysis_summary <- shiny::renderUI({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$episodes, filtered$patient)
+      
+      selected_hospital <- input$hospital_analysis_hospital
+      selected_date <- input$hospital_analysis_date
+      
+      n_episodes <- nrow(filtered$episodes)
+      n_patients <- length(unique(filtered$patient$PatientId))
+      n_wards <- if ("UnitId" %in% names(filtered$patient)) {
+        length(unique(filtered$patient$UnitId[!is.na(filtered$patient$UnitId)]))
+      } else {
+        0
+      }
+      
+      # Count episode types
+      mono <- sum(filtered$episodes$EpisodeType == "Monomicrobial", na.rm = TRUE)
+      poly <- sum(filtered$episodes$EpisodeType == "Polymicrobial", na.rm = TRUE)
+      unspec <- sum(filtered$episodes$EpisodeType == "Unspecified", na.rm = TRUE)
+      
+      # Count episode origins
+      ha <- sum(filtered$episodes$EpisodeClass %in% c("HO-HA", "IMP-HA"), na.rm = TRUE)
+      ca <- sum(filtered$episodes$EpisodeClass == "CA", na.rm = TRUE)
+      
+      shiny::div(
+        style = "background: #e7f3ff; padding: 15px; border-radius: 5px; border-left: 4px solid #0066cc;",
+        shiny::HTML(paste0(
+          "<strong>Hospital:</strong> ", selected_hospital, " | ",
+          "<strong>Year:</strong> ", selected_date, "<br>",
+          "<strong>Total Episodes:</strong> ", n_episodes, " | ",
+          "<strong>Patients:</strong> ", n_patients, " | ",
+          "<strong>Wards:</strong> ", n_wards, "<br>",
+          "<strong>Monomicrobial:</strong> ", mono, " | ",
+          "<strong>Polymicrobial:</strong> ", poly, " | ",
+          "<strong>Unspecified:</strong> ", unspec, "<br>",
+          "<strong>Healthcare-acquired:</strong> ", ha, " | ",
+          "<strong>Community-acquired:</strong> ", ca
+        ))
+      )
+    })
+    
+    # Output: Total episodes by ward
+    output$hospital_ward_episodes_total <- shiny::renderPlot({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$episodes, filtered$patient)
+      
+      # Merge episodes with patient data to get ward info
+      if (!("AdmissionRecordId" %in% names(filtered$episodes)) || 
+          !("RecordId" %in% names(filtered$patient)) ||
+          !("UnitId" %in% names(filtered$patient))) {
+        return(ggplot2::ggplot() + 
+               ggplot2::annotate("text", x = 1, y = 1, label = "Ward information (UnitId) not available") +
+               ggplot2::theme_void())
+      }
+      
+      ep_with_ward <- merge(
+        filtered$episodes, 
+        filtered$patient[, c("RecordId", "UnitId")], 
+        by.x = "AdmissionRecordId", 
+        by.y = "RecordId", 
+        all.x = TRUE
+      )
+      
+      # Count episodes by ward
+      ward_counts <- as.data.frame(table(ep_with_ward$UnitId), stringsAsFactors = FALSE)
+      names(ward_counts) <- c("Ward", "Episodes")
+      ward_counts <- ward_counts[order(ward_counts$Episodes, decreasing = TRUE), ]
+      ward_counts$Ward <- factor(ward_counts$Ward, levels = rev(ward_counts$Ward))
+      
+      if (nrow(ward_counts) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      ggplot2::ggplot(ward_counts, ggplot2::aes(x = Ward, y = Episodes)) +
+        ggplot2::geom_col(fill = "#4472C4", alpha = 0.8) +
+        ggplot2::coord_flip() +
+        ggplot2::theme_minimal() +
+        ggplot2::labs(x = "Ward (UnitId)", y = "Number of Episodes", 
+                      title = "Total Episodes by Ward") +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.text = ggplot2::element_text(size = 10)
+        )
+    })
+    
+    # Output: Episode types by ward (stacked bar chart)
+    output$hospital_ward_episodes_types <- shiny::renderPlot({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$episodes, filtered$patient)
+      
+      if (!("AdmissionRecordId" %in% names(filtered$episodes)) || 
+          !("RecordId" %in% names(filtered$patient)) ||
+          !("UnitId" %in% names(filtered$patient)) ||
+          !("EpisodeType" %in% names(filtered$episodes))) {
+        return(ggplot2::ggplot() + 
+               ggplot2::annotate("text", x = 1, y = 1, label = "Required data not available") +
+               ggplot2::theme_void())
+      }
+      
+      ep_with_ward <- merge(
+        filtered$episodes, 
+        filtered$patient[, c("RecordId", "UnitId")], 
+        by.x = "AdmissionRecordId", 
+        by.y = "RecordId", 
+        all.x = TRUE
+      )
+      
+      # Count episodes by ward and type
+      type_data <- as.data.frame(table(ep_with_ward$UnitId, ep_with_ward$EpisodeType), 
+                                 stringsAsFactors = FALSE)
+      names(type_data) <- c("Ward", "EpisodeType", "Count")
+      
+      # Calculate total per ward for sorting
+      ward_totals <- aggregate(Count ~ Ward, data = type_data, FUN = sum)
+      ward_totals <- ward_totals[order(ward_totals$Count, decreasing = TRUE), ]
+      type_data$Ward <- factor(type_data$Ward, levels = rev(ward_totals$Ward))
+      
+      if (nrow(type_data) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      ggplot2::ggplot(type_data, ggplot2::aes(x = Ward, y = Count, fill = EpisodeType)) +
+        ggplot2::geom_col(position = "stack") +
+        ggplot2::coord_flip() +
+        ggplot2::scale_fill_manual(values = c(
+          "Monomicrobial" = "#70AD47",
+          "Polymicrobial" = "#FFC000",
+          "Unspecified" = "#C5C5C5"
+        )) +
+        ggplot2::theme_minimal() +
+        ggplot2::labs(x = "Ward (UnitId)", y = "Number of Episodes", 
+                      title = "Episode Types by Ward", fill = "Episode Type") +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.text = ggplot2::element_text(size = 10),
+          legend.position = "bottom"
+        )
+    })
+    
+    # Output: Episode origin by ward (stacked bar chart)
+    output$hospital_ward_episodes_origin <- shiny::renderPlot({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$episodes, filtered$patient)
+      
+      if (!("AdmissionRecordId" %in% names(filtered$episodes)) || 
+          !("RecordId" %in% names(filtered$patient)) ||
+          !("UnitId" %in% names(filtered$patient)) ||
+          !("EpisodeClass" %in% names(filtered$episodes))) {
+        return(ggplot2::ggplot() + 
+               ggplot2::annotate("text", x = 1, y = 1, label = "Required data not available") +
+               ggplot2::theme_void())
+      }
+      
+      ep_with_ward <- merge(
+        filtered$episodes, 
+        filtered$patient[, c("RecordId", "UnitId")], 
+        by.x = "AdmissionRecordId", 
+        by.y = "RecordId", 
+        all.x = TRUE
+      )
+      
+      # Recode EpisodeClass to HA/CA/Other
+      ep_with_ward$Origin <- "Other"
+      ep_with_ward$Origin[ep_with_ward$EpisodeClass %in% c("HO-HA", "IMP-HA")] <- "Healthcare-acquired"
+      ep_with_ward$Origin[ep_with_ward$EpisodeClass == "CA"] <- "Community-acquired"
+      
+      # Count episodes by ward and origin
+      origin_data <- as.data.frame(table(ep_with_ward$UnitId, ep_with_ward$Origin), 
+                                   stringsAsFactors = FALSE)
+      names(origin_data) <- c("Ward", "Origin", "Count")
+      
+      # Calculate total per ward for sorting
+      ward_totals <- aggregate(Count ~ Ward, data = origin_data, FUN = sum)
+      ward_totals <- ward_totals[order(ward_totals$Count, decreasing = TRUE), ]
+      origin_data$Ward <- factor(origin_data$Ward, levels = rev(ward_totals$Ward))
+      
+      if (nrow(origin_data) == 0) {
+        return(ggplot2::ggplot() + ggplot2::theme_void())
+      }
+      
+      ggplot2::ggplot(origin_data, ggplot2::aes(x = Ward, y = Count, fill = Origin)) +
+        ggplot2::geom_col(position = "stack") +
+        ggplot2::coord_flip() +
+        ggplot2::scale_fill_manual(values = c(
+          "Healthcare-acquired" = "#ED7D31",
+          "Community-acquired" = "#5B9BD5",
+          "Other" = "#A5A5A5"
+        )) +
+        ggplot2::theme_minimal() +
+        ggplot2::labs(x = "Ward (UnitId)", y = "Number of Episodes", 
+                      title = "Episode Origin by Ward", fill = "Origin") +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(hjust = 0.5, size = 14, face = "bold"),
+          axis.text = ggplot2::element_text(size = 10),
+          legend.position = "bottom"
+        )
+    })
+    
+    # Output: Ward summary table
+    output$hospital_ward_summary_table <- DT::renderDT({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$episodes, filtered$patient)
+      
+      if (!("AdmissionRecordId" %in% names(filtered$episodes)) || 
+          !("RecordId" %in% names(filtered$patient)) ||
+          !("UnitId" %in% names(filtered$patient))) {
+        return(data.frame(Message = "Ward information not available"))
+      }
+      
+      ep_with_ward <- merge(
+        filtered$episodes, 
+        filtered$patient[, c("RecordId", "UnitId")], 
+        by.x = "AdmissionRecordId", 
+        by.y = "RecordId", 
+        all.x = TRUE
+      )
+      
+      # Summarize by ward
+      summary_list <- lapply(split(ep_with_ward, ep_with_ward$UnitId), function(ward_data) {
+        data.frame(
+          Ward = ward_data$UnitId[1],
+          Total_Episodes = nrow(ward_data),
+          Monomicrobial = sum(ward_data$EpisodeType == "Monomicrobial", na.rm = TRUE),
+          Polymicrobial = sum(ward_data$EpisodeType == "Polymicrobial", na.rm = TRUE),
+          Unspecified = sum(ward_data$EpisodeType == "Unspecified", na.rm = TRUE),
+          HA = sum(ward_data$EpisodeClass %in% c("HO-HA", "IMP-HA"), na.rm = TRUE),
+          CA = sum(ward_data$EpisodeClass == "CA", na.rm = TRUE),
+          stringsAsFactors = FALSE
+        )
+      })
+      
+      summary_df <- do.call(rbind, summary_list)
+      summary_df <- summary_df[order(summary_df$Total_Episodes, decreasing = TRUE), ]
+      rownames(summary_df) <- NULL
+      
+      summary_df
+    }, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+    
+    # Output: Filtered data tables
+    output$hospital_filtered_ehrbsi <- DT::renderDT({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$ehrbsi)
+      filtered$ehrbsi
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    
+    output$hospital_filtered_patient <- DT::renderDT({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$patient)
+      filtered$patient
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    
+    output$hospital_filtered_isolate <- DT::renderDT({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$isolate)
+      filtered$isolate
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    
+    output$hospital_filtered_res <- DT::renderDT({
+      filtered <- hospital_filtered_data()
+      shiny::req(filtered$res)
+      filtered$res
+    }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
   }
   
   # Launch the app
