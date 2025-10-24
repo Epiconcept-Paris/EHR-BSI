@@ -79,9 +79,6 @@ visual_bsi_dashboard <- function(data = NULL) {
         condition = "output.data_available",
         shiny::downloadButton("download_data", "Download",
                               class = "btn-success",
-                              style = "width: 100%; margin-top: 5px;"),
-        shiny::downloadButton("download_pdf", "Export PDF Report",
-                              class = "btn-info",
                               style = "width: 100%; margin-top: 5px;")
       ),
       
@@ -1098,68 +1095,6 @@ visual_bsi_dashboard <- function(data = NULL) {
           shiny::removeNotification("download_prep")
           error_msg <- paste("Error preparing download:", e$message)
           shiny::showNotification(error_msg, type = "error", duration = 5)
-        })
-      }
-    )
-    
-    # Download handler for PDF report
-    output$download_pdf <- shiny::downloadHandler(
-      filename = function() {
-        country_code <- if (!is.null(values$country)) values$country else "DATA"
-        paste0(country_code, "_BSI_Report_", format(Sys.Date(), "%Y%m%d"), ".pdf")
-      },
-      content = function(file) {
-        shiny::req(values$current_data)
-        
-        # Show notification while preparing PDF
-        shiny::showNotification("Preparing PDF report... This may take a moment.", 
-                               type = "message", duration = NULL, id = "pdf_prep")
-        
-        tryCatch({
-          # Create a temporary R Markdown file
-          temp_rmd <- tempfile(fileext = ".Rmd")
-          temp_dir <- dirname(temp_rmd)
-          
-          # Get all the data needed for the report
-          current_data <- values$current_data
-          episodes_data <- values$episodes
-          episode_summary_data <- values$episode_summary
-          raw_stats <- values$raw_data_stats
-          processed_stats <- values$processed_data_stats
-          
-          # Get filtered data using reactive functions
-          ep_tbl <- if (!is.null(episodes_data)) episodes_data else NULL
-          
-          # Build the R Markdown content
-          rmd_content <- build_pdf_report_rmd(
-            current_data, episodes_data, episode_summary_data,
-            raw_stats, processed_stats, ep_tbl
-          )
-          
-          # Write the R Markdown file
-          writeLines(rmd_content, temp_rmd)
-          
-          # Render to PDF
-          rmarkdown::render(
-            temp_rmd,
-            output_format = rmarkdown::pdf_document(
-              toc = TRUE,
-              toc_depth = 2,
-              number_sections = TRUE
-            ),
-            output_file = file,
-            envir = new.env(),
-            quiet = TRUE
-          )
-          
-          shiny::removeNotification("pdf_prep")
-          shiny::showNotification("PDF report ready!", type = "message", duration = 2)
-          
-        }, error = function(e) {
-          shiny::removeNotification("pdf_prep")
-          error_msg <- paste("Error generating PDF:", e$message)
-          shiny::showNotification(error_msg, type = "error", duration = 10)
-          message("PDF Generation Error: ", e$message)
         })
       }
     )
