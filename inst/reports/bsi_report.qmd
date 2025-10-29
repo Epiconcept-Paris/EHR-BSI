@@ -1,0 +1,578 @@
+---
+title: "BSI Data Report"
+format:
+  pdf:
+    documentclass: article
+    geometry:
+      - landscape
+      - top=1.5cm
+      - bottom=1.5cm
+      - left=2cm
+      - right=2cm
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    colorlinks: true
+    fig-width: 10
+    fig-height: 5.5
+params:
+  report_data: NULL
+  country: "DATA"
+  report_date: NULL
+  module_path: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = 'center',
+  dpi = 300,
+  out.width = "100%"
+)
+
+# Load required libraries
+library(ggplot2)
+library(DT)
+library(knitr)
+
+# Set report date if not provided
+if (is.null(params$report_date) || params$report_date == "") {
+  report_date <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+} else if (is.character(params$report_date)) {
+  # Already formatted as character
+  report_date <- params$report_date
+} else {
+  # Convert to character if it's a Date or POSIXct object
+  report_date <- format(params$report_date, "%Y-%m-%d %H:%M:%S")
+}
+
+# Load report modules using provided path or search for it
+if (!is.null(params$module_path) && file.exists(params$module_path)) {
+  # Use provided path (from Shiny app)
+  source(params$module_path)
+} else {
+  # Try to find it (for standalone rendering)
+  module_path <- NULL
+  
+  # Try installed package path first
+  module_path_pkg <- system.file("R", "reportModules.R", package = "EHRBSI", mustWork = FALSE)
+  if (file.exists(module_path_pkg) && nchar(module_path_pkg) > 0) {
+    module_path <- module_path_pkg
+  }
+  
+  # Try relative path from inst/reports
+  if (is.null(module_path) || !file.exists(module_path)) {
+    rel_path <- "../../R/reportModules.R"
+    if (file.exists(rel_path)) {
+      module_path <- normalizePath(rel_path)
+    }
+  }
+  
+  # Load the modules
+  if (!is.null(module_path) && file.exists(module_path)) {
+    source(module_path)
+  } else {
+    stop(paste0("Cannot find reportModules.R. ",
+                "Searched paths: ",
+                "1) params$module_path: ", ifelse(is.null(params$module_path), "NULL", params$module_path), ", ",
+                "2) package installation, ",
+                "3) relative path: ../../R/reportModules.R"))
+  }
+}
+
+# Helper: Coerce list-like inputs to data.frames to guard against class loss in param transport
+as_df_safe <- function(x) {
+  if (is.null(x)) return(x)
+  if (is.data.frame(x)) return(x)
+  if (inherits(x, "tbl_df") || inherits(x, "tbl")) return(as.data.frame(x))
+  if (is.list(x)) {
+    out <- tryCatch(as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE), error = function(e) NULL)
+    if (!is.null(out)) return(out)
+  }
+  x
+}
+```
+
+\newpage
+
+# Summary
+
+## Data cleaning and pre-processing
+
+```{r data-cleaning-summary}
+# Get data from params
+raw_stats <- params$report_data$raw_stats
+processed_stats <- params$report_data$processed_stats
+
+# Display raw data summary
+cat(generate_raw_data_summary(raw_stats, for_markdown = TRUE))
+cat("\n\n")
+
+# Display processed data summary
+cat(generate_processed_data_summary(processed_stats, for_markdown = TRUE))
+```
+
+```{r data-cleaning-pie, fig.width=7, fig.height=5.5}
+# Plot data cleaning pie chart
+if (!is.null(raw_stats) && !is.null(processed_stats)) {
+  print(plot_data_cleaning_pie(raw_stats, processed_stats))
+}
+```
+
+## Health care facilities
+
+```{r healthcare-facilities}
+cat(generate_healthcare_facilities_summary(processed_stats, raw_stats, for_markdown = TRUE))
+```
+
+\newpage
+
+# Patient Demographics
+
+```{r demographics-check, include=FALSE}
+has_demographics <- FALSE
+if (!is.null(params$report_data$patient)) {
+  has_demographics <- all(c("Age", "Sex") %in% names(params$report_data$patient))
+}
+```
+
+```{r demographics-content, eval=has_demographics}
+patient_data <- params$report_data$patient
+
+# Display demographics summary
+cat(generate_demographics_summary(patient_data, for_markdown = TRUE))
+```
+
+```{r demographics-plots, eval=has_demographics, fig.show='hold', out.width='48%', fig.width=5, fig.height=4.5}
+# Gender distribution
+print(plot_gender_distribution(patient_data))
+
+# Age distribution
+print(plot_age_distribution(patient_data))
+```
+
+```{r demographics-tables, eval=has_demographics}
+# Gender table
+gender_clean <- ifelse(
+  toupper(patient_data$Sex) %in% c("F", "FEMALE", "W", "WOMAN"), "Female",
+  ifelse(toupper(patient_data$Sex) %in% c("M", "MALE", "MAN"), "Male", "Unknown")
+)
+gender_counts <- table(gender_clean)
+total <- sum(gender_counts)
+gender_df <- data.frame(
+  Gender = names(gender_counts),
+  "Patients (n)" = as.numeric(gender_counts),
+  "Percentage (%)" = round(as.numeric(gender_counts) / total * 100, 1),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+kable(gender_df, caption = "Gender Distribution")
+
+# Age table
+ages_numeric <- as.numeric(patient_data$Age)
+ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
+if (length(ages_numeric) > 0) {
+  age_groups <- create_age_groups(ages_numeric)
+  age_counts <- table(age_groups)
+  total <- sum(age_counts)
+  age_df <- data.frame(
+    "Age group" = names(age_counts),
+    "Patients (n)" = as.numeric(age_counts),
+    "Percentage (%)" = round(as.numeric(age_counts) / total * 100, 1),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  
+  kable(age_df, caption = "Age Distribution")
+}
+```
+
+```{r age-statistics, eval=has_demographics}
+cat("\n\n")
+cat(generate_age_statistics(patient_data, for_markdown = TRUE))
+```
+
+```{r demographics-unavailable, eval=!has_demographics}
+cat("Patient demographics require patient data with Age and Sex columns.")
+```
+
+\newpage
+
+# Episodes
+
+```{r episodes-check, include=FALSE}
+# Coerce report_data inputs locally (can't mutate params - use local copies)
+rd <- params$report_data
+as_df_safe <- function(x) {
+  if (is.null(x)) return(x)
+  if (is.data.frame(x)) return(x)
+  if (inherits(x, "tbl_df") || inherits(x, "tbl")) return(as.data.frame(x))
+  if (is.list(x)) {
+    out <- tryCatch(as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE), error = function(e) NULL)
+    if (!is.null(out)) return(out)
+  }
+  x
+}
+if (!is.null(rd)) {
+  rd$ehrbsi <- as_df_safe(rd$ehrbsi)
+  rd$patient <- as_df_safe(rd$patient)
+  rd$isolate <- as_df_safe(rd$isolate)
+  rd$res <- as_df_safe(rd$res)
+  rd$episodes <- as_df_safe(rd$episodes)
+  rd$episode_summary <- as_df_safe(rd$episode_summary)
+  if (!is.null(rd$hospital_data) && is.list(rd$hospital_data)) {
+    rd$hospital_data$ehrbsi <- as_df_safe(rd$hospital_data$ehrbsi)
+    rd$hospital_data$patient <- as_df_safe(rd$hospital_data$patient)
+    rd$hospital_data$isolate <- as_df_safe(rd$hospital_data$isolate)
+    rd$hospital_data$res <- as_df_safe(rd$hospital_data$res)
+    rd$hospital_data$episodes <- as_df_safe(rd$hospital_data$episodes)
+  }
+}
+
+has_episodes <- !is.null(params$report_data$episodes)
+if (has_episodes) {
+  ep_nrows <- nrow(rd$episodes)
+  has_episodes <- !is.null(ep_nrows) && ep_nrows > 0
+}
+```
+
+```{r episodes-content, eval=has_episodes, include=FALSE}
+episodes_data <- rd$episodes
+episode_summary <- rd$episode_summary
+patient_data <- rd$patient
+```
+
+## Type of episodes
+
+```{r episodes-type-summary, eval=has_episodes}
+cat(generate_episodes_type_summary(episodes_data, patient_data, for_markdown = TRUE))
+cat("\n\n")
+cat("### Episode type\n\n")
+cat(generate_episodes_composition_summary(episodes_data, for_markdown = TRUE))
+```
+
+```{r episodes-composition-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.width=3.5, fig.height=4}
+# Plot three pie charts for episode composition
+print(plot_episode_composition(episodes_data, filter_class = NULL))
+print(plot_episode_composition(episodes_data, filter_class = "HA"))
+print(plot_episode_composition(episodes_data, filter_class = "CA"))
+```
+
+## Composition Episode Type
+
+### Monomicrobial Episodes
+
+```{r monomicrobial-pathogens, eval=has_episodes, fig.width=10, fig.height=6}
+episode_summary <- as_df_safe(rd$episode_summary)
+has_summary <- !is.null(episode_summary) && tryCatch(NROW(episode_summary) > 0, error = function(e) FALSE)
+if (has_summary) {
+  print(plot_monomicrobial_pathogens(episode_summary))
+} else {
+  cat("Episode summary data not available for pathogen analysis.\n")
+}
+```
+
+```{r monomicrobial-unavailable, eval=has_episodes && is.null(params$report_data$episode_summary)}
+cat("**Note:** Detailed pathogen analysis requires episode summary data which is not currently available.\n")
+```
+
+### Polymicrobial Episodes
+
+```{r polymicrobial-pathogens, eval=has_episodes, fig.show='hold', out.width='48%', fig.width=5, fig.height=5.5}
+episode_summary <- as_df_safe(rd$episode_summary)
+has_summary <- !is.null(episode_summary) && tryCatch(NROW(episode_summary) > 0, error = function(e) FALSE)
+if (has_summary) {
+  print(plot_polymicrobial_individual(episode_summary))
+  print(plot_polymicrobial_combinations(episode_summary))
+} else {
+  cat("Episode summary data not available for pathogen analysis.\n")
+}
+```
+
+```{r polymicrobial-unavailable, eval=has_episodes && is.null(params$report_data$episode_summary)}
+cat("**Note:** Detailed pathogen analysis requires episode summary data which is not currently available.\n")
+```
+
+## Infection type
+
+```{r infection-type-summary, eval=has_episodes}
+cat(generate_infection_type_summary(episodes_data, for_markdown = TRUE))
+```
+
+```{r infection-type-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.width=3.5, fig.height=4}
+# Plot three pie charts for infection type
+print(plot_infection_type(episodes_data, filter_class = NULL))
+print(plot_infection_type(episodes_data, filter_class = "HA"))
+print(plot_infection_type(episodes_data, filter_class = "CA"))
+```
+
+```{r episodes-unavailable, eval=!has_episodes}
+cat("Episodes view requires patient, isolate, resistance tables and computed episodes.")
+```
+
+\newpage
+
+# Context (Specialty Analysis)
+
+```{r context-check, include=FALSE}
+# Use coerced data from rd
+has_context <- FALSE
+if (!is.null(rd$patient) && !is.null(rd$episodes)) {
+  ep_nrows <- tryCatch(nrow(rd$episodes), error = function(e) NA_integer_)
+  if (!is.na(ep_nrows) && ep_nrows > 0) {
+    specialty_col <- get_specialty_column(rd$patient)
+    has_context <- !is.null(specialty_col)
+  }
+}
+```
+
+```{r context-content, eval=has_context, include=FALSE}
+patient_data <- rd$patient
+episodes_data <- rd$episodes
+specialty_col <- get_specialty_column(patient_data)
+```
+
+## Specialty Distribution
+
+```{r specialty-table, eval=has_context}
+# Join episodes with patient data to get specialty information
+if ("AdmissionRecordId" %in% names(episodes_data) && "RecordId" %in% names(patient_data)) {
+  ep_with_specialty <- merge(episodes_data, patient_data[, c("RecordId", specialty_col)], 
+                             by.x = "AdmissionRecordId", by.y = "RecordId", all.x = TRUE)
+  
+  # Clean specialty names
+  ep_with_specialty$specialty_clean <- ep_with_specialty[[specialty_col]]
+  ep_with_specialty$specialty_clean[is.na(ep_with_specialty$specialty_clean) | 
+                                      ep_with_specialty$specialty_clean == ""] <- "-"
+  
+  # Create episode class groups
+  ep_with_specialty$EpisodeGroup <- "Unknown"
+  if ("EpisodeClass" %in% names(ep_with_specialty)) {
+    ep_with_specialty$EpisodeGroup <- ifelse(
+      ep_with_specialty$EpisodeClass %in% c("HO-HA", "IMP-HA"), "HA",
+      ifelse(ep_with_specialty$EpisodeClass == "CA", "CA", "Unknown")
+    )
+  }
+  
+  # Aggregate by specialty and episode group
+  agg_data <- aggregate(EpisodeId ~ specialty_clean + EpisodeGroup, 
+                        data = ep_with_specialty, FUN = length)
+  names(agg_data) <- c("Specialty", "EpisodeGroup", "Count")
+  
+  # Pivot to wide format
+  specialty_summary <- data.frame(
+    Specialty = unique(agg_data$Specialty),
+    stringsAsFactors = FALSE
+  )
+  
+  for (group in c("HA", "CA", "Unknown")) {
+    group_data <- agg_data[agg_data$EpisodeGroup == group, ]
+    specialty_summary[[group]] <- sapply(specialty_summary$Specialty, function(s) {
+      idx <- which(group_data$Specialty == s)
+      if (length(idx) > 0) group_data$Count[idx] else 0
+    })
+  }
+  
+  # Calculate total episodes per specialty
+  specialty_summary$`Total episodes` <- specialty_summary$HA + 
+    specialty_summary$CA + 
+    specialty_summary$Unknown
+  
+  # Sort by total episodes descending
+  specialty_summary <- specialty_summary[order(specialty_summary$`Total episodes`, decreasing = TRUE), ]
+  
+  kable(specialty_summary, caption = "Episodes by Specialty and Origin")
+}
+```
+
+## Number of Specialties per Patient and Episode
+
+```{r specialty-pies, eval=has_context, fig.show='hold', out.width='48%', fig.width=5, fig.height=5}
+print(plot_specialty_per_patient(patient_data, specialty_col))
+print(plot_specialty_per_episode(episodes_data, patient_data, specialty_col))
+```
+
+## Top 20 Pathogen Distribution by Specialty
+
+```{r pathogen-specialty, eval=has_context, fig.width=10, fig.height=6}
+# Prepare isolate data with specialty information
+if (!is.null(rd$isolate)) {
+  iso <- rd$isolate
+  
+  # Create organism label
+  if ("MicroorganismCodeLabel" %in% names(iso)) {
+    iso$organism_label <- iso$MicroorganismCodeLabel
+  } else if ("MicroorganismCode" %in% names(iso)) {
+    iso$organism_label <- iso$MicroorganismCode
+  }
+  
+  if ("organism_label" %in% names(iso) && "ParentId" %in% names(iso) && "RecordId" %in% names(patient_data)) {
+    iso_specialty <- merge(iso, patient_data[, c("RecordId", "PatientId", specialty_col)], 
+                           by.x = "ParentId", by.y = "RecordId", all.x = TRUE)
+    iso_specialty <- iso_specialty[!is.na(iso_specialty[[specialty_col]]), ]
+    
+    # Add episode information if available
+    if (!is.null(episodes_data) && "AdmissionRecordId" %in% names(episodes_data) && "ParentId" %in% names(iso)) {
+      # Join through patient admissions
+      iso_epi <- merge(iso_specialty, episodes_data, 
+                       by.x = "ParentId", by.y = "AdmissionRecordId", 
+                       all.x = TRUE, suffixes = c("", "_ep"))
+      iso_epi <- iso_epi[!is.na(iso_epi$EpisodeId), ]
+      if (nrow(iso_epi) > 0) {
+        iso_specialty <- iso_epi
+      }
+    }
+    
+    if (nrow(iso_specialty) > 0) {
+      print(plot_pathogen_specialty_distribution(iso_specialty))
+    }
+  }
+}
+```
+
+```{r context-unavailable, eval=!has_context}
+cat("Context view requires ward/specialty columns (e.g., UnitSpecialtyShort or PatientSpecialty) in patient data.")
+```
+
+\newpage
+
+# Antibiograms
+
+```{r antibiograms-check, include=FALSE}
+# Use coerced data from rd
+has_antibiograms <- FALSE
+if (!is.null(rd$episodes) && 
+    !is.null(rd$isolate) && 
+    !is.null(rd$res)) {
+  has_antibiograms <- TRUE
+}
+```
+
+```{r antibiograms-content, eval=has_antibiograms}
+# Prepare resistance data with context (simplified version for PDF)
+res_data <- rd$res
+
+# Check if we have the necessary columns for antibiogram analysis
+if (all(c("antibiotic_name", "sir_value") %in% names(res_data))) {
+  # Build antibiogram table (by isolates)
+  ab_table <- build_ab_table(res_data)
+  
+  if (nrow(ab_table) > 0) {
+    cat("## Antibiogram Summary (By Isolates)\n\n")
+    cat("The following table shows resistance patterns for organism-antibiotic combinations.\n\n")
+    
+    # Display table (limit rows for PDF)
+    if (nrow(ab_table) > 50) {
+      cat(paste("Showing first 50 of", nrow(ab_table), "rows.\n\n"))
+      print(kable(head(ab_table, 50), digits = 1))
+    } else {
+      print(kable(ab_table, digits = 1))
+    }
+  } else {
+    cat("No antibiogram data available with the current filters.\n")
+  }
+} else {
+  cat("Required columns (antibiotic_name, sir_value) not found in resistance data.\n")
+}
+```
+
+```{r antibiograms-unavailable, eval=!has_antibiograms}
+cat("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
+```
+
+\newpage
+
+# Hospital Analysis
+
+```{r hospital-check, include=FALSE}
+# Use locally coerced copy if present
+rd_h <- if (exists("rd")) rd else params$report_data
+
+has_hospital_analysis <- FALSE
+if (!is.null(rd_h$hospital_data)) {
+  if (!is.null(rd_h$hospital_data$episodes)) {
+    ep_nrows <- tryCatch(nrow(rd_h$hospital_data$episodes), error = function(e) NA_integer_)
+    has_hospital_analysis <- !is.na(ep_nrows) && ep_nrows > 0
+  }
+}
+```
+
+```{r hospital-content, eval=has_hospital_analysis}
+hospital_data <- rd_h$hospital_data
+hospital_episodes <- hospital_data$episodes
+hospital_patient <- hospital_data$patient
+hospital_id <- rd_h$hospital_id
+date_filter <- rd_h$date_filter
+```
+
+## Hospital Summary
+
+```{r hospital-summary, eval=has_hospital_analysis}
+if (!is.null(hospital_id) && !is.null(date_filter)) {
+  cat(generate_hospital_summary(hospital_episodes, hospital_patient, 
+                                 hospital_id, date_filter, for_markdown = TRUE))
+}
+```
+
+## Ward-Level Episode Analysis
+
+```{r hospital-ward-plots, eval=has_hospital_analysis, fig.width=10, fig.height=5.5}
+# Merge episodes with patient data to get ward info
+if ("AdmissionRecordId" %in% names(hospital_episodes) && 
+    "RecordId" %in% names(hospital_patient) &&
+    "UnitId" %in% names(hospital_patient)) {
+  
+  ep_with_ward <- merge(
+    hospital_episodes, 
+    hospital_patient[, c("RecordId", "UnitId")], 
+    by.x = "AdmissionRecordId", 
+    by.y = "RecordId", 
+    all.x = TRUE
+  )
+  
+  # Total Episodes by Ward
+  cat("### Total Episodes by Ward\n\n")
+  print(plot_hospital_ward_episodes_total(ep_with_ward))
+  
+  cat("\n\n### Episode Types by Ward\n\n")
+  print(plot_hospital_ward_episodes_types(ep_with_ward))
+  
+  cat("\n\n### Episode Origin by Ward\n\n")
+  print(plot_hospital_ward_episodes_origin(ep_with_ward))
+  
+  # Ward summary table
+  cat("\n\n### Ward Summary Table\n\n")
+  summary_list <- lapply(split(ep_with_ward, ep_with_ward$UnitId), function(ward_data) {
+    data.frame(
+      Ward = ward_data$UnitId[1],
+      Total_Episodes = nrow(ward_data),
+      Monomicrobial = sum(ward_data$EpisodeType == "Monomicrobial", na.rm = TRUE),
+      Polymicrobial = sum(ward_data$EpisodeType == "Polymicrobial", na.rm = TRUE),
+      Unspecified = sum(ward_data$EpisodeType == "Unspecified", na.rm = TRUE),
+      HA = sum(ward_data$EpisodeClass %in% c("HO-HA", "IMP-HA"), na.rm = TRUE),
+      CA = sum(ward_data$EpisodeClass == "CA", na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  summary_df <- do.call(rbind, summary_list)
+  summary_df <- summary_df[order(summary_df$Total_Episodes, decreasing = TRUE), ]
+  rownames(summary_df) <- NULL
+  
+  print(kable(summary_df, caption = "Ward-Level Episode Summary"))
+}
+```
+
+```{r hospital-unavailable, eval=!has_hospital_analysis}
+cat("Hospital analysis requires EHRBSI, patient, isolate, and res tables with episodes computed.\n")
+cat("Hospital-specific filtering was not applied for this report.")
+```
+
+---
+
+**Report generated:** `r report_date`  
+**Country/Dataset:** `r params$country`
+
