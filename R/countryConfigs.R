@@ -484,7 +484,12 @@ COUNTRY_R_TRANSFORMS <- list(
           # Return a vector of NAs with the correct length
           return(rep(NA_character_, nrow(data)))
         }
-      }
+      },
+      Sex = function(data) {
+        # Recode male/female
+        Sexf <- ifelse((!is.na(data$SexRaw) & data$SexRaw==1), "Male", ifelse((!is.na(data$SexRaw) & data$SexRaw==0), "Female", NA_integer_))
+        return(Sexf)
+        }
     )
   )
 )
