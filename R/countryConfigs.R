@@ -484,6 +484,42 @@ COUNTRY_R_TRANSFORMS <- list(
           # Return a vector of NAs with the correct length
           return(rep(NA_character_, nrow(data)))
         }
+      },
+      Sex = function(data) {
+        # Recode male/female
+        Sexf <- ifelse((!is.na(data$SexRaw) & data$SexRaw==1), "Male", ifelse((!is.na(data$SexRaw) & data$SexRaw==0), "Female", NA_integer_))
+        return(Sexf)
+        }
+    )
+  ),
+  GEN = list(
+    field_transforms = list(
+      PreviousAdmission = function(data) {
+        # Estonia-specific gap analysis
+        data %>%
+          dplyr::arrange(PatientId, DateOfHospitalAdmission) %>%
+          dplyr::group_by(PatientId) %>%
+          dplyr::mutate(
+            gap_days = as.numeric(
+              difftime(DateOfHospitalAdmission, dplyr::lag(DateOfHospitalAdmission), 
+                       units = "days")
+            ),
+            prev_HospitalId = dplyr::lag(HospitalId),
+            PreviousAdmission = dplyr::case_when(
+              (gap_days > 0 & gap_days <= 3) & (HospitalId == prev_HospitalId) ~ "CURR",
+              (gap_days > 0 & gap_days <= 3) & (HospitalId != prev_HospitalId) ~ "OHOSP",
+              TRUE ~ NA_character_
+            )
+          ) %>%
+          dplyr::ungroup() %>%
+          dplyr::select(-gap_days, -prev_HospitalId)
+      },
+      UnitId = function(data) {
+        if (all(c("HospitalId", "UnitSpecialtyShort") %in% names(data))) {
+          paste0(data$HospitalId, "_", data$UnitSpecialtyShort)
+        } else {
+          NA_character_
+        }
       }
     )
   )
