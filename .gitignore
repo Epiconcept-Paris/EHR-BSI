@@ -1,6 +1,5 @@
 **.csv
 **.rds
-**.rproj
 **.rhistory
 # Ignore all .xlsx files
 *.xlsx
