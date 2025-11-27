@@ -7,6 +7,7 @@
 # But do NOT ignore .xlsx and .csv files in the reference/ directory
 !reference/dictionaries/*.xlsx
 !reference/dictionaries/*.csv
+!reference/dummy_data/Genovia/*.xlsx
 !reference/*.xlsx
 !reference/*.csv
 **.swp

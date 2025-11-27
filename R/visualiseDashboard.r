@@ -50,7 +50,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::radioButtons("country", NULL,
                             choices = list("CZ" = "CZ",
                                            "EE" = "EE", 
-                                           "MT" = "MT"),
+                                           "MT" = "MT",
+                                           "GEN" = "GEN"),
                             selected = "EE",
                             inline = TRUE)
       ),
