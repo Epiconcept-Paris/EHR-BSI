@@ -15,7 +15,7 @@ test_that("calculateEpisodes runs without errors with typical data", {
   isolate_df <- data.frame(
     RecordId = paste0("ISO-", 1:5),
     ParentId = c("PAT-1", "PAT-1", "PAT-1", "PAT-2", "PAT-2"),
-    DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-12", "2023-02-12", "2023-01-16", "2023-01-20")),
+    DateOfSpecimenCollection = as.Date(c("2023-01-03", "2023-01-12", "2023-02-12", "2023-01-16", "2023-01-20")),
     MicroorganismCode = c("RP-1", "CC-1", "RP-2", "RP-1", "CC-1"),
     stringsAsFactors = FALSE
   )
@@ -48,7 +48,7 @@ test_that("Rule 1: Recognised pathogen creates a BSI case", {
   )
   isolate_df <- data.frame(
     RecordId = "ISO-1", ParentId = "ADM-001",  # Links to patient's RecordId
-    DateOfSpecCollection = as.Date("2023-01-03"), MicroorganismCode = "RP-1",
+    DateOfSpecimenCollection = as.Date("2023-01-03"), MicroorganismCode = "RP-1",
     stringsAsFactors = FALSE
   )
   commensal_df <- data.frame(SNOMED.Code = "CC-1", Organism = "Commensal", stringsAsFactors = FALSE)
@@ -67,7 +67,7 @@ test_that("Rule 2: Two concordant CCs create a BSI case", {
   )
   isolate_df <- data.frame(
     RecordId = c("ISO-1", "ISO-2"), ParentId = c("ADM-001", "ADM-001"),  # Both link to patient's RecordId
-    DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-05")), # 2 days apart
+    DateOfSpecimenCollection = as.Date(c("2023-01-03", "2023-01-05")), # 2 days apart
     MicroorganismCode = c("CC-1", "CC-1"),
     stringsAsFactors = FALSE
   )
@@ -87,7 +87,7 @@ test_that("A single common commensal does NOT create a BSI case", {
   )
   isolate_df <- data.frame(
     RecordId = "ISO-1", ParentId = "ADM-001",  # Links to patient's RecordId
-    DateOfSpecCollection = as.Date("2023-01-03"), MicroorganismCode = "CC-1",
+    DateOfSpecimenCollection = as.Date("2023-01-03"), MicroorganismCode = "CC-1",
     stringsAsFactors = FALSE
   )
   commensal_df <- data.frame(SNOMED.Code = "CC-1", Organism = "Commensal", stringsAsFactors = FALSE)
@@ -110,7 +110,7 @@ test_that("Polymicrobial episode: isolates within 3 days are grouped", {
   )
   isolate_df <- data.frame(
     RecordId = c("ISO-1", "ISO-2"), ParentId = c("ADM-001", "ADM-001"),  # Both link to patient's RecordId
-    DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-05")), # 2 days apart
+    DateOfSpecimenCollection = as.Date(c("2023-01-03", "2023-01-05")), # 2 days apart
     MicroorganismCode = c("RP-1", "RP-2"),
     stringsAsFactors = FALSE
   )
@@ -130,7 +130,7 @@ test_that("New episode started for different organism after 3 days", {
   )
   isolate_df <- data.frame(
     RecordId = c("ISO-1", "ISO-2"), ParentId = c("ADM-001", "ADM-001"),  # Both link to patient's RecordId
-    DateOfSpecCollection = as.Date(c("2023-01-03", "2023-01-10")), # 7 days apart
+    DateOfSpecimenCollection = as.Date(c("2023-01-03", "2023-01-10")), # 7 days apart
     MicroorganismCode = c("RP-1", "RP-2"),
     stringsAsFactors = FALSE
   )

@@ -436,16 +436,16 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
     dplyr::mutate(
       AggregationLevel = aggregation_level,
       DataSource = paste0(country_code, "-EHRBSI"),
-      DateUsedForStatistics = format(as.Date(DateOfSpecCollection), "%Y"),
+      DateUsedForStatistics = format(as.Date(DateOfSpecimenCollection), "%Y"),
       EpisodeDuration = episode_duration,
       HospitalId = HospitalId,
       LaboratoryCode = if ("LaboratoryCode" %in% names(.)) LaboratoryCode else NA_character_,
       # Create RecordId based on aggregation level (use dplyr::coalesce for vectorized NA handling)
       RecordId = dplyr::case_when(
         aggregation_level == "HOSP" ~ HospitalId,
-        aggregation_level == "HOSP-YEAR" ~ paste0(HospitalId, "-", format(as.Date(DateOfSpecCollection), "%Y")),
+        aggregation_level == "HOSP-YEAR" ~ paste0(HospitalId, "-", format(as.Date(DateOfSpecimenCollection), "%Y")),
         aggregation_level == "LAB" ~ dplyr::coalesce(LaboratoryCode, HospitalId),
-        aggregation_level == "LAB-YEAR" ~ paste0(dplyr::coalesce(LaboratoryCode, HospitalId), "-", format(as.Date(DateOfSpecCollection), "%Y")),
+        aggregation_level == "LAB-YEAR" ~ paste0(dplyr::coalesce(LaboratoryCode, HospitalId), "-", format(as.Date(DateOfSpecimenCollection), "%Y")),
         TRUE ~ HospitalId
       ),
       MicrobiologicalTerminology = term$microbiological,
@@ -542,7 +542,7 @@ finalize_table <- function(data, select_cols = NULL, arrange_cols = NULL) {
 create_hierarchical_record_ids <- function(data, hospital_col = "HospitalId", 
                                          patient_col = "PatientId",
                                          admission_date_col = "DateOfHospitalAdmission",
-                                         specimen_date_col = "DateOfSpecCollection",
+                                         specimen_date_col = "DateOfSpecimenCollection",
                                          isolate_col = "IsolateId",
                                          organism_col = "MicroorganismCode",
                                          record_id_bsi_col = "record_id_bsi") {
@@ -743,7 +743,7 @@ get_standard_table_columns <- function(table_type) {
     ),
     
     "isolate" = c(
-      "RecordId", "ParentId", "DateOfSpecCollection", "LaboratoryCode", "IsolateId", "Specimen",
+      "RecordId", "ParentId", "DateOfSpecimenCollection", "LaboratoryCode", "IsolateId", "Specimen",
       "MicroorganismCode", "MicroorganismCodeLabel", "MicroorganismCodeSystem", 
       "MicroorganismCodeSystemSpec", "MicroorganismCodeSystemVersion"
     ),
@@ -1006,11 +1006,11 @@ create_flexible_record_ids <- function(data, id_templates, config) {
   result <- data
   
   # Create BSI-level record ID
-  if ("bsi" %in% names(id_templates) && has_column(data, "DateOfSpecCollection") && has_column(data, "HospitalId")) {
+  if ("bsi" %in% names(id_templates) && has_column(data, "DateOfSpecimenCollection") && has_column(data, "HospitalId")) {
     template <- id_templates$bsi
     if (!is.null(template) && length(template) > 0) {
       substitutions <- list(
-        year = format_date_for_id(result$DateOfSpecCollection, "year"),
+        year = format_date_for_id(result$DateOfSpecimenCollection, "year"),
         HospitalId = "HospitalId"
       )
       result$record_id_bsi <- apply_template_substitution(template, result, substitutions)
@@ -1046,10 +1046,10 @@ create_flexible_record_ids <- function(data, id_templates, config) {
           MicroorganismCode = "MicroorganismCode"
         )
         result$record_id_isolate <- apply_template_substitution(template, result, substitutions)
-      } else if (has_column(data, "DateOfSpecCollection") && has_column(data, "PatientId")) {
+      } else if (has_column(data, "DateOfSpecimenCollection") && has_column(data, "PatientId")) {
         # Use date-based ID
         substitutions <- list(
-          specimen_date = format_date_for_id(result$DateOfSpecCollection, "date"),
+          specimen_date = format_date_for_id(result$DateOfSpecimenCollection, "date"),
           PatientId = "PatientId"
         )
         result$record_id_isolate <- apply_template_substitution(template, result, substitutions)
@@ -1072,7 +1072,7 @@ process_basic_cleaning <- function(raw_data, config, country_code) {
   # Validate required columns based on config
   base_required <- c("HospitalId", "PatientId", "DateOfHospitalAdmission")
   if (country_code == "EE") {
-    base_required <- c(base_required, "DateOfSpecCollection", "IsolateId")
+    base_required <- c(base_required, "DateOfSpecimenCollection", "IsolateId")
   }
   validate_required_columns(raw_data, base_required, paste0(country_code, " BSI data"))
   
@@ -1347,7 +1347,7 @@ process_country_generic <- function(raw_data, country_code, episode_duration, me
 #' - Isolate is a commensal organism (from CommonCommensals.csv)
 #' - No other isolate of the same organism for the same patient within 2 days
 #'
-#' @param isolate_df Isolate data frame with RecordId, ParentId, MicroorganismCode, MicroorganismCodeLabel, DateOfSpecCollection
+#' @param isolate_df Isolate data frame with RecordId, ParentId, MicroorganismCode, MicroorganismCodeLabel, DateOfSpecimenCollection
 #' @param patient_df Patient data frame with RecordId and PatientId
 #' @param commensal_path Path to the CommonCommensals.csv file
 #'
@@ -1423,10 +1423,10 @@ detect_contaminants <- function(isolate_df, patient_df, commensal_path = "refere
   iso_pid <- merge(isolate_df, pid_map, by = "ParentId", all.x = TRUE)
   
   # Coerce dates
-  if ("DateOfSpecCollection" %in% names(iso_pid)) {
-    iso_pid$DateOfSpecCollection <- to_date(iso_pid$DateOfSpecCollection)
+  if ("DateOfSpecimenCollection" %in% names(iso_pid)) {
+    iso_pid$DateOfSpecimenCollection <- to_date(iso_pid$DateOfSpecimenCollection)
   } else {
-    warning("DateOfSpecCollection not found; cannot detect contaminants based on temporal pairing")
+    warning("DateOfSpecimenCollection not found; cannot detect contaminants based on temporal pairing")
     return(isolate_df)
   }
   
@@ -1445,9 +1445,9 @@ detect_contaminants <- function(isolate_df, patient_df, commensal_path = "refere
   
   for (idx in split_idx) {
     if (length(idx) < 2) next
-    ord <- order(iso_pid$DateOfSpecCollection[idx])
+    ord <- order(iso_pid$DateOfSpecimenCollection[idx])
     ii <- idx[ord]
-    d <- iso_pid$DateOfSpecCollection[ii]
+    d <- iso_pid$DateOfSpecimenCollection[ii]
     # Differences in days to neighbours
     lead_diff <- c(as.numeric(diff(d)), NA)
     lag_diff  <- c(NA, as.numeric(diff(d)))

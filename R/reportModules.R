@@ -126,9 +126,9 @@ get_specialty_column <- function(pat) {
 #' @export
 dedup_episode_ab <- function(rctx) {
   if (is.null(rctx) || nrow(rctx) == 0) return(rctx)
-  if (!all(c("EpisodeId", "MicroorganismCode", "antibiotic_name", "DateOfSpecCollection") %in% names(rctx))) return(rctx)
+  if (!all(c("EpisodeId", "MicroorganismCode", "antibiotic_name", "DateOfSpecimenCollection") %in% names(rctx))) return(rctx)
   rctx <- rctx[!is.na(rctx$sir_value) & rctx$sir_value %in% c("S", "I", "R"), , drop = FALSE]
-  rctx <- rctx[order(rctx$EpisodeId, rctx$MicroorganismCode, rctx$antibiotic_name, rctx$DateOfSpecCollection), ]
+  rctx <- rctx[order(rctx$EpisodeId, rctx$MicroorganismCode, rctx$antibiotic_name, rctx$DateOfSpecimenCollection), ]
   key <- paste(rctx$EpisodeId, rctx$MicroorganismCode, rctx$antibiotic_name, sep = "||")
   dedup_idx <- !duplicated(key)
   rctx[dedup_idx, , drop = FALSE]

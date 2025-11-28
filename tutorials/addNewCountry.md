@@ -73,7 +73,7 @@ This tab contains **all processing configuration** in a simple key-value format.
 |------------|-------------|-------------|
 | date_format | %d/%m/%Y | string |
 | has_time | FALSE | boolean |
-| date_columns | DateOfSpecCollection,DateOfHospitalAdmission | list |
+| date_columns | DateOfSpecimenCollection,DateOfHospitalAdmission | list |
 | antibiotic_format | wide | string |
 | antibiotic_prefix | ab_ | string |
 | record_id_bsi | {HospitalId}-{year} | string |

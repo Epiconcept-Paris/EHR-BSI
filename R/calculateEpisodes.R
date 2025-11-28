@@ -61,25 +61,25 @@ calculateEpisodes <- function(patient_df,
     # Rename ParentId to AdmissionRecordId for downstream use
     rename(AdmissionRecordId = ParentId) %>%
     # Convert dates to Date class for consistent comparison (handles POSIXct/character)
-    filter(to_date(DateOfSpecCollection) >= to_date(DateOfHospitalAdmission),
+    filter(to_date(DateOfSpecimenCollection) >= to_date(DateOfHospitalAdmission),
            is.na(DateOfHospitalDischarge) |
-             to_date(DateOfSpecCollection) <= to_date(DateOfHospitalDischarge))
+             to_date(DateOfSpecimenCollection) <= to_date(DateOfHospitalDischarge))
   
   ## ---- RULE 1  – recognised pathogens (one pos = onset) ----------------
   rule1 <- iso_in_admission %>%
     filter(org_type == "RP") %>%
-    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecCollection),
+    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecimenCollection),
               MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
   ## ---- RULE 2  – ≥2 concordant CC in 3 days ----------------------------
   rule2 <- iso_in_admission %>%
-    filter(org_type == "CC", !is.na(DateOfSpecCollection)) %>%
-    arrange(PatientId, MicroorganismCode, DateOfSpecCollection) %>%
+    filter(org_type == "CC", !is.na(DateOfSpecimenCollection)) %>%
+    arrange(PatientId, MicroorganismCode, DateOfSpecimenCollection) %>%
     group_by(PatientId, MicroorganismCode) %>%
-    mutate(cluster_first = flag_cc_clusters(to_date(DateOfSpecCollection), episodeDuration)) %>%
+    mutate(cluster_first = flag_cc_clusters(to_date(DateOfSpecimenCollection), episodeDuration)) %>%
     ungroup() %>%
     filter(cluster_first) %>%
-    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecCollection),
+    transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecimenCollection),
               MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
   
   bsi_core <- bind_rows(rule1, rule2) %>%

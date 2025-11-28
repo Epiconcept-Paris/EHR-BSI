@@ -123,7 +123,7 @@ parse_excel_config <- function(excel_config, country_code) {
   config <- list(
     date_format = excel_config$date_format %||% "%d/%m/%Y",
     has_time = excel_config$has_time %||% FALSE,
-    date_columns = excel_config$date_columns %||% c("DateOfSpecCollection", "DateOfHospitalAdmission"),
+    date_columns = excel_config$date_columns %||% c("DateOfSpecimenCollection", "DateOfHospitalAdmission"),
     
     record_ids = list(
       bsi = excel_config$record_id_bsi %||% "{HospitalId}-{year}",

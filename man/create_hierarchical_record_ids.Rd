@@ -9,7 +9,7 @@ create_hierarchical_record_ids(
   hospital_col = "HospitalId",
   patient_col = "PatientId",
   admission_date_col = "DateOfHospitalAdmission",
-  specimen_date_col = "DateOfSpecCollection",
+  specimen_date_col = "DateOfSpecimenCollection",
   isolate_col = "IsolateId",
   organism_col = "MicroorganismCode",
   record_id_bsi_col = "record_id_bsi"

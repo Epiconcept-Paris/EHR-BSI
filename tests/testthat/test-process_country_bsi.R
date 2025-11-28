@@ -6,7 +6,7 @@ create_test_malta_data <- function() {
     HospitalId = c("MT001", "MT001", "MT002"),
     PatientId = c("PAT001", "PAT002", "PAT003"),
     DateOfHospitalAdmission = c("01/01/2023", "02/01/2023", "03/01/2023"),
-    DateOfSpecCollection = c("03/01/2023", "04/01/2023", "05/01/2023"),
+    DateOfSpecimenCollection = c("03/01/2023", "04/01/2023", "05/01/2023"),
     MicroorganismCode = c("RP-001", "CC-001", "RP-002"),
     ab_AMP = c("S", "R", "I"),  # Antibiotic resistance data in wide format
     ab_CIP = c("R", "S", "S"),  # Additional antibiotic columns
@@ -24,7 +24,7 @@ create_test_estonia_data <- function() {
     PatientId = c("PAT001", "PAT002", "PAT003"),
     IsolateId = c("ISO001", "ISO002", "ISO003"),
     DateOfHospitalAdmission = c("01/01/2023 10:00", "02/01/2023 11:00", "03/01/2023 12:00"),
-    DateOfSpecCollection = c("03/01/2023 14:00", "04/01/2023 15:00", "05/01/2023 16:00"),
+    DateOfSpecimenCollection = c("03/01/2023 14:00", "04/01/2023 15:00", "05/01/2023 16:00"),
     MicroorganismCode = c("RP-001", "CC-001", "RP-002"),
     Antibiotic = c("AMP", "CIP", "GEN"),
     SIR = c("S", "R", "I"),

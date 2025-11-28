@@ -67,7 +67,7 @@ config_wizard_app <- function() {
       kv$`date.format` <- "auto"
       # detect has_time and likely date columns from sample
       has_time_auto <- FALSE
-      date_cols <- c("DateOfSpecCollection", "DateOfHospitalAdmission")
+      date_cols <- c("DateOfSpecimenCollection", "DateOfHospitalAdmission")
       df <- state$sample
       if (!is.null(df)) {
         cn <- names(df)
@@ -81,7 +81,7 @@ config_wizard_app <- function() {
         }
       }
       kv$has_time <- if (has_time_auto) TRUE else "auto"
-      kv$`record_ids.bsi` <- "{HospitalId}-{year(DateOfSpecCollection)}"
+      kv$`record_ids.bsi` <- "{HospitalId}-{year(DateOfSpecimenCollection)}"
       kv$`record_ids.patient` <- "{PatientId}-{date(DateOfHospitalAdmission)}"
       kv$`record_ids.isolate` <- "{IsolateId}_{MicroorganismCode}"
       kv$`lookups.include` <- "auto"
@@ -110,7 +110,7 @@ config_wizard_app <- function() {
       }
       extra_names <- c(
         "HospitalId", "PatientId", "IsolateId", "MicroorganismCode", "MicroorganismCodeLabel",
-        "DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge",
+        "DateOfSpecimenCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge",
         "UnitSpecialtyShort_noncdm", "OutcomeOfCase_noncdm", "sensitivityTest_noncdm",
         "sensitivityResult_noncdm", "sensitivityValue_noncdm", "sensitivityUnit_noncdm",
         "EpisodeStartDate_noncdm", "PreviousAdmission_noncdm", "patientType_noncdm"
@@ -124,7 +124,7 @@ config_wizard_app <- function() {
           HospitalId = c("hospital", "facility", "hospid", "hosp"),
           PatientId = c("patient", "patid", "nhs"),
           IsolateId = c("isolate", "sampleid", "specimenid"),
-          DateOfSpecCollection = c("spec", "collection", "sampledate", "bloodculture"),
+          DateOfSpecimenCollection = c("spec", "collection", "sampledate", "bloodculture"),
           DateOfHospitalAdmission = c("admit", "admission", "entry"),
           DateOfHospitalDischarge = c("discharge", "leave", "exit"),
           MicroorganismCode = c("organism", "pathogen", "microorganism", "species", "bug"),

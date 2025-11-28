@@ -18,7 +18,7 @@ if (getRversion() >= "2.15.1") utils::globalVariables(c(
   "Type", "Percentage", "Organism", "Combination", "NumSpecialties",
   "SpecialtyShort", "PathogenShort", "Gender", "AgeGroup", "Category",
   "RecordId", "ParentId", "RecordIdAb",
-  "DateOfSpecCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge",
+  "DateOfSpecimenCollection", "DateOfHospitalAdmission", "DateOfHospitalDischarge",
   "HospitalId", "PatientId", "PatientSpecialty", "patientType", "OutcomeOfCase",
   "Specimen", "IsolateId", "MicroorganismCode", "Antibiotic", "SIR",
   "ResultPCRmec", "ResultPbp2aAggl", "ResultESBL", "ResultCarbapenemase",

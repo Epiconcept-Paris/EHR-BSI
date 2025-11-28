@@ -11,7 +11,7 @@ detect_contaminants(
 )
 }
 \arguments{
-\item{isolate_df}{Isolate data frame with RecordId, ParentId, MicroorganismCode, MicroorganismCodeLabel, DateOfSpecCollection}
+\item{isolate_df}{Isolate data frame with RecordId, ParentId, MicroorganismCode, MicroorganismCodeLabel, DateOfSpecimenCollection}
 
 \item{patient_df}{Patient data frame with RecordId and PatientId}
 

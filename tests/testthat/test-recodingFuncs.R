@@ -185,7 +185,7 @@ test_that("create_hierarchical_record_ids works with all optional columns", {
     HospitalId = "HOS1",
     PatientId = "PAT1",
     DateOfHospitalAdmission = as.Date("2023-01-15"),
-    DateOfSpecCollection = as.Date("2023-01-20"),
+    DateOfSpecimenCollection = as.Date("2023-01-20"),
     IsolateId = "ISO1",
     MicroorganismCode = "ORG1"
   )
@@ -227,7 +227,7 @@ test_that("create_hierarchical_record_ids handles specimen date without isolate/
   source_data <- data.frame(
     HospitalId = "HOS1",
     PatientId = "PAT1",
-    DateOfSpecCollection = as.Date("2023-01-20")
+    DateOfSpecimenCollection = as.Date("2023-01-20")
   )
   
   result <- create_hierarchical_record_ids(source_data)

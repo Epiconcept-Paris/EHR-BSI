@@ -7,7 +7,7 @@ create_test_estonia_data <- function() {
     PatientId = c("PAT001", "PAT002", "PAT003"),
     IsolateId = c("ISO001", "ISO002", "ISO003"),
     DateOfHospitalAdmission = c("01/01/2023 10:00", "02/01/2023 11:00", "03/01/2023 12:00"),
-    DateOfSpecCollection = c("03/01/2023 14:00", "04/01/2023 15:00", "05/01/2023 16:00"),
+    DateOfSpecimenCollection = c("03/01/2023 14:00", "04/01/2023 15:00", "05/01/2023 16:00"),
     DateOfHospitalDischarge = c("10/01/2023 16:00", "12/01/2023 17:00", "15/01/2023 18:00"),
     MicroorganismCode = c("RP-001", "CC-001", "RP-002"),
     Antibiotic = c("AMP", "CIP", "GEN"),
@@ -21,7 +21,7 @@ create_test_malta_data <- function() {
     HospitalId = c("MT001", "MT002", "MT003"),
     PatientId = c("PAT001", "PAT002", "PAT003"),
     DateOfHospitalAdmission = c("01/01/2023", "02/01/2023", "03/01/2023"),
-    DateOfSpecCollection = c("03/01/2023", "04/01/2023", "05/01/2023"),
+    DateOfSpecimenCollection = c("03/01/2023", "04/01/2023", "05/01/2023"),
     DateOfHospitalDischarge = c("10/01/2023", "12/01/2023", "15/01/2023"),
     MicroorganismCode = c("RP-001", "CC-001", "RP-002"),
     UnitSpecialty_noncdm = c("ICU", "WARD", "ER"),
@@ -57,12 +57,12 @@ test_that(".process_estonia_basic_cleaning processes dates correctly", {
   result <- .process_estonia_basic_cleaning(test_data, 2023)
 
   # Check that date columns are properly converted (parse_dates_with_fallback converts to Date)
-  expect_s3_class(result$DateOfSpecCollection, "Date")
+  expect_s3_class(result$DateOfSpecimenCollection, "Date")
   expect_s3_class(result$DateOfHospitalAdmission, "Date")
   expect_s3_class(result$DateOfHospitalDischarge, "Date")
 
   # Check that dates are parsed correctly
-  expect_equal(result$DateOfSpecCollection[1], as.Date("2023-01-03"))
+  expect_equal(result$DateOfSpecimenCollection[1], as.Date("2023-01-03"))
   expect_equal(result$DateOfHospitalAdmission[1], as.Date("2023-01-01"))
 })
 
@@ -89,7 +89,7 @@ test_that(".process_estonia_basic_cleaning handles edge cases", {
     PatientId = "PAT001",
     IsolateId = "ISO001",
     DateOfHospitalAdmission = "01/01/2023 10:00",
-    DateOfSpecCollection = "03/01/2023 14:00",
+    DateOfSpecimenCollection = "03/01/2023 14:00",
     MicroorganismCode = "RP-001",
     stringsAsFactors = FALSE
   )
@@ -120,12 +120,12 @@ test_that(".process_malta_basic_cleaning processes dates correctly", {
   result <- .process_malta_basic_cleaning(test_data, 2023)
 
   # Check that date columns are properly converted to Date class
-  expect_s3_class(result$DateOfSpecCollection, "Date")
+  expect_s3_class(result$DateOfSpecimenCollection, "Date")
   expect_s3_class(result$DateOfHospitalAdmission, "Date")
   expect_s3_class(result$DateOfHospitalDischarge, "Date")
 
   # Check that dates are parsed correctly
-  expect_equal(result$DateOfSpecCollection[1], as.Date("2023-01-03"))
+  expect_equal(result$DateOfSpecimenCollection[1], as.Date("2023-01-03"))
   expect_equal(result$DateOfHospitalAdmission[1], as.Date("2023-01-01"))
 })
 
@@ -174,7 +174,7 @@ test_that(".process_malta_basic_cleaning handles edge cases", {
     PatientId = "PAT001",
     DateOfHospitalAdmission = "01/01/2023",
     # Add required base columns for else clauses
-    DateOfSpecCollection = "03/01/2023",
+    DateOfSpecimenCollection = "03/01/2023",
     OutcomeOfCase = "A",
     HospitalType = "ACUTE",
     PreviousAdmission = "NO",
@@ -196,7 +196,7 @@ test_that("Estonia and Malta processing handle dates differently", {
     PatientId = "PAT001",
     IsolateId = "ISO001",
     DateOfHospitalAdmission = "01/01/2023 10:30",
-    DateOfSpecCollection = "03/01/2023 14:15",
+    DateOfSpecimenCollection = "03/01/2023 14:15",
     MicroorganismCode = "RP-001",
     stringsAsFactors = FALSE
   )
@@ -206,7 +206,7 @@ test_that("Estonia and Malta processing handle dates differently", {
     HospitalId = "MT001",
     PatientId = "PAT001",
     DateOfHospitalAdmission = "01/01/2023",
-    DateOfSpecCollection = "03/01/2023",
+    DateOfSpecimenCollection = "03/01/2023",
     MicroorganismCode = "RP-001",
     # Add required base columns for else clauses
     OutcomeOfCase = "A",
@@ -238,7 +238,7 @@ test_that("Country-specific functions handle missing data gracefully", {
     PatientId = "PAT001",
     IsolateId = "ISO001",
     DateOfHospitalAdmission = "01/01/2023 10:00",
-    DateOfSpecCollection = "03/01/2023 14:00",
+    DateOfSpecimenCollection = "03/01/2023 14:00",
     MicroorganismCode = "RP-001",
     stringsAsFactors = FALSE
   )
@@ -253,8 +253,8 @@ test_that("Country-specific functions handle missing data gracefully", {
     PatientId = "PAT001",
     DateOfHospitalAdmission = "01/01/2023",
     MicroorganismCode = "RP-001",
-    # Add required base columns for else clauses (including DateOfSpecCollection even though we're testing "missing" it)
-    DateOfSpecCollection = NA_character_,  # This allows the function to proceed without error
+    # Add required base columns for else clauses (including DateOfSpecimenCollection even though we're testing "missing" it)
+    DateOfSpecimenCollection = NA_character_,  # This allows the function to proceed without error
     OutcomeOfCase = "A",
     HospitalType = "ACUTE",
     PreviousAdmission = "NO",

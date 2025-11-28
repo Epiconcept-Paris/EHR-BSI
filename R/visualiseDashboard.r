@@ -783,7 +783,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       iso <- values$current_data$isolate
       pat <- values$current_data$patient
       # required columns
-      required_iso <- c("RecordId", "ParentId", "DateOfSpecCollection", "MicroorganismCode")
+      required_iso <- c("RecordId", "ParentId", "DateOfSpecimenCollection", "MicroorganismCode")
       required_pat <- c("RecordId", "PatientId", "HospitalId", "DateOfHospitalAdmission", "DateOfHospitalDischarge")
       if (!all(required_iso %in% names(iso)) || !all(required_pat %in% names(pat))) return(NULL)
       # keep isolate id explicitly
@@ -795,10 +795,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       names(keep_pat)[names(keep_pat) == "RecordId"] <- "AdmissionRecordId"
       # Join isolates to admissions by ParentId (isolate's parent) -> PatientRecordId (patient's RecordId)
       merged <- merge(iso, keep_pat, by.x = "ParentId", by.y = "PatientRecordId", all.x = TRUE)
-      if (!("DateOfSpecCollection" %in% names(merged))) return(NULL)
+      if (!("DateOfSpecimenCollection" %in% names(merged))) return(NULL)
       # restrict to isolates within admission stay window
-      in_admission <- (!is.na(merged$DateOfHospitalAdmission) & merged$DateOfSpecCollection >= merged$DateOfHospitalAdmission) &
-        (is.na(merged$DateOfHospitalDischarge) | merged$DateOfSpecCollection <= merged$DateOfHospitalDischarge)
+      in_admission <- (!is.na(merged$DateOfHospitalAdmission) & merged$DateOfSpecimenCollection >= merged$DateOfHospitalAdmission) &
+        (is.na(merged$DateOfHospitalDischarge) | merged$DateOfSpecimenCollection <= merged$DateOfHospitalDischarge)
       merged <- merged[which(in_admission), , drop = FALSE]
       if (nrow(merged) == 0) return(merged)
       # join with FILTERED episodes by AdmissionRecordId (this applies hospital/year filters)
@@ -808,7 +808,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # restrict to isolates falling within episode 14-day window
       if ("EpisodeStartDate" %in% names(merged)) {
         merged$EpisodeEndDate <- merged$EpisodeStartDate + 13
-        in_episode <- !is.na(merged$EpisodeStartDate) & merged$DateOfSpecCollection >= merged$EpisodeStartDate & merged$DateOfSpecCollection <= merged$EpisodeEndDate
+        in_episode <- !is.na(merged$EpisodeStartDate) & merged$DateOfSpecimenCollection >= merged$EpisodeStartDate & merged$DateOfSpecimenCollection <= merged$EpisodeEndDate
         merged <- merged[which(in_episode), , drop = FALSE]
       }
       if (nrow(merged) == 0) return(merged)
@@ -1052,8 +1052,8 @@ visual_bsi_dashboard <- function(data = NULL) {
               
               ## setting right types for columns or adding default values to non mandatory columns
               # Ensure required isolate columns exist
-              if(!("DateOfSpecCollection" %in% names(isolate))) {
-                stop("Isolate table must have DateOfSpecCollection column")
+              if(!("DateOfSpecimenCollection" %in% names(isolate))) {
+                stop("Isolate table must have DateOfSpecimenCollection column")
               }
               if(!("MicroorganismCode" %in% names(isolate))) {
                 stop("Isolate table must have MicroorganismCode column")
@@ -1062,7 +1062,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 stop("Isolate table must have ParentId column (linking to Patient RecordId)")
               }
               
-              isolate[["DateOfSpecCollection"]] <- as.Date(isolate$DateOfSpecCollection)
+              isolate[["DateOfSpecimenCollection"]] <- as.Date(isolate$DateOfSpecimenCollection)
               
               # Ensure required patient columns exist
               if(!("RecordId" %in% names(patient))) {
@@ -1902,9 +1902,9 @@ visual_bsi_dashboard <- function(data = NULL) {
     # Helper: deduplicate to one record per episode-organism-antibiotic (earliest isolate)
     dedup_episode_ab <- function(rctx) {
       if (is.null(rctx) || nrow(rctx) == 0) return(rctx)
-      if (!all(c("EpisodeId", "MicroorganismCode", "antibiotic_name", "DateOfSpecCollection") %in% names(rctx))) return(rctx)
+      if (!all(c("EpisodeId", "MicroorganismCode", "antibiotic_name", "DateOfSpecimenCollection") %in% names(rctx))) return(rctx)
       rctx <- rctx[!is.na(rctx$sir_value) & rctx$sir_value %in% c("S", "I", "R"), , drop = FALSE]
-      rctx <- rctx[order(rctx$EpisodeId, rctx$MicroorganismCode, rctx$antibiotic_name, rctx$DateOfSpecCollection), ]
+      rctx <- rctx[order(rctx$EpisodeId, rctx$MicroorganismCode, rctx$antibiotic_name, rctx$DateOfSpecimenCollection), ]
       key <- paste(rctx$EpisodeId, rctx$MicroorganismCode, rctx$antibiotic_name, sep = "||")
       dedup_idx <- !duplicated(key)
       rctx[dedup_idx, , drop = FALSE]
