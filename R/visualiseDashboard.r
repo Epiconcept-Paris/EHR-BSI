@@ -465,7 +465,84 @@ visual_bsi_dashboard <- function(data = NULL) {
             shiny::p("Hospital analysis requires EHRBSI, patient, isolate, and res tables with episodes computed.")
           )
         ),
-        # 7) Data Table
+        # 7) Time Series
+        shiny::tabPanel(
+          "Time Series",
+          shiny::conditionalPanel(
+            condition = "output.timeseries_available",
+            shiny::div(
+              shiny::h3("Episode Time Series Analysis"),
+              shiny::p("Explore seasonality and temporal trends of BSI episodes over time."),
+              
+              # Controls section
+              shiny::div(
+                style = "display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; align-items: flex-end;",
+                shiny::div(
+                  style = "min-width: 180px;",
+                  shiny::selectInput("ts_aggregation",
+                                     "Time Aggregation:",
+                                     choices = list("Monthly" = "month",
+                                                    "Weekly" = "week",
+                                                    "Quarterly" = "quarter"),
+                                     selected = "month")
+                ),
+                shiny::div(
+                  style = "min-width: 250px;",
+                  shiny::selectInput("ts_pathogen_filter",
+                                     "Pathogen:",
+                                     choices = c("All Pathogens" = "all"),
+                                     selected = "all",
+                                     multiple = FALSE)
+                ),
+                shiny::div(
+                  style = "min-width: 200px;",
+                  shiny::selectInput("ts_origin_filter",
+                                     "Episode Origin:",
+                                     choices = list("All" = "all",
+                                                    "Healthcare-acquired" = "Healthcare",
+                                                    "Community-acquired" = "Community"),
+                                     selected = "all")
+                ),
+                shiny::div(
+                  style = "min-width: 180px;",
+                  shiny::checkboxInput("ts_show_trend",
+                                       "Show trend line",
+                                       value = TRUE)
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Main time series plot
+              shiny::div(
+                shiny::h4("Episodes Over Time"),
+                shiny::plotOutput("timeseries_plot", height = "450px")
+              ),
+              
+              shiny::hr(),
+              
+              # Seasonality breakdown
+              shiny::div(
+                shiny::h4("Seasonal Pattern"),
+                shiny::p("Average episode counts by month across all years."),
+                shiny::plotOutput("seasonality_plot", height = "350px")
+              ),
+              
+              shiny::hr(),
+              
+              # Summary statistics
+              shiny::div(
+                shiny::h4("Summary Statistics"),
+                shiny::htmlOutput("timeseries_summary")
+              )
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.timeseries_available",
+            shiny::p("Time series analysis requires episode data. Please process data with patient and isolate tables first.")
+          )
+        ),
+        # 8) Data Table
         shiny::tabPanel("Data Table", 
                         shiny::tabsetPanel(
                           shiny::tabPanel("EHRBSI", 
@@ -620,6 +697,14 @@ visual_bsi_dashboard <- function(data = NULL) {
         !is.null(values$current_data$res)
     })
     shiny::outputOptions(output, "hospital_analysis_available", suspendWhenHidden = FALSE)
+    
+    # Time series available (requires episodes with dates and episode_summary for pathogen info)
+    output$timeseries_available <- shiny::reactive({
+      !is.null(values$episodes) && 
+        nrow(values$episodes) > 0 &&
+        "EpisodeStartDate" %in% names(values$episodes)
+    })
+    shiny::outputOptions(output, "timeseries_available", suspendWhenHidden = FALSE)
     
     # Helper: compute episodes if possible
     compute_episodes_if_possible <- function(cur) {
@@ -3434,6 +3519,281 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(filtered$res)
       filtered$res
     }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    
+    # ==========================
+    # Time Series Analysis
+    # ==========================
+    
+    # Update pathogen dropdown when episode_summary changes
+    shiny::observe({
+      if (!is.null(values$episode_summary) && nrow(values$episode_summary) > 0) {
+        ep_sum <- values$episode_summary
+        
+        # Extract unique pathogens from the Pathogens column (semicolon-separated)
+        if ("Pathogens" %in% names(ep_sum)) {
+          all_pathogens <- unlist(strsplit(ep_sum$Pathogens, ";\\s*"))
+          unique_pathogens <- sort(unique(trimws(all_pathogens[!is.na(all_pathogens) & all_pathogens != ""])))
+          
+          if (length(unique_pathogens) > 0) {
+            choices <- c("All Pathogens" = "all", setNames(unique_pathogens, unique_pathogens))
+            shiny::updateSelectInput(session, "ts_pathogen_filter",
+                                     choices = choices,
+                                     selected = "all")
+          }
+        }
+      }
+    })
+    
+    # Reactive: filtered time series data based on UI controls
+    timeseries_data <- shiny::reactive({
+      shiny::req(values$episode_summary)
+      ep_sum <- values$episode_summary
+      
+      if (is.null(ep_sum) || nrow(ep_sum) == 0) return(NULL)
+      if (!"EpisodeStartDate" %in% names(ep_sum)) return(NULL)
+      
+      # Ensure EpisodeStartDate is Date type
+      ep_sum$EpisodeStartDate <- as.Date(ep_sum$EpisodeStartDate)
+      
+      # Filter by origin if specified
+      if (!is.null(input$ts_origin_filter) && input$ts_origin_filter != "all") {
+        if ("EpisodeOrigin" %in% names(ep_sum)) {
+          ep_sum <- ep_sum[ep_sum$EpisodeOrigin == input$ts_origin_filter, , drop = FALSE]
+        }
+      }
+      
+      # Filter by pathogen if specified
+      if (!is.null(input$ts_pathogen_filter) && input$ts_pathogen_filter != "all") {
+        if ("Pathogens" %in% names(ep_sum)) {
+          # Keep rows where the selected pathogen appears in the Pathogens field
+          pathogen_match <- grepl(input$ts_pathogen_filter, ep_sum$Pathogens, fixed = TRUE)
+          ep_sum <- ep_sum[pathogen_match, , drop = FALSE]
+        }
+      }
+      
+      if (nrow(ep_sum) == 0) return(NULL)
+      
+      # Create time period column based on aggregation selection
+      agg <- if (!is.null(input$ts_aggregation)) input$ts_aggregation else "month"
+      
+      ep_sum$TimePeriod <- switch(agg,
+        "week" = as.Date(cut(ep_sum$EpisodeStartDate, breaks = "week")),
+        "month" = as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01")),
+        "quarter" = as.Date(paste0(
+          format(ep_sum$EpisodeStartDate, "%Y"), "-",
+          sprintf("%02d", (as.numeric(format(ep_sum$EpisodeStartDate, "%m")) - 1) %/% 3 * 3 + 1), "-01"
+        )),
+        as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01"))  # default to month
+      )
+      
+      # Aggregate by time period
+      ts_agg <- stats::aggregate(
+        EpisodeId ~ TimePeriod,
+        data = ep_sum,
+        FUN = function(x) length(unique(x))
+      )
+      names(ts_agg) <- c("TimePeriod", "Episodes")
+      
+      # Sort by time
+      ts_agg <- ts_agg[order(ts_agg$TimePeriod), ]
+      
+      ts_agg
+    })
+    
+    # Main time series plot
+    output$timeseries_plot <- shiny::renderPlot({
+      ts_data <- timeseries_data()
+      
+      if (is.null(ts_data) || nrow(ts_data) == 0) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No data available for the selected filters",
+                                   size = 6, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Determine x-axis label based on aggregation
+      agg <- if (!is.null(input$ts_aggregation)) input$ts_aggregation else "month"
+      x_label <- switch(agg,
+                        "week" = "Week",
+                        "month" = "Month",
+                        "quarter" = "Quarter",
+                        "Month")
+      
+      # Build title based on filters
+      pathogen_label <- if (!is.null(input$ts_pathogen_filter) && input$ts_pathogen_filter != "all") {
+        input$ts_pathogen_filter
+      } else {
+        "All Pathogens"
+      }
+      origin_label <- if (!is.null(input$ts_origin_filter) && input$ts_origin_filter != "all") {
+        paste0(" (", input$ts_origin_filter, ")")
+      } else {
+        ""
+      }
+      plot_title <- paste0("BSI Episodes Over Time: ", pathogen_label, origin_label)
+      
+      p <- ggplot2::ggplot(ts_data, ggplot2::aes(x = TimePeriod, y = Episodes)) +
+        ggplot2::geom_line(color = "#0d6efd", linewidth = 1) +
+        ggplot2::geom_point(color = "#0d6efd", size = 2.5) +
+        ggplot2::labs(
+          title = plot_title,
+          x = x_label,
+          y = "Number of Episodes"
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          panel.grid.minor = ggplot2::element_blank()
+        )
+      
+      # Add trend line if requested
+      if (!is.null(input$ts_show_trend) && input$ts_show_trend && nrow(ts_data) >= 3) {
+        p <- p + ggplot2::geom_smooth(method = "loess", se = TRUE,
+                                       color = "#dc3545", fill = "#dc354520",
+                                       linewidth = 1, linetype = "dashed",
+                                       formula = y ~ x)
+      }
+      
+      # Format x-axis based on data range
+      date_range <- as.numeric(diff(range(ts_data$TimePeriod)))
+      if (date_range > 365 * 2) {
+        p <- p + ggplot2::scale_x_date(date_breaks = "6 months", date_labels = "%b %Y")
+      } else if (date_range > 180) {
+        p <- p + ggplot2::scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+      } else {
+        p <- p + ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+      }
+      
+      p
+    })
+    
+    # Seasonality plot (average by month of year)
+    output$seasonality_plot <- shiny::renderPlot({
+      shiny::req(values$episode_summary)
+      ep_sum <- values$episode_summary
+      
+      if (is.null(ep_sum) || nrow(ep_sum) == 0 || !"EpisodeStartDate" %in% names(ep_sum)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No data available for seasonality analysis",
+                                   size = 6, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      ep_sum$EpisodeStartDate <- as.Date(ep_sum$EpisodeStartDate)
+      
+      # Apply same filters as main plot
+      if (!is.null(input$ts_origin_filter) && input$ts_origin_filter != "all") {
+        if ("EpisodeOrigin" %in% names(ep_sum)) {
+          ep_sum <- ep_sum[ep_sum$EpisodeOrigin == input$ts_origin_filter, , drop = FALSE]
+        }
+      }
+      
+      if (!is.null(input$ts_pathogen_filter) && input$ts_pathogen_filter != "all") {
+        if ("Pathogens" %in% names(ep_sum)) {
+          pathogen_match <- grepl(input$ts_pathogen_filter, ep_sum$Pathogens, fixed = TRUE)
+          ep_sum <- ep_sum[pathogen_match, , drop = FALSE]
+        }
+      }
+      
+      if (nrow(ep_sum) == 0) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No data available for the selected filters",
+                                   size = 6, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Extract month and year
+      ep_sum$Month <- as.numeric(format(ep_sum$EpisodeStartDate, "%m"))
+      ep_sum$Year <- format(ep_sum$EpisodeStartDate, "%Y")
+      
+      # Count episodes per month-year
+      monthly_counts <- stats::aggregate(
+        EpisodeId ~ Month + Year,
+        data = ep_sum,
+        FUN = function(x) length(unique(x))
+      )
+      names(monthly_counts) <- c("Month", "Year", "Episodes")
+      
+      # Calculate average per month across all years
+      avg_by_month <- stats::aggregate(
+        Episodes ~ Month,
+        data = monthly_counts,
+        FUN = mean
+      )
+      names(avg_by_month) <- c("Month", "AvgEpisodes")
+      
+      # Add month labels
+      month_labels <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+      avg_by_month$MonthLabel <- factor(month_labels[avg_by_month$Month], levels = month_labels)
+      
+      # Create bar plot with gradient color based on count
+      ggplot2::ggplot(avg_by_month, ggplot2::aes(x = MonthLabel, y = AvgEpisodes, fill = AvgEpisodes)) +
+        ggplot2::geom_col(width = 0.7) +
+        ggplot2::scale_fill_gradient(low = "#a8dadc", high = "#1d3557", guide = "none") +
+        ggplot2::labs(
+          title = "Average Monthly Episodes (Seasonality)",
+          x = "Month",
+          y = "Average Number of Episodes"
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
+          panel.grid.major.x = ggplot2::element_blank()
+        ) +
+        ggplot2::geom_text(ggplot2::aes(label = round(AvgEpisodes, 1)),
+                          vjust = -0.5, size = 3.5, color = "#495057")
+    })
+    
+    # Time series summary statistics
+    output$timeseries_summary <- shiny::renderUI({
+      ts_data <- timeseries_data()
+      
+      if (is.null(ts_data) || nrow(ts_data) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; padding: 15px; border-radius: 4px;",
+          shiny::p("No data available for summary statistics.")
+        ))
+      }
+      
+      total_episodes <- sum(ts_data$Episodes)
+      total_periods <- nrow(ts_data)
+      avg_per_period <- round(mean(ts_data$Episodes), 1)
+      min_episodes <- min(ts_data$Episodes)
+      max_episodes <- max(ts_data$Episodes)
+      min_period <- format(ts_data$TimePeriod[which.min(ts_data$Episodes)], "%B %Y")
+      max_period <- format(ts_data$TimePeriod[which.max(ts_data$Episodes)], "%B %Y")
+      date_range <- paste(format(min(ts_data$TimePeriod), "%B %Y"), "to",
+                          format(max(ts_data$TimePeriod), "%B %Y"))
+      
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #0d6efd;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.8;",
+        shiny::div(
+          style = "display: flex; flex-wrap: wrap; gap: 40px;",
+          shiny::div(
+            shiny::strong("Date Range: "), date_range, shiny::br(),
+            shiny::strong("Total Episodes: "), format(total_episodes, big.mark = ","), shiny::br(),
+            shiny::strong("Number of Time Periods: "), total_periods
+          ),
+          shiny::div(
+            shiny::strong("Average per Period: "), avg_per_period, shiny::br(),
+            shiny::strong("Minimum: "), min_episodes, " (", min_period, ")", shiny::br(),
+            shiny::strong("Maximum: "), max_episodes, " (", max_period, ")"
+          )
+        )
+      )
+    })
     
     # ==========================
     # PDF Report Generation
