@@ -86,12 +86,12 @@ visual_bsi_dashboard <- function(data = NULL) {
       ),
       
       # PDF Report download button - only shows when data is available
-      shiny::conditionalPanel(
-        condition = "output.data_available",
-        shiny::downloadButton("download_pdf_report", "Download PDF Report",
-                              class = "btn-info",
-                              style = "width: 100%; margin-top: 5px;")
-      ),
+      # shiny::conditionalPanel(
+      #   condition = "output.data_available",
+      #   shiny::downloadButton("download_pdf_report", "Download PDF Report",
+      #                         class = "btn-info",
+      #                         style = "width: 100%; margin-top: 5px;")
+      # ),
       
       shiny::hr(),
       
@@ -357,20 +357,20 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
         ),
         # 5) Antibiograms
-        shiny::tabPanel(
-          "Antibiograms",
-          shiny::conditionalPanel(
-            condition = "output.antibiograms_available",
-            shiny::tabsetPanel(
-              shiny::tabPanel("By isolates", DT::DTOutput("ab_iso_table")),
-              shiny::tabPanel("By episodes", DT::DTOutput("ab_epi_table"))
-            )
-          ),
-          shiny::conditionalPanel(
-            condition = "!output.antibiograms_available",
-            shiny::p("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
-          )
-        ),
+        # shiny::tabPanel(
+        #   "Antibiograms",
+        #   shiny::conditionalPanel(
+        #     condition = "output.antibiograms_available",
+        #     shiny::tabsetPanel(
+        #       shiny::tabPanel("By isolates", DT::DTOutput("ab_iso_table")),
+        #       shiny::tabPanel("By episodes", DT::DTOutput("ab_epi_table"))
+        #     )
+        #   ),
+        #   shiny::conditionalPanel(
+        #     condition = "!output.antibiograms_available",
+        #     shiny::p("Antibiograms require resistance results (Res) data. Episode-level summaries need episodes as well.")
+        #   )
+        # ),
         # 6) Hospital analysis
         shiny::tabPanel(
           "Hospital analysis",
