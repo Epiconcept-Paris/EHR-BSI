@@ -1,6 +1,21 @@
 
+
+# Start here
+
+# If not yet done, please install the required packages
+pkgs <- c(
+  "data.table", "dplyr", "readxl", "stringr", "tidyr", "ggplot2",
+  "quarto", "devtools", "shiny", "bslib", "openxlsx",
+  "miniUI", "rstudioapi", "DT", "rmarkdown", "knitr"
+)
+
+install.packages(pkgs, dependencies = TRUE)
+
+
+# Next we can load the EHR BSI package and test the shiny app
+
+# Load EHR BSI package for testing
 devtools::document()
-# Load package for testing
 devtools::load_all()
 
 
@@ -12,18 +27,12 @@ devtools::load_all()
 visual_bsi_dashboard()
 
 
-
-
 ### Or: Run transformation & episode calculation scripts only -----
 ###     this will also output an xlsx reporting template for ------
 ###     your data after converting to reporting template format ---
 
 
 # MALTA --
-devtools::document()
-# Load package for testing
-devtools::load_all()
-
 
 # Load Malta data
 malta_data <- read.csv("file_path_here")
@@ -41,10 +50,6 @@ result <- process_country_bsi(
 
 # ESTONIA --
 
-devtools::document()
-# Load package for testing
-devtools::load_all()
-
 # Load EE data
 estonia_data <- read_xlsx("file_path_here")
 
@@ -61,16 +66,7 @@ result <- process_country_bsi(
 
 
 
-
-
 # CZECH REPUBLIC --
-
-# Load CZ data
-czech_data <- read_xlsx("file_path_here")
-
-# Load package for testing
-devtools::document()
-devtools::load_all()
 
 # Make the raw reporting template tables for CZECH (inc episode calc)
 result <- process_country_bsi(
