@@ -228,6 +228,9 @@ process_country_bsi <- function(country,
   # Standardize Sex values: 'Female' -> 'F', 'Male' -> 'M', anything else -> 'OTH'
   result <- standardize_all_table_sex(result)
   
+  # Standardize MICSusceptibilitySign: '<' -> '<='
+  result <- standardize_all_table_mic_sign(result)
+  
   # Write files if requested using country-specific function
   if (write_to_file) {
     saveReportingTemplate(result,country)

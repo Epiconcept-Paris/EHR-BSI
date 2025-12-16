@@ -1653,3 +1653,47 @@ standardize_all_table_sex <- function(result_list) {
   
   return(result_list)
 }
+
+#' Standardize MICSusceptibilitySign column values
+#'
+#' Converts '<' to '<=' and '>' to '>=' in the MICSusceptibilitySign column.
+#'
+#' @param data Data frame containing a MICSusceptibilitySign column
+#'
+#' @return Data frame with standardized MICSusceptibilitySign values
+#' @export
+standardize_mic_susceptibility_sign <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  if ("MICSusceptibilitySign" %in% names(data)) {
+    data$MICSusceptibilitySign <- dplyr::case_when(
+      data$MICSusceptibilitySign == "<" ~ "<=",
+      data$MICSusceptibilitySign == ">" ~ ">=",
+      TRUE ~ data$MICSusceptibilitySign
+    )
+  }
+  
+  return(data)
+}
+
+#' Standardize MICSusceptibilitySign values across all EHR-BSI tables
+#'
+#' Applies standardize_mic_susceptibility_sign to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with MICSusceptibilitySign '<' values changed to '<='
+#' @export
+standardize_all_table_mic_sign <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_mic_susceptibility_sign(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
