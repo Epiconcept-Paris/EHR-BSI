@@ -124,12 +124,48 @@ parse_dates_with_fallback <- function(data, fallback_cols, date_format = "%d/%m/
     x
   }
   
+  # Helper to try multiple format variations for more robust parsing
+  try_parse_datetime <- function(x, base_format) {
+    char_x <- coerce_to_char(x)
+    if (inherits(char_x, "POSIXct")) return(char_x)
+    if (inherits(char_x, "Date")) return(as.POSIXct(char_x))
+    
+    # Normalize multiple spaces to single space in the data
+    char_x <- gsub("\\s+", " ", trimws(as.character(char_x)))
+    
+    # Build list of format variations to try
+    formats_to_try <- c(base_format)
+    
+    # If format has time but no seconds, also try with seconds
+    if (grepl("%H:%M", base_format) && !grepl("%S", base_format)) {
+      formats_to_try <- c(formats_to_try, sub("%H:%M", "%H:%M:%S", base_format))
+    }
+    if (grepl("%H_%M", base_format) && !grepl("%S", base_format)) {
+      formats_to_try <- c(formats_to_try, sub("%H_%M", "%H_%M_%S", base_format))
+    }
+    
+    # Normalize spaces in format strings too
+    formats_to_try <- gsub("\\s+", " ", formats_to_try)
+    
+    # Try each format
+    for (fmt in formats_to_try) {
+      result <- as.POSIXct(char_x, format = fmt)
+      if (!all(is.na(result))) {
+        return(result)
+      }
+    }
+    
+    # If all fail, return NA with warning
+    warning("Could not parse datetime with any format variation", call. = FALSE)
+    return(as.POSIXct(rep(NA, length(char_x))))
+  }
+  
   if (length(available_date_cols) > 0) {
     for (col in available_date_cols) {
       tryCatch({
         if (preserve_time || grepl("%H|%M|%S", date_format)) {
-          # Parse as POSIXct for datetime
-          data[[col]] <- as.POSIXct(coerce_to_char(data[[col]]), format = date_format)
+          # Parse as POSIXct for datetime with flexible format handling
+          data[[col]] <- try_parse_datetime(data[[col]], date_format)
         } else {
           # Parse as Date for date-only
           data[[col]] <- as.Date(coerce_to_char(data[[col]]), format = date_format)
@@ -192,20 +228,37 @@ get_column_or_default <- function(data, col, default) {
 format_date_for_id <- function(date_col, format_type = "date") {
   # Ensure date_col is a Date or POSIXt object
   if (!inherits(date_col, c("Date", "POSIXct", "POSIXlt"))) {
-    # Try to convert to Date if it's character or numeric
+    # Try to convert - use POSIXct for datetime to preserve time info
     date_col <- tryCatch({
-      as.Date(date_col)
+      if (format_type == "datetime") {
+        # Try POSIXct first to preserve time
+        result <- as.POSIXct(date_col)
+        if (all(is.na(result))) {
+          # Fallback to Date if POSIXct fails
+          as.Date(date_col)
+        } else {
+          result
+        }
+      } else {
+        as.Date(date_col)
+      }
     }, error = function(e) {
-      warning("Could not convert date column to Date object: ", e$message)
+      warning("Could not convert date column: ", e$message)
       return(rep(NA, length(date_col)))
     })
   }
   
   if (format_type == "datetime") {
-    paste0(
-      format(date_col, "%d%m%Y"), "_",
-      format(date_col, "%H_%M")
-    )
+    # Check if we actually have time information (POSIXct/POSIXlt)
+    if (inherits(date_col, c("POSIXct", "POSIXlt"))) {
+      paste0(
+        format(date_col, "%d%m%Y"), "_",
+        format(date_col, "%H_%M")
+      )
+    } else {
+      # Date object - no time info, use 00_00
+      paste0(format(date_col, "%d%m%Y"), "_00_00")
+    }
   } else if (format_type == "year") {
     format(date_col, "%Y")
   } else {
@@ -658,6 +711,7 @@ create_standard_patient_table <- function(data, record_id_col = "record_id_patie
     dplyr::mutate(
       RecordId = get_column_or_default(., record_id_col, NA_character_),
       ParentId = get_column_or_default(., parent_id_col, NA_character_),
+      RecordType = "EHRBSI",
       HospitalId = get_column_or_default(., "HospitalId", NA_character_),
       PatientSpecialty = get_column_or_default(., "PatientSpecialty", defaults$PatientSpecialty),
       patientType = get_column_or_default(., "patientType", defaults$patientType),
@@ -721,6 +775,7 @@ create_standard_isolate_table <- function(data, record_id_col = "record_id_isola
     dplyr::mutate(
       RecordId = get_column_or_default(., record_id_col, NA_character_),
       ParentId = get_column_or_default(., parent_id_col, NA_character_),
+      RecordType = "EHRBSI",
       LaboratoryCode = defaults$LaboratoryCode,
       Specimen = get_column_or_default(., "Specimen", defaults$Specimen),
       MicroorganismCodeSystem = defaults$MicroorganismCodeSystem,
@@ -740,7 +795,7 @@ get_standard_table_columns <- function(table_type) {
   
   switch(table_type,
     "patient" = c(
-      "RecordId", "ParentId", "HospitalId", "UnitId", "UnitSpecialtyShort", "PatientSpecialty", 
+      "RecordId", "ParentId", "RecordType", "HospitalId", "UnitId", "UnitSpecialtyShort", "PatientSpecialty", 
       "DateOfAdmissionCurrentWard", "PatientId", "Age", "Sex", "patientType",
       "DateOfHospitalAdmission", "DateOfHospitalDischarge", "OutcomeOfCase",
       "HospitalisationCode", "HospitalisationCodeLabel",
@@ -749,13 +804,13 @@ get_standard_table_columns <- function(table_type) {
     ),
     
     "isolate" = c(
-      "RecordId", "ParentId", "DateOfSpecimenCollection", "LaboratoryCode", "IsolateId", "Specimen",
+      "RecordId", "ParentId", "RecordType", "DateOfSpecimenCollection", "LaboratoryCode", "IsolateId", "Specimen",
       "MicroorganismCode", "MicroorganismCodeLabel", "MicroorganismCodeSystem", 
       "MicroorganismCodeSystemSpec", "MicroorganismCodeSystemVersion"
     ),
     
     "res" = c(
-      "ParentId", "RecordId", "Antibiotic", "SIR", "ResultPCRmec", "ResultPbp2aAggl", 
+      "ParentId", "RecordId", "RecordType", "Antibiotic", "SIR", "ResultPCRmec", "ResultPbp2aAggl", 
       "ResultESBL", "ResultCarbapenemase", "ZoneSIR", "ZoneValue", "ZoneSusceptibilitySign", 
       "MICSusceptibilitySign", "MICValue", "MICSIR", "GradSusceptibilitySign", "GradValue", 
       "GradSIR", "ZoneTestDiskLoad", "ReferenceGuidelinesSIR"
@@ -1024,19 +1079,50 @@ create_flexible_record_ids <- function(data, id_templates, config) {
   }
   
   # Create patient-level record ID
-  if ("patient" %in% names(id_templates) && has_column(data, "DateOfHospitalAdmission") && has_column(data, "PatientId")) {
+  # Prefer DateOfAdmissionCurrentWard if available and not NA, otherwise use DateOfHospitalAdmission
+  if ("patient" %in% names(id_templates) && has_column(data, "PatientId")) {
     template <- id_templates$patient
-    if (!is.null(template) && length(template) > 0) {
+    has_ward_date <- has_column(data, "DateOfAdmissionCurrentWard")
+    has_hosp_date <- has_column(data, "DateOfHospitalAdmission")
+    
+    if (!is.null(template) && length(template) > 0 && (has_ward_date || has_hosp_date)) {
       # Safe check for has_time with default to FALSE
       has_time <- isTRUE(config$has_time)
       format_type <- if (has_time) "datetime" else "date"
-      admit_formatted <- format_date_for_id(result$DateOfHospitalAdmission, format_type)
+      
+      # Determine admission date: prefer ward date if valid, fall back to hospital admission
+      # Preserve POSIXct (time info) when has_time is TRUE
+      if (has_ward_date && has_hosp_date) {
+        # Use coalesce to prefer ward date when available, otherwise hospital admission
+        # Don't convert to Date - preserve POSIXct to keep time information
+        ward_date <- result$DateOfAdmissionCurrentWard
+        hosp_date <- result$DateOfHospitalAdmission
+        
+        # coalesce works with POSIXct; use ifelse for row-by-row selection
+        admit_date <- dplyr::if_else(
+          !is.na(ward_date),
+          ward_date,
+          hosp_date
+        )
+      } else if (has_ward_date) {
+        admit_date <- result$DateOfAdmissionCurrentWard
+      } else {
+        admit_date <- result$DateOfHospitalAdmission
+      }
+      
+      admit_formatted <- format_date_for_id(admit_date, format_type)
       
       substitutions <- list(
         admit_date = admit_formatted,
         admit_datetime = admit_formatted,
         PatientId = "PatientId"
       )
+      
+      # Add year substitution if hospital admission date is available
+      if (has_hosp_date) {
+        substitutions$year <- format_date_for_id(result$DateOfHospitalAdmission, "year")
+      }
+      
       result$record_id_patient <- apply_template_substitution(template, result, substitutions)
     }
   }
@@ -1167,7 +1253,8 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
           stringr::str_remove(paste0("^", ab_config$prefix)) %>%
           stringr::str_remove_all("\\d+"),
         RecordId = paste0(record_id_isolate, "_", Antibiotic),
-        ParentId = record_id_isolate
+        ParentId = record_id_isolate,
+        RecordType = "EHRBSI"
       ) %>%
       dplyr::filter(SIR != "")
     
@@ -1264,7 +1351,10 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
     # Combine results
     res <- sens_results %>%
       dplyr::left_join(mech_results, by = "RecordId") %>%
-      dplyr::mutate(RecordId = RecordIdAb) %>%
+      dplyr::mutate(
+        RecordId = RecordIdAb,
+        RecordType = "EHRBSI"
+      ) %>%
       dplyr::select(-RecordIdAb)
     
     # Get mechanism column names from mech_results (exclude RecordId)

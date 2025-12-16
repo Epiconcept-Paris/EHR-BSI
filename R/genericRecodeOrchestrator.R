@@ -205,6 +205,13 @@ process_country_bsi <- function(country,
   }
   
   
+  # Deduplicate patient, isolate, and res tables to ensure no duplicate records
+
+  # (taking into account all variables in each table)
+  patient <- dplyr::distinct(patient)
+  isolate <- dplyr::distinct(isolate)
+  res <- dplyr::distinct(res)
+  
   # Create output list
   # Note: isolate table includes ALL isolates with Contaminant column
   # This preserves full data in the formatted template for reproducibility
