@@ -391,13 +391,13 @@ initialize_resistance_columns <- function(res_data, mechanism_cols = c()) {
 #' @param data Source data frame
 #' @param country_code Two-letter country code (e.g., "EE", "MT")
 #' @param episode_duration Episode duration in days
-#' @param record_id_col Name of column containing record IDs (DEPRECATED - not used with dynamic aggregation)
+#' @param record_id_col Name of column containing record IDs for hierarchical linking (e.g., "record_id_bsi")
 #' @param config Country configuration object (optional)
 #' @param aggregation_level Aggregation level (e.g., "HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")
 #'
 #' @return Data frame with base EHRBSI structure
 create_base_ehrbsi_table <- function(data, country_code, episode_duration, 
-                                    record_id_col = NULL, config = NULL,
+                                    record_id_col = "record_id_bsi", config = NULL,
                                     aggregation_level = "HOSP") {
   # Get config if not provided
   if (is.null(config)) {
@@ -432,6 +432,11 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
     }
   }
   
+  # Determine RecordId: use record_id_col from config for hierarchical linking consistency
+
+  # This ensures EHRBSI RecordId matches Patient ParentId for proper table linking
+  has_record_id_col <- !is.null(record_id_col) && record_id_col %in% names(data)
+  
   base_ehrbsi <- data %>%
     dplyr::mutate(
       AggregationLevel = aggregation_level,
@@ -440,8 +445,9 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
       EpisodeDuration = episode_duration,
       HospitalId = HospitalId,
       LaboratoryCode = if ("LaboratoryCode" %in% names(.)) LaboratoryCode else NA_character_,
-      # Create RecordId based on aggregation level (use dplyr::coalesce for vectorized NA handling)
-      RecordId = dplyr::case_when(
+      # Use record_id_col from config for RecordId to ensure hierarchical linking
+      # (EHRBSI RecordId must match Patient ParentId)
+      RecordId = if (has_record_id_col) .data[[record_id_col]] else dplyr::case_when(
         aggregation_level == "HOSP" ~ HospitalId,
         aggregation_level == "HOSP-YEAR" ~ paste0(HospitalId, "-", format(as.Date(DateOfSpecimenCollection), "%Y")),
         aggregation_level == "LAB" ~ dplyr::coalesce(LaboratoryCode, HospitalId),
