@@ -222,6 +222,11 @@ process_country_bsi <- function(country,
     res = res
   )
   
+  # Standardize all date columns to yyyy-mm-dd format across all tables
+  result <- standardize_all_table_dates(result)
+  
+  # Standardize Sex values: 'Female' -> 'F', 'Male' -> 'M', anything else -> 'OTH'
+  result <- standardize_all_table_sex(result)
   
   # Write files if requested using country-specific function
   if (write_to_file) {

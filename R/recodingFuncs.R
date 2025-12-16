@@ -1563,4 +1563,93 @@ detect_contaminants <- function(isolate_df, patient_df, commensal_path = "refere
   }
   
   return(isolate_df)
-} 
+}
+
+#' Standardize all date columns to yyyy-mm-dd format
+#'
+#' Converts all Date and POSIXct columns in a data frame to character
+#' strings in 'yyyy-mm-dd' format for consistent output.
+#'
+#' @param data Data frame to process
+#'
+#' @return Data frame with all date columns converted to 'yyyy-mm-dd' character format
+#' @export
+standardize_date_format <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  for (col in names(data)) {
+    if (inherits(data[[col]], c("Date", "POSIXct", "POSIXlt"))) {
+      data[[col]] <- format(data[[col]], "%Y-%m-%d")
+    }
+  }
+  
+  return(data)
+}
+
+#' Standardize date formats across all EHR-BSI tables
+#'
+#' Applies standardize_date_format to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with all date columns in all tables converted to 'yyyy-mm-dd' format
+#' @export
+standardize_all_table_dates <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_date_format(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
+
+#' Standardize Sex column values
+#'
+#' Converts Sex values to standard format: 'Female' -> 'F', 'Male' -> 'M',
+#' anything else -> 'OTH'.
+#'
+#' @param data Data frame containing a Sex column
+#'
+#' @return Data frame with standardized Sex values
+#' @export
+standardize_sex_values <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  if ("Sex" %in% names(data)) {
+    data$Sex <- dplyr::case_when(
+      data$Sex == "Female" ~ "F",
+      data$Sex == "Male" ~ "M",
+      is.na(data$Sex) ~ NA_character_,
+      TRUE ~ "OTH"
+    )
+  }
+  
+  return(data)
+}
+
+#' Standardize Sex values across all EHR-BSI tables
+#'
+#' Applies standardize_sex_values to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with Sex values standardized to 'F', 'M', or 'OTH'
+#' @export
+standardize_all_table_sex <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_sex_values(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
