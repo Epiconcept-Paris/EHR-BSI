@@ -404,20 +404,19 @@ apply_single_lookup_mapping <- function(data, mapping_config, lookup_table) {
 #' @return Data frame with all standard resistance columns initialized
 initialize_resistance_columns <- function(res_data, mechanism_cols = c()) {
   # Define standard columns that should exist
+  # Note: SIR is a single consolidated column (not separate ZoneSIR/MICSIR/GradSIR)
   standard_cols <- list(
     ResultPCRmec = NA_character_,
     ResultPbp2aAggl = NA_character_,
     ResultESBL = NA_character_,
     ResultCarbapenemase = NA_character_,
+    SIR = NA_character_,
     ZoneValue = NA_real_,
-    ZoneSIR = NA_character_,
     ZoneSusceptibilitySign = NA_character_,
     MICSusceptibilitySign = NA_character_,
     MICValue = NA_real_,
-    MICSIR = NA_character_,
     GradSusceptibilitySign = NA_character_,
     GradValue = NA_real_,
-    GradSIR = NA_character_,
     ZoneTestDiskLoad = NA_character_,
     ReferenceGuidelinesSIR = NA_character_
   )
@@ -707,9 +706,20 @@ create_standard_patient_table <- function(data, record_id_col = "record_id_patie
   defaults <- modifyList(defaults, country_defaults)
   
   # Create base patient table
+  # Build RecordId: include UnitId if available
+  base_record_id <- get_column_or_default(data, record_id_col, NA_character_)
+  unit_id_values <- get_column_or_default(data, "UnitId", NA_character_)
+  
+  # Append UnitId to RecordId if UnitId is available
+  enhanced_record_id <- ifelse(
+    !is.na(unit_id_values) & unit_id_values != "",
+    paste0(base_record_id, "-", unit_id_values),
+    base_record_id
+  )
+  
   patient <- data %>%
     dplyr::mutate(
-      RecordId = get_column_or_default(., record_id_col, NA_character_),
+      RecordId = enhanced_record_id,
       ParentId = get_column_or_default(., parent_id_col, NA_character_),
       RecordType = "EHRBSI",
       HospitalId = get_column_or_default(., "HospitalId", NA_character_),
@@ -771,10 +781,21 @@ create_standard_isolate_table <- function(data, record_id_col = "record_id_isola
   defaults <- modifyList(defaults, country_defaults)
   
   # Create base isolate table
+  # Build ParentId: include UnitId if available (must match patient RecordId format)
+  base_parent_id <- get_column_or_default(data, parent_id_col, NA_character_)
+  unit_id_values <- get_column_or_default(data, "UnitId", NA_character_)
+  
+  # Append UnitId to ParentId if UnitId is available (to match patient RecordId)
+  enhanced_parent_id <- ifelse(
+    !is.na(unit_id_values) & unit_id_values != "",
+    paste0(base_parent_id, "-", unit_id_values),
+    base_parent_id
+  )
+  
   isolate <- data %>%
     dplyr::mutate(
       RecordId = get_column_or_default(., record_id_col, NA_character_),
-      ParentId = get_column_or_default(., parent_id_col, NA_character_),
+      ParentId = enhanced_parent_id,
       RecordType = "EHRBSI",
       LaboratoryCode = defaults$LaboratoryCode,
       Specimen = get_column_or_default(., "Specimen", defaults$Specimen),
@@ -811,9 +832,9 @@ get_standard_table_columns <- function(table_type) {
     
     "res" = c(
       "ParentId", "RecordId", "RecordType", "Antibiotic", "SIR", "ResultPCRmec", "ResultPbp2aAggl", 
-      "ResultESBL", "ResultCarbapenemase", "ZoneSIR", "ZoneValue", "ZoneSusceptibilitySign", 
-      "MICSusceptibilitySign", "MICValue", "MICSIR", "GradSusceptibilitySign", "GradValue", 
-      "GradSIR", "ZoneTestDiskLoad", "ReferenceGuidelinesSIR"
+      "ResultESBL", "ResultCarbapenemase", "ZoneValue", "ZoneSusceptibilitySign", 
+      "MICSusceptibilitySign", "MICValue", "GradSusceptibilitySign", "GradValue", 
+      "ZoneTestDiskLoad", "ReferenceGuidelinesSIR"
     ),
     
     "ehrbsi" = c(
@@ -1123,6 +1144,11 @@ create_flexible_record_ids <- function(data, id_templates, config) {
         substitutions$year <- format_date_for_id(result$DateOfHospitalAdmission, "year")
       }
       
+      # Add UnitId substitution if available
+      if (has_column(result, "UnitId")) {
+        substitutions$UnitId <- "UnitId"
+      }
+      
       result$record_id_patient <- apply_template_substitution(template, result, substitutions)
     }
   }
@@ -1316,16 +1342,27 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
         SusceptibilitySign = stringr::str_extract(.data[[ab_config$value_column]], "^<=|^<|^>=|^>|^="),
         Value = stringr::str_remove(.data[[ab_config$value_column]], "^<=|^<|^>=|^>|^="),
         Value = as.numeric(Value),
-        SIR = .data[[ab_config$result_column]]
+        SIR_raw = .data[[ab_config$result_column]]
       ) %>%
-      dplyr::select(ParentId, RecordId, RecordIdAb, Antibiotic, test_tag, SIR, SusceptibilitySign, Value) %>%
+      dplyr::select(ParentId, RecordId, RecordIdAb, Antibiotic, test_tag, SIR_raw, SusceptibilitySign, Value) %>%
       tidyr::pivot_wider(
         id_cols = c(ParentId, RecordId, RecordIdAb, Antibiotic),
         names_from = test_tag,
-        values_from = c(SIR, SusceptibilitySign, Value),
+        values_from = c(SusceptibilitySign, Value, SIR_raw),
         names_glue = "{test_tag}{.value}",
         values_fn = dplyr::first
       )
+    
+    # Consolidate SIR columns into single SIR column (coalesce Zone > MIC > Grad)
+    # Check which SIR_raw columns exist and coalesce them
+    sir_cols <- intersect(c("ZoneSIR_raw", "MICSIR_raw", "GradSIR_raw"), names(sens_results))
+    if (length(sir_cols) > 0) {
+      sens_results$SIR <- do.call(dplyr::coalesce, lapply(sir_cols, function(col) sens_results[[col]]))
+      # Remove the temporary SIR_raw columns
+      sens_results <- sens_results %>% dplyr::select(-dplyr::any_of(sir_cols))
+    } else {
+      sens_results$SIR <- NA_character_
+    }
     
     # Process mechanism results
     mech_results <- res %>%
@@ -1383,6 +1420,15 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
     if (!is.null(metadata_path)) {
       res <- recode_to_HAI_short(res, metadata_path, "Antibiotic", "Antibiotic")
     }
+  }
+  
+  # Filter out antibiotics that are full names (not coded values)
+  # Coded values are typically: all uppercase, short (<=10 chars), no spaces, alphanumeric only
+  if ("Antibiotic" %in% names(res) && nrow(res) > 0) {
+    is_coded <- grepl("^[A-Z0-9]+$", res$Antibiotic) & 
+                nchar(res$Antibiotic) <= 10 & 
+                !grepl("\\s", res$Antibiotic)
+    res <- res[is_coded | is.na(res$Antibiotic), , drop = FALSE]
   }
   
   # Standardize final structure
@@ -1692,6 +1738,50 @@ standardize_all_table_mic_sign <- function(result_list) {
   for (tbl_name in table_names) {
     if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
       result_list[[tbl_name]] <- standardize_mic_susceptibility_sign(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
+
+#' Standardize UnitSpecialtyShort column values
+#'
+#' Converts '0' and 'O' to 'OTH' in the UnitSpecialtyShort column.
+#'
+#' @param data Data frame containing a UnitSpecialtyShort column
+#'
+#' @return Data frame with standardized UnitSpecialtyShort values
+#' @export
+standardize_unit_specialty_short <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  if ("UnitSpecialtyShort" %in% names(data)) {
+    data$UnitSpecialtyShort <- ifelse(
+      data$UnitSpecialtyShort %in% c("0", "O"),
+      "OTH",
+      data$UnitSpecialtyShort
+    )
+  }
+  
+  return(data)
+}
+
+#' Standardize UnitSpecialtyShort values across all EHR-BSI tables
+#'
+#' Applies standardize_unit_specialty_short to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with UnitSpecialtyShort '0' and 'O' values changed to 'OTH'
+#' @export
+standardize_all_table_unit_specialty <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_unit_specialty_short(result_list[[tbl_name]])
     }
   }
   
