@@ -124,12 +124,48 @@ parse_dates_with_fallback <- function(data, fallback_cols, date_format = "%d/%m/
     x
   }
   
+  # Helper to try multiple format variations for more robust parsing
+  try_parse_datetime <- function(x, base_format) {
+    char_x <- coerce_to_char(x)
+    if (inherits(char_x, "POSIXct")) return(char_x)
+    if (inherits(char_x, "Date")) return(as.POSIXct(char_x))
+    
+    # Normalize multiple spaces to single space in the data
+    char_x <- gsub("\\s+", " ", trimws(as.character(char_x)))
+    
+    # Build list of format variations to try
+    formats_to_try <- c(base_format)
+    
+    # If format has time but no seconds, also try with seconds
+    if (grepl("%H:%M", base_format) && !grepl("%S", base_format)) {
+      formats_to_try <- c(formats_to_try, sub("%H:%M", "%H:%M:%S", base_format))
+    }
+    if (grepl("%H_%M", base_format) && !grepl("%S", base_format)) {
+      formats_to_try <- c(formats_to_try, sub("%H_%M", "%H_%M_%S", base_format))
+    }
+    
+    # Normalize spaces in format strings too
+    formats_to_try <- gsub("\\s+", " ", formats_to_try)
+    
+    # Try each format
+    for (fmt in formats_to_try) {
+      result <- as.POSIXct(char_x, format = fmt)
+      if (!all(is.na(result))) {
+        return(result)
+      }
+    }
+    
+    # If all fail, return NA with warning
+    warning("Could not parse datetime with any format variation", call. = FALSE)
+    return(as.POSIXct(rep(NA, length(char_x))))
+  }
+  
   if (length(available_date_cols) > 0) {
     for (col in available_date_cols) {
       tryCatch({
         if (preserve_time || grepl("%H|%M|%S", date_format)) {
-          # Parse as POSIXct for datetime
-          data[[col]] <- as.POSIXct(coerce_to_char(data[[col]]), format = date_format)
+          # Parse as POSIXct for datetime with flexible format handling
+          data[[col]] <- try_parse_datetime(data[[col]], date_format)
         } else {
           # Parse as Date for date-only
           data[[col]] <- as.Date(coerce_to_char(data[[col]]), format = date_format)
@@ -192,20 +228,37 @@ get_column_or_default <- function(data, col, default) {
 format_date_for_id <- function(date_col, format_type = "date") {
   # Ensure date_col is a Date or POSIXt object
   if (!inherits(date_col, c("Date", "POSIXct", "POSIXlt"))) {
-    # Try to convert to Date if it's character or numeric
+    # Try to convert - use POSIXct for datetime to preserve time info
     date_col <- tryCatch({
-      as.Date(date_col)
+      if (format_type == "datetime") {
+        # Try POSIXct first to preserve time
+        result <- as.POSIXct(date_col)
+        if (all(is.na(result))) {
+          # Fallback to Date if POSIXct fails
+          as.Date(date_col)
+        } else {
+          result
+        }
+      } else {
+        as.Date(date_col)
+      }
     }, error = function(e) {
-      warning("Could not convert date column to Date object: ", e$message)
+      warning("Could not convert date column: ", e$message)
       return(rep(NA, length(date_col)))
     })
   }
   
   if (format_type == "datetime") {
-    paste0(
-      format(date_col, "%d%m%Y"), "_",
-      format(date_col, "%H_%M")
-    )
+    # Check if we actually have time information (POSIXct/POSIXlt)
+    if (inherits(date_col, c("POSIXct", "POSIXlt"))) {
+      paste0(
+        format(date_col, "%d%m%Y"), "_",
+        format(date_col, "%H_%M")
+      )
+    } else {
+      # Date object - no time info, use 00_00
+      paste0(format(date_col, "%d%m%Y"), "_00_00")
+    }
   } else if (format_type == "year") {
     format(date_col, "%Y")
   } else {
@@ -351,20 +404,19 @@ apply_single_lookup_mapping <- function(data, mapping_config, lookup_table) {
 #' @return Data frame with all standard resistance columns initialized
 initialize_resistance_columns <- function(res_data, mechanism_cols = c()) {
   # Define standard columns that should exist
+  # Note: SIR is a single consolidated column (not separate ZoneSIR/MICSIR/GradSIR)
   standard_cols <- list(
     ResultPCRmec = NA_character_,
     ResultPbp2aAggl = NA_character_,
     ResultESBL = NA_character_,
     ResultCarbapenemase = NA_character_,
+    SIR = NA_character_,
     ZoneValue = NA_real_,
-    ZoneSIR = NA_character_,
     ZoneSusceptibilitySign = NA_character_,
     MICSusceptibilitySign = NA_character_,
     MICValue = NA_real_,
-    MICSIR = NA_character_,
     GradSusceptibilitySign = NA_character_,
     GradValue = NA_real_,
-    GradSIR = NA_character_,
     ZoneTestDiskLoad = NA_character_,
     ReferenceGuidelinesSIR = NA_character_
   )
@@ -391,13 +443,13 @@ initialize_resistance_columns <- function(res_data, mechanism_cols = c()) {
 #' @param data Source data frame
 #' @param country_code Two-letter country code (e.g., "EE", "MT")
 #' @param episode_duration Episode duration in days
-#' @param record_id_col Name of column containing record IDs (DEPRECATED - not used with dynamic aggregation)
+#' @param record_id_col Name of column containing record IDs for hierarchical linking (e.g., "record_id_bsi")
 #' @param config Country configuration object (optional)
 #' @param aggregation_level Aggregation level (e.g., "HOSP", "HOSP-YEAR", "LAB", "LAB-YEAR")
 #'
 #' @return Data frame with base EHRBSI structure
 create_base_ehrbsi_table <- function(data, country_code, episode_duration, 
-                                    record_id_col = NULL, config = NULL,
+                                    record_id_col = "record_id_bsi", config = NULL,
                                     aggregation_level = "HOSP") {
   # Get config if not provided
   if (is.null(config)) {
@@ -432,6 +484,11 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
     }
   }
   
+  # Determine RecordId: use record_id_col from config for hierarchical linking consistency
+
+  # This ensures EHRBSI RecordId matches Patient ParentId for proper table linking
+  has_record_id_col <- !is.null(record_id_col) && record_id_col %in% names(data)
+  
   base_ehrbsi <- data %>%
     dplyr::mutate(
       AggregationLevel = aggregation_level,
@@ -440,8 +497,9 @@ create_base_ehrbsi_table <- function(data, country_code, episode_duration,
       EpisodeDuration = episode_duration,
       HospitalId = HospitalId,
       LaboratoryCode = if ("LaboratoryCode" %in% names(.)) LaboratoryCode else NA_character_,
-      # Create RecordId based on aggregation level (use dplyr::coalesce for vectorized NA handling)
-      RecordId = dplyr::case_when(
+      # Use record_id_col from config for RecordId to ensure hierarchical linking
+      # (EHRBSI RecordId must match Patient ParentId)
+      RecordId = if (has_record_id_col) .data[[record_id_col]] else dplyr::case_when(
         aggregation_level == "HOSP" ~ HospitalId,
         aggregation_level == "HOSP-YEAR" ~ paste0(HospitalId, "-", format(as.Date(DateOfSpecimenCollection), "%Y")),
         aggregation_level == "LAB" ~ dplyr::coalesce(LaboratoryCode, HospitalId),
@@ -648,10 +706,22 @@ create_standard_patient_table <- function(data, record_id_col = "record_id_patie
   defaults <- modifyList(defaults, country_defaults)
   
   # Create base patient table
+  # Build RecordId: include UnitId if available
+  base_record_id <- get_column_or_default(data, record_id_col, NA_character_)
+  unit_id_values <- get_column_or_default(data, "UnitId", NA_character_)
+  
+  # Append UnitId to RecordId if UnitId is available
+  enhanced_record_id <- ifelse(
+    !is.na(unit_id_values) & unit_id_values != "",
+    paste0(base_record_id, "-", unit_id_values),
+    base_record_id
+  )
+  
   patient <- data %>%
     dplyr::mutate(
-      RecordId = get_column_or_default(., record_id_col, NA_character_),
+      RecordId = enhanced_record_id,
       ParentId = get_column_or_default(., parent_id_col, NA_character_),
+      RecordType = "EHRBSI",
       HospitalId = get_column_or_default(., "HospitalId", NA_character_),
       PatientSpecialty = get_column_or_default(., "PatientSpecialty", defaults$PatientSpecialty),
       patientType = get_column_or_default(., "patientType", defaults$patientType),
@@ -711,10 +781,22 @@ create_standard_isolate_table <- function(data, record_id_col = "record_id_isola
   defaults <- modifyList(defaults, country_defaults)
   
   # Create base isolate table
+  # Build ParentId: include UnitId if available (must match patient RecordId format)
+  base_parent_id <- get_column_or_default(data, parent_id_col, NA_character_)
+  unit_id_values <- get_column_or_default(data, "UnitId", NA_character_)
+  
+  # Append UnitId to ParentId if UnitId is available (to match patient RecordId)
+  enhanced_parent_id <- ifelse(
+    !is.na(unit_id_values) & unit_id_values != "",
+    paste0(base_parent_id, "-", unit_id_values),
+    base_parent_id
+  )
+  
   isolate <- data %>%
     dplyr::mutate(
       RecordId = get_column_or_default(., record_id_col, NA_character_),
-      ParentId = get_column_or_default(., parent_id_col, NA_character_),
+      ParentId = enhanced_parent_id,
+      RecordType = "EHRBSI",
       LaboratoryCode = defaults$LaboratoryCode,
       Specimen = get_column_or_default(., "Specimen", defaults$Specimen),
       MicroorganismCodeSystem = defaults$MicroorganismCodeSystem,
@@ -734,7 +816,7 @@ get_standard_table_columns <- function(table_type) {
   
   switch(table_type,
     "patient" = c(
-      "RecordId", "ParentId", "HospitalId", "UnitId", "UnitSpecialtyShort", "PatientSpecialty", 
+      "RecordId", "ParentId", "RecordType", "HospitalId", "UnitId", "UnitSpecialtyShort", "PatientSpecialty", 
       "DateOfAdmissionCurrentWard", "PatientId", "Age", "Sex", "patientType",
       "DateOfHospitalAdmission", "DateOfHospitalDischarge", "OutcomeOfCase",
       "HospitalisationCode", "HospitalisationCodeLabel",
@@ -743,16 +825,16 @@ get_standard_table_columns <- function(table_type) {
     ),
     
     "isolate" = c(
-      "RecordId", "ParentId", "DateOfSpecimenCollection", "LaboratoryCode", "IsolateId", "Specimen",
+      "RecordId", "ParentId", "RecordType", "DateOfSpecimenCollection", "LaboratoryCode", "IsolateId", "Specimen",
       "MicroorganismCode", "MicroorganismCodeLabel", "MicroorganismCodeSystem", 
       "MicroorganismCodeSystemSpec", "MicroorganismCodeSystemVersion"
     ),
     
     "res" = c(
-      "ParentId", "RecordId", "Antibiotic", "SIR", "ResultPCRmec", "ResultPbp2aAggl", 
-      "ResultESBL", "ResultCarbapenemase", "ZoneSIR", "ZoneValue", "ZoneSusceptibilitySign", 
-      "MICSusceptibilitySign", "MICValue", "MICSIR", "GradSusceptibilitySign", "GradValue", 
-      "GradSIR", "ZoneTestDiskLoad", "ReferenceGuidelinesSIR"
+      "ParentId", "RecordId", "RecordType", "Antibiotic", "SIR", "ResultPCRmec", "ResultPbp2aAggl", 
+      "ResultESBL", "ResultCarbapenemase", "ZoneValue", "ZoneSusceptibilitySign", 
+      "MICSusceptibilitySign", "MICValue", "GradSusceptibilitySign", "GradValue", 
+      "ZoneTestDiskLoad", "ReferenceGuidelinesSIR"
     ),
     
     "ehrbsi" = c(
@@ -1018,19 +1100,55 @@ create_flexible_record_ids <- function(data, id_templates, config) {
   }
   
   # Create patient-level record ID
-  if ("patient" %in% names(id_templates) && has_column(data, "DateOfHospitalAdmission") && has_column(data, "PatientId")) {
+  # Prefer DateOfAdmissionCurrentWard if available and not NA, otherwise use DateOfHospitalAdmission
+  if ("patient" %in% names(id_templates) && has_column(data, "PatientId")) {
     template <- id_templates$patient
-    if (!is.null(template) && length(template) > 0) {
+    has_ward_date <- has_column(data, "DateOfAdmissionCurrentWard")
+    has_hosp_date <- has_column(data, "DateOfHospitalAdmission")
+    
+    if (!is.null(template) && length(template) > 0 && (has_ward_date || has_hosp_date)) {
       # Safe check for has_time with default to FALSE
       has_time <- isTRUE(config$has_time)
       format_type <- if (has_time) "datetime" else "date"
-      admit_formatted <- format_date_for_id(result$DateOfHospitalAdmission, format_type)
+      
+      # Determine admission date: prefer ward date if valid, fall back to hospital admission
+      # Preserve POSIXct (time info) when has_time is TRUE
+      if (has_ward_date && has_hosp_date) {
+        # Use coalesce to prefer ward date when available, otherwise hospital admission
+        # Don't convert to Date - preserve POSIXct to keep time information
+        ward_date <- result$DateOfAdmissionCurrentWard
+        hosp_date <- result$DateOfHospitalAdmission
+        
+        # coalesce works with POSIXct; use ifelse for row-by-row selection
+        admit_date <- dplyr::if_else(
+          !is.na(ward_date),
+          ward_date,
+          hosp_date
+        )
+      } else if (has_ward_date) {
+        admit_date <- result$DateOfAdmissionCurrentWard
+      } else {
+        admit_date <- result$DateOfHospitalAdmission
+      }
+      
+      admit_formatted <- format_date_for_id(admit_date, format_type)
       
       substitutions <- list(
         admit_date = admit_formatted,
         admit_datetime = admit_formatted,
         PatientId = "PatientId"
       )
+      
+      # Add year substitution if hospital admission date is available
+      if (has_hosp_date) {
+        substitutions$year <- format_date_for_id(result$DateOfHospitalAdmission, "year")
+      }
+      
+      # Add UnitId substitution if available
+      if (has_column(result, "UnitId")) {
+        substitutions$UnitId <- "UnitId"
+      }
+      
       result$record_id_patient <- apply_template_substitution(template, result, substitutions)
     }
   }
@@ -1161,7 +1279,8 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
           stringr::str_remove(paste0("^", ab_config$prefix)) %>%
           stringr::str_remove_all("\\d+"),
         RecordId = paste0(record_id_isolate, "_", Antibiotic),
-        ParentId = record_id_isolate
+        ParentId = record_id_isolate,
+        RecordType = "EHRBSI"
       ) %>%
       dplyr::filter(SIR != "")
     
@@ -1223,16 +1342,27 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
         SusceptibilitySign = stringr::str_extract(.data[[ab_config$value_column]], "^<=|^<|^>=|^>|^="),
         Value = stringr::str_remove(.data[[ab_config$value_column]], "^<=|^<|^>=|^>|^="),
         Value = as.numeric(Value),
-        SIR = .data[[ab_config$result_column]]
+        SIR_raw = .data[[ab_config$result_column]]
       ) %>%
-      dplyr::select(ParentId, RecordId, RecordIdAb, Antibiotic, test_tag, SIR, SusceptibilitySign, Value) %>%
+      dplyr::select(ParentId, RecordId, RecordIdAb, Antibiotic, test_tag, SIR_raw, SusceptibilitySign, Value) %>%
       tidyr::pivot_wider(
         id_cols = c(ParentId, RecordId, RecordIdAb, Antibiotic),
         names_from = test_tag,
-        values_from = c(SIR, SusceptibilitySign, Value),
+        values_from = c(SusceptibilitySign, Value, SIR_raw),
         names_glue = "{test_tag}{.value}",
         values_fn = dplyr::first
       )
+    
+    # Consolidate SIR columns into single SIR column (coalesce Zone > MIC > Grad)
+    # Check which SIR_raw columns exist and coalesce them
+    sir_cols <- intersect(c("ZoneSIR_raw", "MICSIR_raw", "GradSIR_raw"), names(sens_results))
+    if (length(sir_cols) > 0) {
+      sens_results$SIR <- do.call(dplyr::coalesce, lapply(sir_cols, function(col) sens_results[[col]]))
+      # Remove the temporary SIR_raw columns
+      sens_results <- sens_results %>% dplyr::select(-dplyr::any_of(sir_cols))
+    } else {
+      sens_results$SIR <- NA_character_
+    }
     
     # Process mechanism results
     mech_results <- res %>%
@@ -1258,7 +1388,10 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
     # Combine results
     res <- sens_results %>%
       dplyr::left_join(mech_results, by = "RecordId") %>%
-      dplyr::mutate(RecordId = RecordIdAb) %>%
+      dplyr::mutate(
+        RecordId = RecordIdAb,
+        RecordType = "EHRBSI"
+      ) %>%
       dplyr::select(-RecordIdAb)
     
     # Get mechanism column names from mech_results (exclude RecordId)
@@ -1287,6 +1420,15 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
     if (!is.null(metadata_path)) {
       res <- recode_to_HAI_short(res, metadata_path, "Antibiotic", "Antibiotic")
     }
+  }
+  
+  # Filter out antibiotics that are full names (not coded values)
+  # Coded values are typically: all uppercase, short (<=10 chars), no spaces, alphanumeric only
+  if ("Antibiotic" %in% names(res) && nrow(res) > 0) {
+    is_coded <- grepl("^[A-Z0-9]+$", res$Antibiotic) & 
+                nchar(res$Antibiotic) <= 10 & 
+                !grepl("\\s", res$Antibiotic)
+    res <- res[is_coded | is.na(res$Antibiotic), , drop = FALSE]
   }
   
   # Standardize final structure
@@ -1467,4 +1609,181 @@ detect_contaminants <- function(isolate_df, patient_df, commensal_path = "refere
   }
   
   return(isolate_df)
-} 
+}
+
+#' Standardize all date columns to yyyy-mm-dd format
+#'
+#' Converts all Date and POSIXct columns in a data frame to character
+#' strings in 'yyyy-mm-dd' format for consistent output.
+#'
+#' @param data Data frame to process
+#'
+#' @return Data frame with all date columns converted to 'yyyy-mm-dd' character format
+#' @export
+standardize_date_format <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  for (col in names(data)) {
+    if (inherits(data[[col]], c("Date", "POSIXct", "POSIXlt"))) {
+      data[[col]] <- format(data[[col]], "%Y-%m-%d")
+    }
+  }
+  
+  return(data)
+}
+
+#' Standardize date formats across all EHR-BSI tables
+#'
+#' Applies standardize_date_format to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with all date columns in all tables converted to 'yyyy-mm-dd' format
+#' @export
+standardize_all_table_dates <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_date_format(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
+
+#' Standardize Sex column values
+#'
+#' Converts Sex values to standard format: 'Female' -> 'F', 'Male' -> 'M',
+#' anything else -> 'OTH'.
+#'
+#' @param data Data frame containing a Sex column
+#'
+#' @return Data frame with standardized Sex values
+#' @export
+standardize_sex_values <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  if ("Sex" %in% names(data)) {
+    data$Sex <- dplyr::case_when(
+      data$Sex == "Female" ~ "F",
+      data$Sex == "Male" ~ "M",
+      is.na(data$Sex) ~ NA_character_,
+      TRUE ~ "OTH"
+    )
+  }
+  
+  return(data)
+}
+
+#' Standardize Sex values across all EHR-BSI tables
+#'
+#' Applies standardize_sex_values to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with Sex values standardized to 'F', 'M', or 'OTH'
+#' @export
+standardize_all_table_sex <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_sex_values(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
+
+#' Standardize MICSusceptibilitySign column values
+#'
+#' Converts '<' to '<=' and '>' to '>=' in the MICSusceptibilitySign column.
+#'
+#' @param data Data frame containing a MICSusceptibilitySign column
+#'
+#' @return Data frame with standardized MICSusceptibilitySign values
+#' @export
+standardize_mic_susceptibility_sign <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  if ("MICSusceptibilitySign" %in% names(data)) {
+    data$MICSusceptibilitySign <- dplyr::case_when(
+      data$MICSusceptibilitySign == "<" ~ "<=",
+      data$MICSusceptibilitySign == ">" ~ ">=",
+      TRUE ~ data$MICSusceptibilitySign
+    )
+  }
+  
+  return(data)
+}
+
+#' Standardize MICSusceptibilitySign values across all EHR-BSI tables
+#'
+#' Applies standardize_mic_susceptibility_sign to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with MICSusceptibilitySign '<' values changed to '<='
+#' @export
+standardize_all_table_mic_sign <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_mic_susceptibility_sign(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}
+
+#' Standardize UnitSpecialtyShort column values
+#'
+#' Converts '0' and 'O' to 'OTH' in the UnitSpecialtyShort column.
+#'
+#' @param data Data frame containing a UnitSpecialtyShort column
+#'
+#' @return Data frame with standardized UnitSpecialtyShort values
+#' @export
+standardize_unit_specialty_short <- function(data) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data)
+  }
+  
+  if ("UnitSpecialtyShort" %in% names(data)) {
+    data$UnitSpecialtyShort <- ifelse(
+      data$UnitSpecialtyShort %in% c("0", "O"),
+      "OTH",
+      data$UnitSpecialtyShort
+    )
+  }
+  
+  return(data)
+}
+
+#' Standardize UnitSpecialtyShort values across all EHR-BSI tables
+#'
+#' Applies standardize_unit_specialty_short to all tables in the result list.
+#'
+#' @param result_list List containing ehrbsi, patient, isolate, res tables
+#'
+#' @return List with UnitSpecialtyShort '0' and 'O' values changed to 'OTH'
+#' @export
+standardize_all_table_unit_specialty <- function(result_list) {
+  table_names <- c("ehrbsi", "patient", "isolate", "res")
+  
+  for (tbl_name in table_names) {
+    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
+      result_list[[tbl_name]] <- standardize_unit_specialty_short(result_list[[tbl_name]])
+    }
+  }
+  
+  return(result_list)
+}

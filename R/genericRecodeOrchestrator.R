@@ -205,6 +205,36 @@ process_country_bsi <- function(country,
   }
   
   
+  # Deduplicate patient, isolate, and res tables to ensure no duplicate records
+
+  # (taking into account all variables in each table)
+  patient <- dplyr::distinct(patient)
+  isolate <- dplyr::distinct(isolate)
+  res <- dplyr::distinct(res)
+  
+  # Deduplicate by RecordId, keeping the second (last) occurrence when duplicates exist
+  # This handles cases where records have same RecordId but differ in other columns (e.g., PreviousAdmission)
+  if (nrow(patient) > 0 && "RecordId" %in% names(patient)) {
+    patient <- patient %>%
+      dplyr::group_by(RecordId) %>%
+      dplyr::slice_tail(n = 1) %>%
+      dplyr::ungroup()
+  }
+  
+  if (nrow(isolate) > 0 && "RecordId" %in% names(isolate)) {
+    isolate <- isolate %>%
+      dplyr::group_by(RecordId) %>%
+      dplyr::slice_tail(n = 1) %>%
+      dplyr::ungroup()
+  }
+  
+  if (nrow(res) > 0 && "RecordId" %in% names(res)) {
+    res <- res %>%
+      dplyr::group_by(RecordId) %>%
+      dplyr::slice_tail(n = 1) %>%
+      dplyr::ungroup()
+  }
+  
   # Create output list
   # Note: isolate table includes ALL isolates with Contaminant column
   # This preserves full data in the formatted template for reproducibility
@@ -215,6 +245,17 @@ process_country_bsi <- function(country,
     res = res
   )
   
+  # Standardize all date columns to yyyy-mm-dd format across all tables
+  result <- standardize_all_table_dates(result)
+  
+  # Standardize Sex values: 'Female' -> 'F', 'Male' -> 'M', anything else -> 'OTH'
+  result <- standardize_all_table_sex(result)
+  
+  # Standardize MICSusceptibilitySign: '<' -> '<=', '>' -> '>='
+  result <- standardize_all_table_mic_sign(result)
+  
+  # Standardize UnitSpecialtyShort: '0' or 'O' -> 'OTH'
+  result <- standardize_all_table_unit_specialty(result)
   
   # Write files if requested using country-specific function
   if (write_to_file) {

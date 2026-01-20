@@ -127,7 +127,7 @@ parse_excel_config <- function(excel_config, country_code) {
     
     record_ids = list(
       bsi = excel_config$record_id_bsi %||% "{HospitalId}-{year}",
-      patient = excel_config$record_id_patient %||% "{PatientId}-{admit_date}",
+      patient = excel_config$record_id_patient %||% "{PatientId}-{UnitId}-{admit_date}",
       isolate = excel_config$record_id_isolate %||% "{IsolateId}_{MicroorganismCode}"
     ),
     
