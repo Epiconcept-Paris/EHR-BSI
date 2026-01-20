@@ -8,7 +8,7 @@ create_base_ehrbsi_table(
   data,
   country_code,
   episode_duration,
-  record_id_col = NULL,
+  record_id_col = "record_id_bsi",
   config = NULL,
   aggregation_level = "HOSP"
 )
@@ -20,7 +20,7 @@ create_base_ehrbsi_table(
 
 \item{episode_duration}{Episode duration in days}
 
-\item{record_id_col}{Name of column containing record IDs (DEPRECATED - not used with dynamic aggregation)}
+\item{record_id_col}{Name of column containing record IDs for hierarchical linking (e.g., "record_id_bsi")}
 
 \item{config}{Country configuration object (optional)}
 
