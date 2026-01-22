@@ -463,7 +463,7 @@ COUNTRY_R_TRANSFORMS <- list(
         # (data doesn't currently have discharge dates)
         # TEMPORARY # TEMPORARY # TEMPORARY 
         if ("DateOfHospitalAdmission" %in% names(data)) {
-          return(as.Date(data$DateOfHospitalAdmission) + 1)
+          return(as.Date(data$DateOfSpecimenCollection) + 1)
         } else {
           # Return a vector of NAs with the correct length
           return(rep(as.Date(NA), nrow(data)))
