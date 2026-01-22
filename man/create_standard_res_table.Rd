@@ -2,7 +2,7 @@
 % Please edit documentation in R/recodingFuncs.R
 \name{create_standard_res_table}
 \alias{create_standard_res_table}
-\title{Create standard resistance table (unified for both formats)}
+\title{Create standard resistance table (unified for all formats)}
 \usage{
 create_standard_res_table(
   recoded_data,
@@ -24,5 +24,5 @@ create_standard_res_table(
 Standardized resistance table
 }
 \description{
-Create standard resistance table (unified for both formats)
+Create standard resistance table (unified for all formats)
 }
