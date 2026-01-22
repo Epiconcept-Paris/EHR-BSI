@@ -69,7 +69,8 @@ calculateEpisodes <- function(patient_df,
   rule1 <- iso_in_admission %>%
     filter(org_type == "RP") %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecimenCollection),
-              MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
+              MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge,
+              org_type)
   
   ## ---- RULE 2  – ≥2 concordant CC in 3 days ----------------------------
   rule2 <- iso_in_admission %>%
@@ -80,7 +81,8 @@ calculateEpisodes <- function(patient_df,
     ungroup() %>%
     filter(cluster_first) %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecimenCollection),
-              MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge)
+              MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge,
+              org_type)
   
   bsi_core <- bind_rows(rule1, rule2) %>%
     distinct()
@@ -97,11 +99,39 @@ calculateEpisodes <- function(patient_df,
     mutate(EpisodeId = paste0(EpisodeStartDate, "-", PatientId, "-",
                               sprintf("%01d", EpisodeNumber)))
   
+  # Calculate episode-level characteristics before deduplication
+  # Ensure org_type column exists
+  if (!"org_type" %in% names(epi_core)) {
+    warning("org_type column not found in epi_core. Setting AllCommensal to FALSE.")
+    epi_core$org_type <- NA_character_
+  }
+  
+  # Debug: Check org_type distribution
+  message("calculateEpisodes: org_type distribution in epi_core:")
+  message("  CC: ", sum(epi_core$org_type == "CC", na.rm = TRUE))
+  message("  RP: ", sum(epi_core$org_type == "RP", na.rm = TRUE))
+  message("  NA: ", sum(is.na(epi_core$org_type)))
+  
+  episode_chars <- epi_core %>%
+    group_by(EpisodeId) %>%
+    summarise(
+      Polymicrobial = n_distinct(MicroorganismCode) > 1,
+      # Episode is AllCommensal only if ALL isolates are CC type (no RPs at all)
+      AllCommensal = if (all(is.na(org_type))) FALSE else all(org_type == "CC", na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Debug: Check AllCommensal distribution
+  message("calculateEpisodes: AllCommensal distribution in episode_chars:")
+  message("  TRUE (all CC): ", sum(episode_chars$AllCommensal, na.rm = TRUE))
+  message("  FALSE (has RP): ", sum(!episode_chars$AllCommensal, na.rm = TRUE))
+  
+  # Deduplicate episodes and add characteristics
   epi_core <- epi_core %>% 
     group_by(EpisodeId) %>% 
-    mutate(Polymicrobial = n_distinct(MicroorganismCode) > 1) %>% 
     slice_head(n = 1) %>%           # or slice(1)
-    ungroup()
+    ungroup() %>%
+    left_join(episode_chars, by = "EpisodeId")
   
   
   ## add the *previous* discharge date for each patient
@@ -170,9 +200,14 @@ calculateEpisodes <- function(patient_df,
     )
   
   # Join with episode metadata
+  # Build column list dynamically to handle cases where columns might not exist
+  episode_summary_cols <- c("EpisodeId", "EpisodeStartDate", "EpisodeClass", "EpisodeOrigin", "episodeYear", 
+                            "AdmissionRecordId", "PatientId", "HospitalId")
+  if ("Polymicrobial" %in% names(epi_full)) episode_summary_cols <- c(episode_summary_cols, "Polymicrobial")
+  if ("AllCommensal" %in% names(epi_full)) episode_summary_cols <- c(episode_summary_cols, "AllCommensal")
+  
   episode_summary <- epi_full %>%
-    select(EpisodeId, EpisodeStartDate, EpisodeClass, EpisodeOrigin, episodeYear, 
-           AdmissionRecordId, PatientId, HospitalId) %>%
+    select(all_of(episode_summary_cols)) %>%
     distinct() %>%
     left_join(episode_pathogens, by = "EpisodeId")
   
@@ -198,6 +233,12 @@ calculateEpisodes <- function(patient_df,
 
 
 aggregateEpisodes <- function(eps_df, ehrbsi, aggregation_level = "HOSP", hospital_lab_map = NULL) {
+  # Check if AllCommensal column exists, if not, create it with FALSE values
+  if (!"AllCommensal" %in% names(eps_df)) {
+    eps_df$AllCommensal <- FALSE
+    warning("AllCommensal column not found in episodes data. Setting all episodes to non-commensal.")
+  }
+  
   # Use provided hospital-to-lab mapping, or extract from ehrbsi if not provided
   if (is.null(hospital_lab_map) && aggregation_level %in% c("LAB", "LAB-YEAR")) {
     if ("LaboratoryCode" %in% names(ehrbsi) && "HospitalId" %in% names(ehrbsi)) {
@@ -244,179 +285,281 @@ aggregateEpisodes <- function(eps_df, ehrbsi, aggregation_level = "HOSP", hospit
   if (aggregation_level == "HOSP") {
     # Group by Hospital only
     aggregateResults <- eps_df %>%
-      select(HospitalId, EpisodeClass, EpisodeId) %>%
+      select(HospitalId, EpisodeClass, EpisodeId, AllCommensal) %>%
       distinct() %>%
-      mutate(RecordId = HospitalId) %>%
+      mutate(RecordId = HospitalId,
+             AllCommensal = ifelse(is.na(AllCommensal), FALSE, AllCommensal)) %>%
       group_by(RecordId, EpisodeClass) %>%
-      summarise(countEps = n(), .groups = "drop") %>%
+      summarise(countEps = n(), 
+                countEps_CC = sum(AllCommensal, na.rm = TRUE),
+                .groups = "drop") %>%
       pivot_wider(names_from = EpisodeClass,
-                  values_from = countEps,
-                  id_cols = c(RecordId)) %>%
+                  values_from = c(countEps, countEps_CC),
+                  id_cols = c(RecordId),
+                  values_fill = list(countEps = 0, countEps_CC = 0)) %>%
       # Ensure all episode class columns exist (even if 0 episodes of that type)
-      mutate(CA = if ("CA" %in% names(.)) CA else 0,
-             `HO-HA` = if ("HO-HA" %in% names(.)) `HO-HA` else 0,
-             `IMP-HA` = if ("IMP-HA" %in% names(.)) `IMP-HA` else 0) %>%
-      mutate(NumberOfCABSIs = case_when(
-               is.na(CA) ~ 0,
-               TRUE ~ CA
-             ),
-             NumberOfHOHABSIs = 
-               case_when(
-                 is.na(`HO-HA`)~0,
-                 TRUE~`HO-HA`
-               ),
-             NumberOfImportedHABSIs =           
-               case_when(
-                 is.na(`IMP-HA`)~0,
-                 TRUE~`IMP-HA`
-               ),
-             NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-      select(-CA,-`HO-HA`,-`IMP-HA`)
+      mutate(countEps_CA = if ("countEps_CA" %in% names(.)) replace(countEps_CA, is.na(countEps_CA), 0) else 0,
+             `countEps_HO-HA` = if ("countEps_HO-HA" %in% names(.)) replace(`countEps_HO-HA`, is.na(`countEps_HO-HA`), 0) else 0,
+             `countEps_IMP-HA` = if ("countEps_IMP-HA" %in% names(.)) replace(`countEps_IMP-HA`, is.na(`countEps_IMP-HA`), 0) else 0,
+             countEps_CC_CA = if ("countEps_CC_CA" %in% names(.)) replace(countEps_CC_CA, is.na(countEps_CC_CA), 0) else 0,
+             `countEps_CC_HO-HA` = if ("countEps_CC_HO-HA" %in% names(.)) replace(`countEps_CC_HO-HA`, is.na(`countEps_CC_HO-HA`), 0) else 0,
+             `countEps_CC_IMP-HA` = if ("countEps_CC_IMP-HA" %in% names(.)) replace(`countEps_CC_IMP-HA`, is.na(`countEps_CC_IMP-HA`), 0) else 0) %>%
+      mutate(NumberOfCABSIs = countEps_CA,
+             NumberOfHOHABSIs = `countEps_HO-HA`,
+             NumberOfImportedHABSIs = `countEps_IMP-HA`,
+             NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs,
+             NumberOfCABSIs_CC = countEps_CC_CA,
+             NumberOfHOHABSIs_CC = `countEps_CC_HO-HA`,
+             NumberOfImportedHABSIs_CC = `countEps_CC_IMP-HA`,
+             NumberOfTotalBSIs_CC = NumberOfCABSIs_CC+NumberOfHOHABSIs_CC+NumberOfImportedHABSIs_CC) %>%
+      select(-countEps_CA, -`countEps_HO-HA`, -`countEps_IMP-HA`,
+             -countEps_CC_CA, -`countEps_CC_HO-HA`, -`countEps_CC_IMP-HA`)
     
   } else if (aggregation_level == "HOSP-YEAR") {
     # Group by Hospital and Year
     aggregateResults <- eps_df %>%
-      select(HospitalId, EpisodeClass, EpisodeId, episodeYear) %>%
+      select(HospitalId, EpisodeClass, EpisodeId, episodeYear, AllCommensal) %>%
       distinct() %>%
-      mutate(RecordId = paste0(HospitalId, "-", episodeYear)) %>%
+      mutate(RecordId = paste0(HospitalId, "-", episodeYear),
+             AllCommensal = ifelse(is.na(AllCommensal), FALSE, AllCommensal)) %>%
       group_by(RecordId, EpisodeClass) %>%
-      summarise(countEps = n(), .groups = "drop") %>%
+      summarise(countEps = n(),
+                countEps_CC = sum(AllCommensal, na.rm = TRUE),
+                .groups = "drop") %>%
       pivot_wider(names_from = EpisodeClass,
-                  values_from = countEps,
-                  id_cols = c(RecordId)) %>%
+                  values_from = c(countEps, countEps_CC),
+                  id_cols = c(RecordId),
+                  values_fill = list(countEps = 0, countEps_CC = 0)) %>%
       # Ensure all episode class columns exist (even if 0 episodes of that type)
-      mutate(CA = if ("CA" %in% names(.)) CA else 0,
-             `HO-HA` = if ("HO-HA" %in% names(.)) `HO-HA` else 0,
-             `IMP-HA` = if ("IMP-HA" %in% names(.)) `IMP-HA` else 0) %>%
-      mutate(NumberOfCABSIs = case_when(
-               is.na(CA) ~ 0,
-               TRUE ~ CA
-             ),
-             NumberOfHOHABSIs = 
-               case_when(
-                 is.na(`HO-HA`)~0,
-                 TRUE~`HO-HA`
-               ),
-             NumberOfImportedHABSIs =           
-               case_when(
-                 is.na(`IMP-HA`)~0,
-                 TRUE~`IMP-HA`
-               ),
-             NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-      select(-CA,-`HO-HA`,-`IMP-HA`)
+      mutate(countEps_CA = if ("countEps_CA" %in% names(.)) replace(countEps_CA, is.na(countEps_CA), 0) else 0,
+             `countEps_HO-HA` = if ("countEps_HO-HA" %in% names(.)) replace(`countEps_HO-HA`, is.na(`countEps_HO-HA`), 0) else 0,
+             `countEps_IMP-HA` = if ("countEps_IMP-HA" %in% names(.)) replace(`countEps_IMP-HA`, is.na(`countEps_IMP-HA`), 0) else 0,
+             countEps_CC_CA = if ("countEps_CC_CA" %in% names(.)) replace(countEps_CC_CA, is.na(countEps_CC_CA), 0) else 0,
+             `countEps_CC_HO-HA` = if ("countEps_CC_HO-HA" %in% names(.)) replace(`countEps_CC_HO-HA`, is.na(`countEps_CC_HO-HA`), 0) else 0,
+             `countEps_CC_IMP-HA` = if ("countEps_CC_IMP-HA" %in% names(.)) replace(`countEps_CC_IMP-HA`, is.na(`countEps_CC_IMP-HA`), 0) else 0) %>%
+      mutate(NumberOfCABSIs = countEps_CA,
+             NumberOfHOHABSIs = `countEps_HO-HA`,
+             NumberOfImportedHABSIs = `countEps_IMP-HA`,
+             NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs,
+             NumberOfCABSIs_CC = countEps_CC_CA,
+             NumberOfHOHABSIs_CC = `countEps_CC_HO-HA`,
+             NumberOfImportedHABSIs_CC = `countEps_CC_IMP-HA`,
+             NumberOfTotalBSIs_CC = NumberOfCABSIs_CC+NumberOfHOHABSIs_CC+NumberOfImportedHABSIs_CC) %>%
+      select(-countEps_CA, -`countEps_HO-HA`, -`countEps_IMP-HA`,
+             -countEps_CC_CA, -`countEps_CC_HO-HA`, -`countEps_CC_IMP-HA`)
     
   } else if (aggregation_level == "LAB") {
     # Group by Laboratory (use HospitalId as fallback if LaboratoryCode not available)
     if ("LaboratoryCode" %in% names(eps_df)) {
       aggregateResults <- eps_df %>%
-        select(LaboratoryCode, EpisodeClass, EpisodeId) %>%
+        select(LaboratoryCode, EpisodeClass, EpisodeId, AllCommensal) %>%
         distinct() %>%
-        mutate(RecordId = LaboratoryCode) %>%
+        mutate(RecordId = LaboratoryCode,
+               AllCommensal = ifelse(is.na(AllCommensal), FALSE, AllCommensal)) %>%
         group_by(RecordId, EpisodeClass) %>%
-        summarise(countEps = n(), .groups = "drop") %>%
+        summarise(countEps = n(),
+                  countEps_CC = sum(AllCommensal, na.rm = TRUE),
+                  .groups = "drop") %>%
         pivot_wider(names_from = EpisodeClass,
-                    values_from = countEps,
+                    values_from = c(countEps, countEps_CC),
                     id_cols = c(RecordId)) %>%
-        mutate(NumberOfCABSIs = case_when(
-                 is.na(CA) ~ 0,
-                 TRUE ~ CA
+        mutate(countEps_CA = if ("countEps_CA" %in% names(.)) countEps_CA else 0,
+               `countEps_HO-HA` = if ("countEps_HO-HA" %in% names(.)) `countEps_HO-HA` else 0,
+               `countEps_IMP-HA` = if ("countEps_IMP-HA" %in% names(.)) `countEps_IMP-HA` else 0,
+               countEps_CC_CA = if ("countEps_CC_CA" %in% names(.)) countEps_CC_CA else 0,
+               `countEps_CC_HO-HA` = if ("countEps_CC_HO-HA" %in% names(.)) `countEps_CC_HO-HA` else 0,
+               `countEps_CC_IMP-HA` = if ("countEps_CC_IMP-HA" %in% names(.)) `countEps_CC_IMP-HA` else 0,
+               NumberOfCABSIs = case_when(
+                 is.na(countEps_CA) ~ 0,
+                 TRUE ~ countEps_CA
                ),
                NumberOfHOHABSIs = 
                  case_when(
-                   is.na(`HO-HA`)~0,
-                   TRUE~`HO-HA`
+                   is.na(`countEps_HO-HA`)~0,
+                   TRUE~`countEps_HO-HA`
                  ),
                NumberOfImportedHABSIs =           
                  case_when(
-                   is.na(`IMP-HA`)~0,
-                   TRUE~`IMP-HA`
+                   is.na(`countEps_IMP-HA`)~0,
+                   TRUE~`countEps_IMP-HA`
                  ),
-               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-        select(-CA,-`HO-HA`,-`IMP-HA`)
+               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs,
+               NumberOfCABSIs_CC = case_when(
+                 is.na(countEps_CC_CA) ~ 0,
+                 TRUE ~ countEps_CC_CA
+               ),
+               NumberOfHOHABSIs_CC = 
+                 case_when(
+                   is.na(`countEps_CC_HO-HA`)~0,
+                   TRUE~`countEps_CC_HO-HA`
+                 ),
+               NumberOfImportedHABSIs_CC =           
+                 case_when(
+                   is.na(`countEps_CC_IMP-HA`)~0,
+                   TRUE~`countEps_CC_IMP-HA`
+                 ),
+               NumberOfTotalBSIs_CC = NumberOfCABSIs_CC+NumberOfHOHABSIs_CC+NumberOfImportedHABSIs_CC) %>%
+        select(-countEps_CA, -`countEps_HO-HA`, -`countEps_IMP-HA`,
+               -countEps_CC_CA, -`countEps_CC_HO-HA`, -`countEps_CC_IMP-HA`)
     } else {
       # Fallback to HospitalId if no LaboratoryCode
       aggregateResults <- eps_df %>%
-        select(HospitalId, EpisodeClass, EpisodeId) %>%
+        select(HospitalId, EpisodeClass, EpisodeId, AllCommensal) %>%
         distinct() %>%
-        mutate(RecordId = HospitalId) %>%
+        mutate(RecordId = HospitalId,
+               AllCommensal = ifelse(is.na(AllCommensal), FALSE, AllCommensal)) %>%
         group_by(RecordId, EpisodeClass) %>%
-        summarise(countEps = n(), .groups = "drop") %>%
+        summarise(countEps = n(),
+                  countEps_CC = sum(AllCommensal, na.rm = TRUE),
+                  .groups = "drop") %>%
         pivot_wider(names_from = EpisodeClass,
-                    values_from = countEps,
+                    values_from = c(countEps, countEps_CC),
                     id_cols = c(RecordId)) %>%
-        mutate(NumberOfCABSIs = case_when(
-                 is.na(CA) ~ 0,
-                 TRUE ~ CA
+        mutate(countEps_CA = if ("countEps_CA" %in% names(.)) countEps_CA else 0,
+               `countEps_HO-HA` = if ("countEps_HO-HA" %in% names(.)) `countEps_HO-HA` else 0,
+               `countEps_IMP-HA` = if ("countEps_IMP-HA" %in% names(.)) `countEps_IMP-HA` else 0,
+               countEps_CC_CA = if ("countEps_CC_CA" %in% names(.)) countEps_CC_CA else 0,
+               `countEps_CC_HO-HA` = if ("countEps_CC_HO-HA" %in% names(.)) `countEps_CC_HO-HA` else 0,
+               `countEps_CC_IMP-HA` = if ("countEps_CC_IMP-HA" %in% names(.)) `countEps_CC_IMP-HA` else 0,
+               NumberOfCABSIs = case_when(
+                 is.na(countEps_CA) ~ 0,
+                 TRUE ~ countEps_CA
                ),
                NumberOfHOHABSIs = 
                  case_when(
-                   is.na(`HO-HA`)~0,
-                   TRUE~`HO-HA`
+                   is.na(`countEps_HO-HA`)~0,
+                   TRUE~`countEps_HO-HA`
                  ),
                NumberOfImportedHABSIs =           
                  case_when(
-                   is.na(`IMP-HA`)~0,
-                   TRUE~`IMP-HA`
+                   is.na(`countEps_IMP-HA`)~0,
+                   TRUE~`countEps_IMP-HA`
                  ),
-               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-        select(-CA,-`HO-HA`,-`IMP-HA`)
+               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs,
+               NumberOfCABSIs_CC = case_when(
+                 is.na(countEps_CC_CA) ~ 0,
+                 TRUE ~ countEps_CC_CA
+               ),
+               NumberOfHOHABSIs_CC = 
+                 case_when(
+                   is.na(`countEps_CC_HO-HA`)~0,
+                   TRUE~`countEps_CC_HO-HA`
+                 ),
+               NumberOfImportedHABSIs_CC =           
+                 case_when(
+                   is.na(`countEps_CC_IMP-HA`)~0,
+                   TRUE~`countEps_CC_IMP-HA`
+                 ),
+               NumberOfTotalBSIs_CC = NumberOfCABSIs_CC+NumberOfHOHABSIs_CC+NumberOfImportedHABSIs_CC) %>%
+        select(-countEps_CA, -`countEps_HO-HA`, -`countEps_IMP-HA`,
+               -countEps_CC_CA, -`countEps_CC_HO-HA`, -`countEps_CC_IMP-HA`)
     }
     
   } else if (aggregation_level == "LAB-YEAR") {
     # Group by Laboratory and Year
     if ("LaboratoryCode" %in% names(eps_df)) {
       aggregateResults <- eps_df %>%
-        select(LaboratoryCode, EpisodeClass, EpisodeId, episodeYear) %>%
+        select(LaboratoryCode, EpisodeClass, EpisodeId, episodeYear, AllCommensal) %>%
         distinct() %>%
-        mutate(RecordId = paste0(LaboratoryCode, "-", episodeYear)) %>%
+        mutate(RecordId = paste0(LaboratoryCode, "-", episodeYear),
+               AllCommensal = ifelse(is.na(AllCommensal), FALSE, AllCommensal)) %>%
         group_by(RecordId, EpisodeClass) %>%
-        summarise(countEps = n(), .groups = "drop") %>%
+        summarise(countEps = n(),
+                  countEps_CC = sum(AllCommensal, na.rm = TRUE),
+                  .groups = "drop") %>%
         pivot_wider(names_from = EpisodeClass,
-                    values_from = countEps,
+                    values_from = c(countEps, countEps_CC),
                     id_cols = c(RecordId)) %>%
-        mutate(NumberOfCABSIs = case_when(
-                 is.na(CA) ~ 0,
-                 TRUE ~ CA
+        mutate(countEps_CA = if ("countEps_CA" %in% names(.)) countEps_CA else 0,
+               `countEps_HO-HA` = if ("countEps_HO-HA" %in% names(.)) `countEps_HO-HA` else 0,
+               `countEps_IMP-HA` = if ("countEps_IMP-HA" %in% names(.)) `countEps_IMP-HA` else 0,
+               countEps_CC_CA = if ("countEps_CC_CA" %in% names(.)) countEps_CC_CA else 0,
+               `countEps_CC_HO-HA` = if ("countEps_CC_HO-HA" %in% names(.)) `countEps_CC_HO-HA` else 0,
+               `countEps_CC_IMP-HA` = if ("countEps_CC_IMP-HA" %in% names(.)) `countEps_CC_IMP-HA` else 0,
+               NumberOfCABSIs = case_when(
+                 is.na(countEps_CA) ~ 0,
+                 TRUE ~ countEps_CA
                ),
                NumberOfHOHABSIs = 
                  case_when(
-                   is.na(`HO-HA`)~0,
-                   TRUE~`HO-HA`
+                   is.na(`countEps_HO-HA`)~0,
+                   TRUE~`countEps_HO-HA`
                  ),
                NumberOfImportedHABSIs =           
                  case_when(
-                   is.na(`IMP-HA`)~0,
-                   TRUE~`IMP-HA`
+                   is.na(`countEps_IMP-HA`)~0,
+                   TRUE~`countEps_IMP-HA`
                  ),
-               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-        select(-CA,-`HO-HA`,-`IMP-HA`)
+               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs,
+               NumberOfCABSIs_CC = case_when(
+                 is.na(countEps_CC_CA) ~ 0,
+                 TRUE ~ countEps_CC_CA
+               ),
+               NumberOfHOHABSIs_CC = 
+                 case_when(
+                   is.na(`countEps_CC_HO-HA`)~0,
+                   TRUE~`countEps_CC_HO-HA`
+                 ),
+               NumberOfImportedHABSIs_CC =           
+                 case_when(
+                   is.na(`countEps_CC_IMP-HA`)~0,
+                   TRUE~`countEps_CC_IMP-HA`
+                 ),
+               NumberOfTotalBSIs_CC = NumberOfCABSIs_CC+NumberOfHOHABSIs_CC+NumberOfImportedHABSIs_CC) %>%
+        select(-countEps_CA, -`countEps_HO-HA`, -`countEps_IMP-HA`,
+               -countEps_CC_CA, -`countEps_CC_HO-HA`, -`countEps_CC_IMP-HA`)
     } else {
       # Fallback to HospitalId if no LaboratoryCode
       aggregateResults <- eps_df %>%
-        select(HospitalId, EpisodeClass, EpisodeId, episodeYear) %>%
+        select(HospitalId, EpisodeClass, EpisodeId, episodeYear, AllCommensal) %>%
         distinct() %>%
-        mutate(RecordId = paste0(HospitalId, "-", episodeYear)) %>%
+        mutate(RecordId = paste0(HospitalId, "-", episodeYear),
+               AllCommensal = ifelse(is.na(AllCommensal), FALSE, AllCommensal)) %>%
         group_by(RecordId, EpisodeClass) %>%
-        summarise(countEps = n(), .groups = "drop") %>%
+        summarise(countEps = n(),
+                  countEps_CC = sum(AllCommensal, na.rm = TRUE),
+                  .groups = "drop") %>%
         pivot_wider(names_from = EpisodeClass,
-                    values_from = countEps,
+                    values_from = c(countEps, countEps_CC),
                     id_cols = c(RecordId)) %>%
-        mutate(NumberOfCABSIs = case_when(
-                 is.na(CA) ~ 0,
-                 TRUE ~ CA
+        mutate(countEps_CA = if ("countEps_CA" %in% names(.)) countEps_CA else 0,
+               `countEps_HO-HA` = if ("countEps_HO-HA" %in% names(.)) `countEps_HO-HA` else 0,
+               `countEps_IMP-HA` = if ("countEps_IMP-HA" %in% names(.)) `countEps_IMP-HA` else 0,
+               countEps_CC_CA = if ("countEps_CC_CA" %in% names(.)) countEps_CC_CA else 0,
+               `countEps_CC_HO-HA` = if ("countEps_CC_HO-HA" %in% names(.)) `countEps_CC_HO-HA` else 0,
+               `countEps_CC_IMP-HA` = if ("countEps_CC_IMP-HA" %in% names(.)) `countEps_CC_IMP-HA` else 0,
+               NumberOfCABSIs = case_when(
+                 is.na(countEps_CA) ~ 0,
+                 TRUE ~ countEps_CA
                ),
                NumberOfHOHABSIs = 
                  case_when(
-                   is.na(`HO-HA`)~0,
-                   TRUE~`HO-HA`
+                   is.na(`countEps_HO-HA`)~0,
+                   TRUE~`countEps_HO-HA`
                  ),
                NumberOfImportedHABSIs =           
                  case_when(
-                   is.na(`IMP-HA`)~0,
-                   TRUE~`IMP-HA`
+                   is.na(`countEps_IMP-HA`)~0,
+                   TRUE~`countEps_IMP-HA`
                  ),
-               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs) %>%
-        select(-CA,-`HO-HA`,-`IMP-HA`)
+               NumberOfTotalBSIs = NumberOfCABSIs+NumberOfHOHABSIs+NumberOfImportedHABSIs,
+               NumberOfCABSIs_CC = case_when(
+                 is.na(countEps_CC_CA) ~ 0,
+                 TRUE ~ countEps_CC_CA
+               ),
+               NumberOfHOHABSIs_CC = 
+                 case_when(
+                   is.na(`countEps_CC_HO-HA`)~0,
+                   TRUE~`countEps_CC_HO-HA`
+                 ),
+               NumberOfImportedHABSIs_CC =           
+                 case_when(
+                   is.na(`countEps_CC_IMP-HA`)~0,
+                   TRUE~`countEps_CC_IMP-HA`
+                 ),
+               NumberOfTotalBSIs_CC = NumberOfCABSIs_CC+NumberOfHOHABSIs_CC+NumberOfImportedHABSIs_CC) %>%
+        select(-countEps_CA, -`countEps_HO-HA`, -`countEps_IMP-HA`,
+               -countEps_CC_CA, -`countEps_CC_HO-HA`, -`countEps_CC_IMP-HA`)
     }
     
   } else {
@@ -426,15 +569,90 @@ aggregateEpisodes <- function(eps_df, ehrbsi, aggregation_level = "HOSP", hospit
   
   # Join aggregated results back to ehrbsi table by RecordId
   # Remove the episode count columns if they exist (they'll be re-added by the join)
-  cols_to_remove <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs", "NumberOfCABSIs")
+  cols_to_remove <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs", "NumberOfCABSIs",
+                      "NumberOfTotalBSIs_CC", "NumberOfHOHABSIs_CC", "NumberOfImportedHABSIs_CC", "NumberOfCABSIs_CC")
   cols_to_remove <- intersect(cols_to_remove, names(ehrbsi))
   if (length(cols_to_remove) > 0) {
     ehrbsi <- ehrbsi %>% select(-all_of(cols_to_remove))
   }
   
+  # Determine join key based on aggregation level
+  # The EHRBSI table might have RecordId constructed differently, so we need to 
+  # join on the appropriate grouping column rather than assuming RecordId matches
+  if (aggregation_level == "HOSP") {
+    # For HOSP: join on HospitalId
+    join_col <- "HospitalId"
+    # Rename RecordId to HospitalId in aggregateResults for the join
+    names(aggregateResults)[names(aggregateResults) == "RecordId"] <- "HospitalId"
+  } else if (aggregation_level == "HOSP-YEAR") {
+    # For HOSP-YEAR: need to construct join key from HospitalId + Year
+    join_col <- "join_key"
+    if ("DateUsedForStatistics" %in% names(ehrbsi)) {
+      ehrbsi$join_key <- paste0(ehrbsi$HospitalId, "-", ehrbsi$DateUsedForStatistics)
+    } else {
+      ehrbsi$join_key <- ehrbsi$HospitalId  # fallback
+    }
+    names(aggregateResults)[names(aggregateResults) == "RecordId"] <- "join_key"
+  } else if (aggregation_level == "LAB") {
+    # For LAB: join on LaboratoryCode (or HospitalId fallback)
+    join_col <- if ("LaboratoryCode" %in% names(ehrbsi) && !all(is.na(ehrbsi$LaboratoryCode))) {
+      "LaboratoryCode"
+    } else {
+      "HospitalId"
+    }
+    names(aggregateResults)[names(aggregateResults) == "RecordId"] <- join_col
+  } else if (aggregation_level == "LAB-YEAR") {
+    # For LAB-YEAR: need to construct join key
+    join_col <- "join_key"
+    if ("LaboratoryCode" %in% names(ehrbsi) && !all(is.na(ehrbsi$LaboratoryCode))) {
+      if ("DateUsedForStatistics" %in% names(ehrbsi)) {
+        ehrbsi$join_key <- paste0(ehrbsi$LaboratoryCode, "-", ehrbsi$DateUsedForStatistics)
+      } else {
+        ehrbsi$join_key <- ehrbsi$LaboratoryCode
+      }
+    } else {
+      if ("DateUsedForStatistics" %in% names(ehrbsi)) {
+        ehrbsi$join_key <- paste0(ehrbsi$HospitalId, "-", ehrbsi$DateUsedForStatistics)
+      } else {
+        ehrbsi$join_key <- ehrbsi$HospitalId
+      }
+    }
+    names(aggregateResults)[names(aggregateResults) == "RecordId"] <- "join_key"
+  } else {
+    # Default: try RecordId
+    join_col <- "RecordId"
+  }
+  
+  # Ensure join column types match
+  if (join_col %in% names(ehrbsi) && join_col %in% names(aggregateResults)) {
+    ehrbsi[[join_col]] <- as.character(ehrbsi[[join_col]])
+    aggregateResults[[join_col]] <- as.character(aggregateResults[[join_col]])
+  }
+  
+  # Debug: print join information
+  message("aggregateEpisodes: Joining by '", join_col, "'")
+  message("  AggregateResults rows: ", nrow(aggregateResults))
+  if (join_col %in% names(ehrbsi)) {
+    message("  EHRBSI keys (sample): ", paste(head(unique(ehrbsi[[join_col]]), 5), collapse = ", "))
+  }
+  if (join_col %in% names(aggregateResults)) {
+    message("  AggregateResults keys (sample): ", paste(head(unique(aggregateResults[[join_col]]), 5), collapse = ", "))
+  }
+  
   # Join the aggregated results
   ehrbsi <- ehrbsi %>%
-    left_join(aggregateResults, by = "RecordId")
+    left_join(aggregateResults, by = join_col)
+  
+  # Clean up temporary join key if created
+  if (join_col == "join_key" && "join_key" %in% names(ehrbsi)) {
+    ehrbsi <- ehrbsi %>% select(-join_key)
+  }
+  
+  # Debug: verify join results
+  if ("NumberOfTotalBSIs" %in% names(ehrbsi)) {
+    non_na <- sum(!is.na(ehrbsi$NumberOfTotalBSIs))
+    message("  After join: ", non_na, " of ", nrow(ehrbsi), " rows have episode counts")
+  }
   
   # Reorder columns to match expected output (only select columns that exist)
   desired_cols <- c(
@@ -445,7 +663,8 @@ aggregateEpisodes <- function(eps_df, ehrbsi, aggregation_level = "HOSP", hospit
     "MicrobiologicalTerminology", "MicrobiologicalTerminologySpec",
     "NumberOfBloodCultureSets", "NumberOfHospitalDischarges", "NumberOfHospitalPatientDays",
     "ProportionPopulationCovered", "NumberOfHOHABSIs", "NumberOfImportedHABSIs",
-    "NumberOfCABSIs", "NumberOfTotalBSIs"
+    "NumberOfCABSIs", "NumberOfTotalBSIs",
+    "NumberOfHOHABSIs_CC", "NumberOfImportedHABSIs_CC", "NumberOfCABSIs_CC", "NumberOfTotalBSIs_CC"
   )
   existing_cols <- intersect(desired_cols, names(ehrbsi))
   ehrbsi <- ehrbsi %>% select(all_of(existing_cols))

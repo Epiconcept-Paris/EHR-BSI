@@ -299,6 +299,35 @@ visual_bsi_dashboard <- function(data = NULL) {
                     shiny::plotOutput("infection_type_ca", height = "300px")
                   )
                 )
+              ),
+              
+              shiny::hr(),
+              
+              # Common Commensal section
+              shiny::div(
+                shiny::h4("Common Commensal Episodes"),
+                shiny::div(
+                  style = "margin-bottom: 20px;",
+                  shiny::htmlOutput("commensal_summary")
+                ),
+                shiny::div(
+                  style = "display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;",
+                  shiny::div(
+                    style = "flex: 1; min-width: 300px;",
+                    shiny::h6("All episodes", style = "text-align: center;"),
+                    shiny::plotOutput("commensal_all", height = "300px")
+                  ),
+                  shiny::div(
+                    style = "flex: 1; min-width: 300px;",
+                    shiny::h6("Health Care Acquired", style = "text-align: center;"),
+                    shiny::plotOutput("commensal_ha", height = "300px")
+                  ),
+                  shiny::div(
+                    style = "flex: 1; min-width: 300px;",
+                    shiny::h6("Community Acquired", style = "text-align: center;"),
+                    shiny::plotOutput("commensal_ca", height = "300px")
+                  )
+                )
               )
             )
           ),
@@ -543,57 +572,83 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
         ),
         # 8) Data Table
-        shiny::tabPanel("Data Table", 
-                        shiny::tabsetPanel(
-                          shiny::tabPanel("EHRBSI", 
-                                          shiny::conditionalPanel(
-                                            condition = "output.ehrbsi_available",
-                                            DT::DTOutput("ehrbsi_table")
-                                          ),
-                                          shiny::conditionalPanel(
-                                            condition = "!output.ehrbsi_available",
-                                            shiny::p("EHRBSI table not available. Please process data first.")
-                                          )
+        shiny::tabPanel("Data Table",
+                        shiny::div(
+                          style = "display: flex; flex-wrap: wrap; gap: 20px;",
+                          # Left sidebar panel with controls
+                          shiny::div(
+                            style = "flex: 0 0 250px; min-width: 200px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;",
+                            shiny::h4("Episode Calculation", style = "margin-top: 0;"),
+                            shiny::p("Calculate or recalculate BSI episodes from the current patient and isolate data.", 
+                                    style = "font-size: 0.9em; color: #666;"),
+                            shiny::actionButton(
+                              "recalculate_episodes_btn",
+                              "Recalculate Episodes",
+                              icon = shiny::icon("sync"),
+                              class = "btn-primary",
+                              style = "width: 100%; margin-bottom: 15px;"
+                            ),
+                            shiny::hr(),
+                            shiny::div(
+                              id = "episode_calc_status",
+                              shiny::htmlOutput("episode_calc_info")
+                            )
                           ),
-                          shiny::tabPanel("Patient", 
-                                          shiny::conditionalPanel(
-                                            condition = "output.patient_available",
-                                            DT::DTOutput("patient_table")
-                                          ),
-                                          shiny::conditionalPanel(
-                                            condition = "!output.patient_available",
-                                            shiny::p("Patient table not available. Please process data first.")
-                                          )
-                          ),
-                          shiny::tabPanel("Isolate", 
-                                          shiny::conditionalPanel(
-                                            condition = "output.isolate_available",
-                                            DT::DTOutput("isolate_table")
-                                          ),
-                                          shiny::conditionalPanel(
-                                            condition = "!output.isolate_available",
-                                            shiny::p("Isolate table not available. Please process data first.")
-                                          )
-                          ),
-                          shiny::tabPanel("Res", 
-                                          shiny::conditionalPanel(
-                                            condition = "output.res_available",
-                                            DT::DTOutput("res_table")
-                                          ),
-                                          shiny::conditionalPanel(
-                                            condition = "!output.res_available",
-                                            shiny::p("Resistance (Res) table not available. Please process data first.")
-                                          )
-                          ),
-                          shiny::tabPanel("Denom", 
-                                          shiny::conditionalPanel(
-                                            condition = "output.denom_available",
-                                            DT::DTOutput("denom_table")
-                                          ),
-                                          shiny::conditionalPanel(
-                                            condition = "!output.denom_available",
-                                            shiny::p("Denom table not available. Please process data first.")
-                                          )
+                          # Main content area with data tables
+                          shiny::div(
+                            style = "flex: 1; min-width: 500px;",
+                            shiny::tabsetPanel(
+                              shiny::tabPanel("EHRBSI", 
+                                              shiny::conditionalPanel(
+                                                condition = "output.ehrbsi_available",
+                                                DT::DTOutput("ehrbsi_table")
+                                              ),
+                                              shiny::conditionalPanel(
+                                                condition = "!output.ehrbsi_available",
+                                                shiny::p("EHRBSI table not available. Please process data first.")
+                                              )
+                              ),
+                              shiny::tabPanel("Patient", 
+                                              shiny::conditionalPanel(
+                                                condition = "output.patient_available",
+                                                DT::DTOutput("patient_table")
+                                              ),
+                                              shiny::conditionalPanel(
+                                                condition = "!output.patient_available",
+                                                shiny::p("Patient table not available. Please process data first.")
+                                              )
+                              ),
+                              shiny::tabPanel("Isolate", 
+                                              shiny::conditionalPanel(
+                                                condition = "output.isolate_available",
+                                                DT::DTOutput("isolate_table")
+                                              ),
+                                              shiny::conditionalPanel(
+                                                condition = "!output.isolate_available",
+                                                shiny::p("Isolate table not available. Please process data first.")
+                                              )
+                              ),
+                              shiny::tabPanel("Res", 
+                                              shiny::conditionalPanel(
+                                                condition = "output.res_available",
+                                                DT::DTOutput("res_table")
+                                              ),
+                                              shiny::conditionalPanel(
+                                                condition = "!output.res_available",
+                                                shiny::p("Resistance (Res) table not available. Please process data first.")
+                                              )
+                              ),
+                              shiny::tabPanel("Denom", 
+                                              shiny::conditionalPanel(
+                                                condition = "output.denom_available",
+                                                DT::DTOutput("denom_table")
+                                              ),
+                                              shiny::conditionalPanel(
+                                                condition = "!output.denom_available",
+                                                shiny::p("Denom table not available. Please process data first.")
+                                              )
+                              )
+                            )
                           )
                         )
         )
@@ -1067,8 +1122,20 @@ visual_bsi_dashboard <- function(data = NULL) {
             upload_timestamp = Sys.time()
           )
           values$country <- input$country  # Store country code for download
-          # Compute episodes if possible
-          values$episodes <- compute_episodes_if_possible(result)
+          
+          # Use pre-calculated episodes from process_country_bsi if available
+          # This is important because episodes are calculated BEFORE deduplication
+          # and CC episodes require 2+ concordant isolates which may be removed during dedup
+          if (!is.null(result$episodes) && nrow(result$episodes) > 0) {
+            values$episodes <- result$episodes
+            if (!is.null(result$episode_summary)) {
+              values$episode_summary <- result$episode_summary
+            }
+            message("Using pre-calculated episodes from process_country_bsi (", nrow(result$episodes), " episodes)")
+          } else {
+            # Fallback: compute episodes if not already available
+            values$episodes <- compute_episodes_if_possible(result)
+          }
           
           # The isolate table already has Contaminant column from process_country_bsi()
           # Calculate contamination statistics
@@ -1088,8 +1155,9 @@ visual_bsi_dashboard <- function(data = NULL) {
             non_contam_idx <- is.na(result$isolate$Contaminant) | result$isolate$Contaminant == FALSE
             result$isolate_noncontaminant <- result$isolate[which(non_contam_idx), , drop = FALSE]
             values$current_data <- result
-            # Episodes are already calculated in process_country_bsi() using non-contaminant isolates
-            values$episodes <- compute_episodes_if_possible(values$current_data)
+            # Do NOT recalculate episodes - use the ones from process_country_bsi
+            # Recalculating would lose CC episodes because the deduplicated isolate table
+            # removes the second CC isolate needed for Rule 2
           }
           
           # Store processed data statistics
@@ -1239,8 +1307,10 @@ visual_bsi_dashboard <- function(data = NULL) {
               values$contaminant_isolate_ids <- contaminant_isolate_ids
               # Build non-contaminant isolates table for template flow
               values$current_data$isolate_noncontaminant <- isolate[which(is.na(isolate$Contaminant) | isolate$Contaminant == FALSE), , drop = FALSE]
-              # Compute episodes using the non-contaminant isolates
-              values$episodes <- compute_episodes_if_possible(values$current_data)
+              
+              # NOTE: For template uploads, episodes are NOT automatically calculated
+              # Users can manually trigger episode calculation using the "Recalculate Episodes" 
+              # button in the Data Table tab. This allows users to review/edit the data first.
 
               # Calculate final_patients from non-contaminant isolates
               final_patients_count <- total_patients
@@ -1357,15 +1427,149 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
     )
     
-    # If initial data provided to function, attempt to compute episodes
-    shiny::observe({
-      if (is.null(values$episodes) && !is.null(values$current_data) &&
-          !is.null(values$current_data$patient) && !is.null(values$current_data$isolate)) {
-        values$episodes <- compute_episodes_if_possible(values$current_data)
+    # NOTE: Automatic episode calculation has been removed from this observer.
+    # For raw data uploads: episodes are calculated in process_country_bsi() and returned in result$episodes
+    # For template uploads: episodes must be manually calculated using the "Recalculate Episodes" button
+    # This gives users control over when episode calculation occurs, especially for template uploads
+    # where they may want to review/edit data first.
+    
+    # ========================================
+    # Recalculate Episodes Button Handler
+    # ========================================
+    
+    # Display episode calculation status info
+    output$episode_calc_info <- shiny::renderUI({
+      # Check data availability
+      has_patient <- !is.null(values$current_data) && !is.null(values$current_data$patient) && nrow(values$current_data$patient) > 0
+      has_isolate <- !is.null(values$current_data) && !is.null(values$current_data$isolate) && nrow(values$current_data$isolate) > 0
+      has_ehrbsi <- !is.null(values$current_data) && !is.null(values$current_data$ehrbsi) && nrow(values$current_data$ehrbsi) > 0
+      has_episodes <- !is.null(values$episodes) && nrow(values$episodes) > 0
+      
+      # Count episodes if available
+      episode_count <- if (has_episodes) length(unique(values$episodes$EpisodeId)) else 0
+      cc_count <- if (has_episodes && "AllCommensal" %in% names(values$episodes)) {
+        sum(values$episodes$AllCommensal, na.rm = TRUE)
+      } else {
+        0
       }
+      
+      shiny::tagList(
+        shiny::div(
+          style = "font-size: 0.85em;",
+          shiny::p(
+            shiny::strong("Data Status:"),
+            style = "margin-bottom: 5px;"
+          ),
+          shiny::tags$ul(
+            style = "padding-left: 20px; margin: 0;",
+            shiny::tags$li(
+              if (has_patient) shiny::span(shiny::icon("check", class = "text-success"), " Patient data loaded")
+              else shiny::span(shiny::icon("times", class = "text-danger"), " No patient data")
+            ),
+            shiny::tags$li(
+              if (has_isolate) shiny::span(shiny::icon("check", class = "text-success"), " Isolate data loaded")
+              else shiny::span(shiny::icon("times", class = "text-danger"), " No isolate data")
+            ),
+            shiny::tags$li(
+              if (has_ehrbsi) shiny::span(shiny::icon("check", class = "text-success"), " EHRBSI table loaded")
+              else shiny::span(shiny::icon("times", class = "text-danger"), " No EHRBSI table")
+            )
+          ),
+          if (has_episodes) {
+            shiny::div(
+              style = "margin-top: 10px; padding: 10px; background-color: #d4edda; border-radius: 4px;",
+              shiny::p(
+                shiny::strong(episode_count), " episodes calculated",
+                if (cc_count > 0) shiny::span(paste0(" (", cc_count, " CC)")) else NULL,
+                style = "margin: 0;"
+              )
+            )
+          } else {
+            shiny::div(
+              style = "margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 4px;",
+              shiny::p(
+                "No episodes calculated yet.",
+                style = "margin: 0;"
+              )
+            )
+          }
+        )
+      )
     })
     
-    
+    # Handle recalculate episodes button click
+    shiny::observeEvent(input$recalculate_episodes_btn, {
+      # Check if we have the required data
+      if (is.null(values$current_data) || 
+          is.null(values$current_data$patient) || 
+          is.null(values$current_data$isolate)) {
+        shiny::showNotification(
+          "Cannot calculate episodes: Patient and Isolate data are required.",
+          type = "error",
+          duration = 5
+        )
+        return()
+      }
+      
+      shiny::showNotification("Calculating episodes...", type = "message", duration = NULL, id = "calc_episodes")
+      
+      tryCatch({
+        # Calculate episodes using the existing function
+        new_episodes <- compute_episodes_if_possible(values$current_data)
+        
+        if (is.null(new_episodes) || nrow(new_episodes) == 0) {
+          shiny::removeNotification("calc_episodes")
+          shiny::showNotification(
+            "Episode calculation completed but no episodes were found.",
+            type = "warning",
+            duration = 5
+          )
+          return()
+        }
+        
+        # Store the new episodes
+        values$episodes <- new_episodes
+        
+        # Also aggregate episodes into the EHRBSI table if it exists
+        if (!is.null(values$current_data$ehrbsi) && nrow(values$current_data$ehrbsi) > 0) {
+          # Use aggregation_level from input, default to HOSP
+          agg_level <- if (!is.null(input$aggregation_level)) input$aggregation_level else "HOSP"
+          
+          tryCatch({
+            ehrbsi <- values$current_data$ehrbsi
+            ehrbsi <- aggregateEpisodes(new_episodes, ehrbsi, agg_level)
+            values$current_data$ehrbsi <- as.data.frame(ehrbsi)
+            message("Updated EHRBSI table with aggregated episode counts")
+          }, error = function(e) {
+            message("Warning: Could not aggregate episodes to EHRBSI: ", e$message)
+          })
+        }
+        
+        # Count results
+        episode_count <- length(unique(new_episodes$EpisodeId))
+        cc_count <- if ("AllCommensal" %in% names(new_episodes)) {
+          sum(new_episodes$AllCommensal, na.rm = TRUE)
+        } else {
+          0
+        }
+        
+        shiny::removeNotification("calc_episodes")
+        shiny::showNotification(
+          paste0("Episodes recalculated successfully! Found ", episode_count, " episodes",
+                if (cc_count > 0) paste0(" (", cc_count, " common commensal)") else ""),
+          type = "message",
+          duration = 5
+        )
+        
+      }, error = function(e) {
+        shiny::removeNotification("calc_episodes")
+        shiny::showNotification(
+          paste("Error calculating episodes:", e$message),
+          type = "error",
+          duration = 10
+        )
+      })
+    })
     
     # Episodes reactive table (filtered)
     episodes_tbl <- shiny::reactive({
@@ -1980,6 +2184,169 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(values$episodes)
       ep <- episodes_tbl()
       create_infection_type_pie(ep, "CA")
+    })
+    
+    # Common commensal analysis
+    get_commensal_data <- function(episodes_data, filter_class = NULL) {
+      if (is.null(episodes_data) || nrow(episodes_data) == 0) return(NULL)
+      
+      # Filter by episode class if specified
+      if (!is.null(filter_class)) {
+        if ("EpisodeClass" %in% names(episodes_data)) {
+          if (filter_class == "HA") {
+            episodes_data <- episodes_data[episodes_data$EpisodeClass %in% c("HO-HA", "IMP-HA"), ]
+          } else {
+            episodes_data <- episodes_data[episodes_data$EpisodeClass == filter_class, ]
+          }
+        }
+      }
+      
+      if (nrow(episodes_data) == 0) return(NULL)
+      
+      # Check if AllCommensal column exists
+      if (!"AllCommensal" %in% names(episodes_data)) {
+        # If column doesn't exist, return NULL
+        return(NULL)
+      }
+      
+      total <- nrow(episodes_data)
+      commensal_count <- sum(episodes_data$AllCommensal, na.rm = TRUE)
+      non_commensal_count <- total - commensal_count
+      
+      df <- data.frame(
+        Type = c("Common Commensal", "Recognized Pathogen"),
+        Count = c(commensal_count, non_commensal_count),
+        Percentage = round(c(commensal_count, non_commensal_count) / total * 100, 1),
+        stringsAsFactors = FALSE
+      )
+      
+      return(df)
+    }
+    
+    # Common commensal summary
+    output$commensal_summary <- shiny::renderUI({
+      shiny::req(values$episodes)
+      ep <- episodes_tbl()
+      if (nrow(ep) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #17a2b8;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Common Commensal Episodes"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "No episodes to summarize"
+          )
+        ))
+      }
+      
+      comm_data <- get_commensal_data(ep)
+      if (is.null(comm_data) || nrow(comm_data) == 0) {
+        return(shiny::div(
+          style = "background: #f8f9fa; 
+                   color: #495057; 
+                   padding: 18px 22px; 
+                   border-left: 4px solid #17a2b8;
+                   border-radius: 4px;
+                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                   line-height: 1.7;",
+          shiny::div(
+            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+            "Common Commensal Episodes"
+          ),
+          shiny::div(
+            style = "font-size: 14px; color: #6c757d;",
+            "Common commensal data not available"
+          )
+        ))
+      }
+      
+      # Safe extraction of counts with fallback
+      cc <- if ("Common Commensal" %in% comm_data$Type) comm_data[comm_data$Type == "Common Commensal", "Count"] else 0
+      rp <- if ("Recognized Pathogen" %in% comm_data$Type) comm_data[comm_data$Type == "Recognized Pathogen", "Count"] else 0
+      cc_pct <- if ("Common Commensal" %in% comm_data$Type) comm_data[comm_data$Type == "Common Commensal", "Percentage"] else 0
+      rp_pct <- if ("Recognized Pathogen" %in% comm_data$Type) comm_data[comm_data$Type == "Recognized Pathogen", "Percentage"] else 0
+      
+      # Handle case where extraction returns empty vector
+      cc <- if (length(cc) == 0) 0 else cc
+      rp <- if (length(rp) == 0) 0 else rp
+      cc_pct <- if (length(cc_pct) == 0) 0 else cc_pct
+      rp_pct <- if (length(rp_pct) == 0) 0 else rp_pct
+      
+      shiny::div(
+        style = "background: #f8f9fa; 
+                 color: #495057; 
+                 padding: 18px 22px; 
+                 border-left: 4px solid #17a2b8;
+                 border-radius: 4px;
+                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                 line-height: 1.7;",
+        shiny::div(
+          style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
+          "Common Commensal Episodes"
+        ),
+        shiny::div(
+          style = "font-size: 14px; color: #495057;",
+          shiny::HTML(paste0(
+            "<strong>", format(cc, big.mark = ","), 
+            "</strong> episodes (<strong>", cc_pct, 
+            "%</strong>) involved only common commensal organisms, while <strong>",
+            format(rp, big.mark = ","), 
+            "</strong> episodes (<strong>", rp_pct, 
+            "%</strong>) involved recognized pathogens (or mixed infections with both types)."
+          ))
+        )
+      )
+    })
+    
+    # Common commensal pie charts
+    create_commensal_pie <- function(episodes_data, filter_class = NULL) {
+      comm_data <- get_commensal_data(episodes_data, filter_class)
+      if (is.null(comm_data) || nrow(comm_data) == 0) {
+        return(ggplot2::ggplot() + 
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
+                 ggplot2::theme_void())
+      }
+      
+      colors <- c("Common Commensal" = "#87CEEB", "Recognized Pathogen" = "#FF6347")
+      
+      # Only use colors for types that exist in the data
+      used_colors <- colors[names(colors) %in% comm_data$Type]
+      
+      ggplot2::ggplot(comm_data, ggplot2::aes(x = "", y = Count, fill = Type)) +
+        ggplot2::geom_bar(stat = "identity", width = 1) +
+        ggplot2::coord_polar("y", start = 0) +
+        ggplot2::scale_fill_manual(values = used_colors) +
+        ggplot2::theme_void() +
+        ggplot2::theme(legend.position = "bottom") +
+        ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")), 
+                           position = ggplot2::position_stack(vjust = 0.5),
+                           size = 3, fontface = "bold")
+    }
+    
+    output$commensal_all <- shiny::renderPlot({
+      shiny::req(values$episodes)
+      ep <- episodes_tbl()
+      create_commensal_pie(ep)
+    })
+    
+    output$commensal_ha <- shiny::renderPlot({
+      shiny::req(values$episodes)
+      ep <- episodes_tbl()
+      create_commensal_pie(ep, "HA")
+    })
+    
+    output$commensal_ca <- shiny::renderPlot({
+      shiny::req(values$episodes)
+      ep <- episodes_tbl()
+      create_commensal_pie(ep, "CA")
     })
     
     

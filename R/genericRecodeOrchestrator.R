@@ -169,9 +169,11 @@ process_country_bsi <- function(country,
     # Extract episodes data frame from the returned list
     eps_df <- if (is.list(eps_result) && "episodes" %in% names(eps_result)) {
       result$episode_summary <- eps_result$episode_summary  # Store episode_summary in result
+      result$episodes <- eps_result$episodes  # Store episodes in result to avoid recalculation
       eps_result$episodes
     } else {
       # Backward compatibility: if it returns just a data frame
+      result$episodes <- eps_result
       eps_result
     }
     
@@ -238,11 +240,16 @@ process_country_bsi <- function(country,
   # Create output list
   # Note: isolate table includes ALL isolates with Contaminant column
   # This preserves full data in the formatted template for reproducibility
+  # IMPORTANT: Preserve episodes and episode_summary calculated BEFORE deduplication
+  # These must be included here because episodes depend on non-deduplicated isolates
+  # (CC episodes require 2+ concordant isolates, which may be removed during dedup)
   result <- list(
     ehrbsi = ehrbsi,
     patient = patient,
     isolate = isolate,
-    res = res
+    res = res,
+    episodes = if (exists("eps_df") && !is.null(eps_df)) eps_df else NULL,
+    episode_summary = if (exists("eps_result") && is.list(eps_result) && "episode_summary" %in% names(eps_result)) eps_result$episode_summary else NULL
   )
   
   # Standardize all date columns to yyyy-mm-dd format across all tables
