@@ -171,6 +171,13 @@ build_antibiotic_config <- function(excel_config) {
   if (format == "wide") {
     config$prefix <- excel_config$antibiotic_prefix %||% "ab_"
     config$test_types <- NULL
+  } else if (format == "numbered_wide") {
+    # Numbered wide format: Antibiotic_1, ZoneSIR_1, ZoneValue_1, Antibiotic_2, etc.
+    # Each position has 3 related columns: code, result, value
+    config$code_prefix <- excel_config$antibiotic_code_prefix %||% "Antibiotic_"
+    config$sir_prefix <- excel_config$antibiotic_sir_prefix %||% "ZoneSIR_"
+    config$value_prefix <- excel_config$antibiotic_value_prefix %||% "ZoneValue_"
+    config$test_types <- NULL
   } else if (format == "long") {
     config$test_column <- excel_config$antibiotic_test_column
     config$result_column <- excel_config$antibiotic_result_column
@@ -349,7 +356,10 @@ validate_country_config <- function(country_code, dictionary_path = NULL, strict
     issues$errors <- c(issues$errors, "record_ids templates are incomplete (require bsi, patient, isolate)")
   }
   if (is.null(cfg$antibiotic) || is.null(cfg$antibiotic$format)) {
-    issues$errors <- c(issues$errors, "antibiotic configuration missing format (wide/long)")
+    issues$errors <- c(issues$errors, "antibiotic configuration missing format (wide/long/numbered_wide)")
+  } else if (!cfg$antibiotic$format %in% c("wide", "long", "numbered_wide")) {
+    issues$errors <- c(issues$errors, paste0("antibiotic format '", cfg$antibiotic$format, 
+                                              "' is invalid; must be one of: wide, long, numbered_wide"))
   } else if (identical(cfg$antibiotic$format, "long")) {
     needed <- c("test_column", "result_column", "value_column")
     miss <- needed[!needed %in% names(cfg$antibiotic)]

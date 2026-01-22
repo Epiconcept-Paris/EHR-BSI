@@ -1253,7 +1253,7 @@ process_basic_cleaning <- function(raw_data, config, country_code) {
   return(recoded_data)
 }
 
-#' Create standard resistance table (unified for both formats)
+#' Create standard resistance table (unified for all formats)
 #'
 #' @param recoded_data Cleaned data frame
 #' @param config Country configuration object
@@ -1287,6 +1287,104 @@ create_standard_res_table <- function(recoded_data, config, country_code, metada
     # Initialize standard resistance columns
     mechanism_cols <- c("ResultPCRmec", "ResultPbp2aAggl", "ResultESBL", "ResultCarbapenemase")
     res <- initialize_resistance_columns(res, mechanism_cols)
+    
+  } else if (ab_config$format == "numbered_wide") {
+    # CZ-style: numbered wide format where each position N has:
+    # - Antibiotic_N: the antibiotic code
+    # - ZoneSIR_N: the SIR result
+    # - ZoneValue_N: the zone diameter value
+    
+    code_prefix <- ab_config$code_prefix %||% "Antibiotic_"
+    sir_prefix <- ab_config$sir_prefix %||% "ZoneSIR_"
+    value_prefix <- ab_config$value_prefix %||% "ZoneValue_"
+    
+    # Find all numbered positions by looking for code columns
+    code_cols <- grep(paste0("^", code_prefix, "\\d+$"), names(recoded_data), value = TRUE)
+    
+    if (length(code_cols) == 0) {
+      warning("No antibiotic columns found with prefix '", code_prefix, "'. Returning empty res table.", 
+              call. = FALSE)
+      res <- data.frame(
+        RecordId = character(0), ParentId = character(0), RecordType = character(0),
+        Antibiotic = character(0), SIR = character(0), ZoneValue = numeric(0),
+        stringsAsFactors = FALSE
+      )
+      res <- initialize_resistance_columns(res, c())
+      res <- finalize_table(res, get_standard_table_columns("res"))
+      return(res)
+    }
+    
+    # Extract position numbers
+    positions <- gsub(paste0("^", code_prefix), "", code_cols)
+    
+    # Identify isolate-level mechanism columns that should be carried through
+    # These are single columns per isolate (not numbered) that apply to all antibiotics
+    mechanism_cols_available <- intersect(
+      c("ResultPCRmec", "ResultPbp2aAggl", "ResultESBL", "ResultCarbapenemase"),
+      names(recoded_data)
+    )
+    
+    # Build list of data frames, one per position
+    res_list <- list()
+    
+    for (pos in positions) {
+      code_col <- paste0(code_prefix, pos)
+      sir_col <- paste0(sir_prefix, pos)
+      value_col <- paste0(value_prefix, pos)
+      
+      # Check columns exist
+      if (!code_col %in% names(recoded_data)) next
+      
+      # Create subset for this position, including mechanism columns
+      cols_to_select <- c("record_id_isolate", code_col, sir_col, value_col, mechanism_cols_available)
+      pos_data <- recoded_data %>%
+        dplyr::select(dplyr::any_of(cols_to_select)) %>%
+        dplyr::filter(!is.na(.data[[code_col]]) & .data[[code_col]] != "")
+      
+      if (nrow(pos_data) == 0) next
+      
+      # Rename columns to standard names
+      pos_data <- pos_data %>%
+        dplyr::rename(Antibiotic = !!code_col)
+      
+      if (sir_col %in% names(pos_data)) {
+        pos_data <- pos_data %>%
+          dplyr::rename(SIR = !!sir_col)
+      } else {
+        pos_data$SIR <- NA_character_
+      }
+      
+      if (value_col %in% names(pos_data)) {
+        pos_data <- pos_data %>%
+          dplyr::rename(ZoneValue = !!value_col) %>%
+          dplyr::mutate(ZoneValue = as.numeric(ZoneValue))
+      } else {
+        pos_data$ZoneValue <- NA_real_
+      }
+      
+      res_list[[pos]] <- pos_data
+    }
+    
+    # Combine all positions
+    if (length(res_list) == 0) {
+      res <- data.frame(
+        RecordId = character(0), ParentId = character(0), RecordType = character(0),
+        Antibiotic = character(0), SIR = character(0), ZoneValue = numeric(0),
+        stringsAsFactors = FALSE
+      )
+    } else {
+      res <- dplyr::bind_rows(res_list) %>%
+        dplyr::mutate(
+          RecordId = paste0(record_id_isolate, "_", Antibiotic),
+          ParentId = record_id_isolate,
+          RecordType = "EHRBSI"
+        ) %>%
+        dplyr::filter(!is.na(Antibiotic) & Antibiotic != "")
+    }
+    
+    # Initialize any missing standard resistance columns (those not already carried from data)
+    all_mechanism_cols <- c("ResultPCRmec", "ResultPbp2aAggl", "ResultESBL", "ResultCarbapenemase")
+    res <- initialize_resistance_columns(res, all_mechanism_cols)
     
   } else {
     # Estonia-style: long format with test classification
