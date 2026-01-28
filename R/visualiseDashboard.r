@@ -4014,14 +4014,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
           panel.grid.minor = ggplot2::element_blank()
         )
-      
-      # Add trend line if requested
-      if (!is.null(input$ts_show_trend) && input$ts_show_trend && nrow(ts_data) >= 3) {
-        p <- p + ggplot2::geom_smooth(method = "loess", se = TRUE,
-                                       color = "#dc3545", fill = "#dc354520",
-                                       linewidth = 1, linetype = "dashed",
-                                       formula = y ~ x)
-      }
+    
       
       # Format x-axis based on data range
       date_range <- as.numeric(diff(range(ts_data$TimePeriod)))
