@@ -580,7 +580,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                             style = "flex: 0 0 250px; min-width: 200px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;",
                             shiny::h4("Episode Calculation", style = "margin-top: 0;"),
                             shiny::p("Calculate or recalculate BSI episodes from the current patient and isolate data.", 
-                                    style = "font-size: 0.9em; color: #666;"),
+                                     style = "font-size: 0.9em; color: #666;"),
                             shiny::actionButton(
                               "recalculate_episodes_btn",
                               "Recalculate Episodes",
@@ -808,15 +808,15 @@ visual_bsi_dashboard <- function(data = NULL) {
               ep_sum$EpisodeType <- ifelse(ep_sum$Polymicrobial, "Polymicrobial", "Monomicrobial")
             } else if ("PathogenCount" %in% names(ep_sum)) {
               ep_sum$EpisodeType <- ifelse(ep_sum$PathogenCount == 1, "Monomicrobial",
-                                          ifelse(ep_sum$PathogenCount > 1, "Polymicrobial", "Unspecified"))
+                                           ifelse(ep_sum$PathogenCount > 1, "Polymicrobial", "Unspecified"))
             } else {
               ep_sum$EpisodeType <- "Unspecified"
             }
             
             # Merge EpisodeType into episodes
             episodes_df <- merge(episodes_df, 
-                                ep_sum[, c("EpisodeId", "EpisodeType"), drop = FALSE],
-                                by = "EpisodeId", all.x = TRUE)
+                                 ep_sum[, c("EpisodeId", "EpisodeType"), drop = FALSE],
+                                 by = "EpisodeId", all.x = TRUE)
             
             # Fill any missing with "Unspecified"
             episodes_df$EpisodeType[is.na(episodes_df$EpisodeType)] <- "Unspecified"
@@ -1141,13 +1141,13 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Calculate contamination statistics
           contaminants_count <- 0
           contaminant_isolate_ids <- c()
-
+          
           if (!is.null(result$isolate) && "Contaminant" %in% names(result$isolate)) {
             # Contaminant column already exists from process_country_bsi()
             contaminant_isolate_ids <- result$isolate$RecordId[which(result$isolate$Contaminant)]
             contaminants_count <- length(contaminant_isolate_ids)
           }
-
+          
           # Store contaminant IDs for later filtering
           values$contaminant_isolate_ids <- contaminant_isolate_ids
           # Build non-contaminant isolates table and attach to current_data
@@ -1311,7 +1311,7 @@ visual_bsi_dashboard <- function(data = NULL) {
               # NOTE: For template uploads, episodes are NOT automatically calculated
               # Users can manually trigger episode calculation using the "Recalculate Episodes" 
               # button in the Data Table tab. This allows users to review/edit the data first.
-
+              
               # Calculate final_patients from non-contaminant isolates
               final_patients_count <- total_patients
               if (!is.null(values$current_data$isolate_noncontaminant) && nrow(values$current_data$isolate_noncontaminant) > 0 && 
@@ -1324,7 +1324,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                   final_patients_count <- length(unique(patients_with_noncontam$PatientId))
                 }
               }
-
+              
               values$processed_data_stats <- list(
                 final_isolates = max(total_isolates - contaminants_count, 0),
                 final_patients = final_patients_count,
@@ -1556,7 +1556,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         shiny::removeNotification("calc_episodes")
         shiny::showNotification(
           paste0("Episodes recalculated successfully! Found ", episode_count, " episodes",
-                if (cc_count > 0) paste0(" (", cc_count, " common commensal)") else ""),
+                 if (cc_count > 0) paste0(" (", cc_count, " common commensal)") else ""),
           type = "message",
           duration = 5
         )
@@ -3561,7 +3561,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi)) {
           ehrbsi_filtered <- ehrbsi[
             ehrbsi$HospitalId == selected_hospital & 
-            ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
+              ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
           ]
         }
       }
@@ -3573,11 +3573,11 @@ visual_bsi_dashboard <- function(data = NULL) {
         if ("HospitalId" %in% names(patient)) {
           # Get year from DateOfHospitalAdmission if available, otherwise use all patients from hospital
           if ("DateOfHospitalAdmission" %in% names(patient)) {
-          patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-          patient_filtered <- patient[
-            patient$HospitalId == selected_hospital & 
-            patient$admission_year == selected_year, , drop = FALSE
-          ]
+            patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
+            patient_filtered <- patient[
+              patient$HospitalId == selected_hospital & 
+                patient$admission_year == selected_year, , drop = FALSE
+            ]
           } else {
             patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
           }
@@ -3675,8 +3675,8 @@ visual_bsi_dashboard <- function(data = NULL) {
           !("RecordId" %in% names(filtered$patient)) ||
           !("UnitId" %in% names(filtered$patient))) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 1, y = 1, label = "Ward information (UnitId) not available") +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 1, y = 1, label = "Ward information (UnitId) not available") +
+                 ggplot2::theme_void())
       }
       
       ep_with_ward <- merge(
@@ -3719,8 +3719,8 @@ visual_bsi_dashboard <- function(data = NULL) {
           !("UnitId" %in% names(filtered$patient)) ||
           !("EpisodeType" %in% names(filtered$episodes))) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 1, y = 1, label = "Required data not available") +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 1, y = 1, label = "Required data not available") +
+                 ggplot2::theme_void())
       }
       
       ep_with_ward <- merge(
@@ -3773,8 +3773,8 @@ visual_bsi_dashboard <- function(data = NULL) {
           !("UnitId" %in% names(filtered$patient)) ||
           !("EpisodeClass" %in% names(filtered$episodes))) {
         return(ggplot2::ggplot() + 
-               ggplot2::annotate("text", x = 1, y = 1, label = "Required data not available") +
-               ggplot2::theme_void())
+                 ggplot2::annotate("text", x = 1, y = 1, label = "Required data not available") +
+                 ggplot2::theme_void())
       }
       
       ep_with_ward <- merge(
@@ -3944,13 +3944,13 @@ visual_bsi_dashboard <- function(data = NULL) {
       agg <- if (!is.null(input$ts_aggregation)) input$ts_aggregation else "month"
       
       ep_sum$TimePeriod <- switch(agg,
-        "week" = as.Date(cut(ep_sum$EpisodeStartDate, breaks = "week")),
-        "month" = as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01")),
-        "quarter" = as.Date(paste0(
-          format(ep_sum$EpisodeStartDate, "%Y"), "-",
-          sprintf("%02d", (as.numeric(format(ep_sum$EpisodeStartDate, "%m")) - 1) %/% 3 * 3 + 1), "-01"
-        )),
-        as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01"))  # default to month
+                                  "week" = as.Date(cut(ep_sum$EpisodeStartDate, breaks = "week")),
+                                  "month" = as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01")),
+                                  "quarter" = as.Date(paste0(
+                                    format(ep_sum$EpisodeStartDate, "%Y"), "-",
+                                    sprintf("%02d", (as.numeric(format(ep_sum$EpisodeStartDate, "%m")) - 1) %/% 3 * 3 + 1), "-01"
+                                  )),
+                                  as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01"))  # default to month
       )
       
       # Aggregate by time period
@@ -4001,20 +4001,33 @@ visual_bsi_dashboard <- function(data = NULL) {
       plot_title <- paste0("BSI Episodes Over Time: ", pathogen_label, origin_label)
       
       p <- ggplot2::ggplot(ts_data, ggplot2::aes(x = TimePeriod, y = Episodes)) +
-        ggplot2::geom_line(color = "#0d6efd", linewidth = 1) +
-        ggplot2::geom_point(color = "#0d6efd", size = 2.5) +
+        ggplot2::geom_line(ggplot2::aes(color = "Episodes"), linewidth = 1) +
+        ggplot2::geom_point(ggplot2::aes(color = "Episodes"), size = 2.5) +
         ggplot2::labs(
           title = plot_title,
           x = x_label,
-          y = "Number of Episodes"
+          y = "Number of Episodes",
+          color = NULL
         ) +
+        ggplot2::scale_color_manual(values = c(
+          "Episodes" = "#0d6efd",
+          "Trend (LOESS)" = "#999999"
+        )) +
         ggplot2::theme_minimal(base_size = 14) +
         ggplot2::theme(
           plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
           axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-          panel.grid.minor = ggplot2::element_blank()
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.position = "bottom"
         )
-    
+      
+      # Add trend line if requested
+      if (!is.null(input$ts_show_trend) && input$ts_show_trend && nrow(ts_data) >= 3) {
+        p <- p + ggplot2::geom_smooth(ggplot2::aes(color = "Trend (LOESS)"),
+                                      method = "loess", se = FALSE,
+                                      fill = "#dc354520", linewidth = 1,
+                                      linetype = "dashed", formula = y ~ x)
+      }
       
       # Format x-axis based on data range
       date_range <- as.numeric(diff(range(ts_data$TimePeriod)))
@@ -4107,7 +4120,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           panel.grid.major.x = ggplot2::element_blank()
         ) +
         ggplot2::geom_text(ggplot2::aes(label = round(AvgEpisodes, 1)),
-                          vjust = -0.5, size = 3.5, color = "#495057")
+                           vjust = -0.5, size = 3.5, color = "#495057")
     })
     
     # Time series summary statistics
@@ -4168,7 +4181,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       content = function(file) {
         # Show notification
         shiny::showNotification("Generating PDF report... This may take a moment.", 
-                               type = "message", duration = NULL, id = "pdf_gen")
+                                type = "message", duration = NULL, id = "pdf_gen")
         
         tryCatch({
           # Prepare report data snapshot
@@ -4205,7 +4218,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           tryCatch({
             selected_hospital <- input$hospital_analysis_hospital
             selected_date <- input$hospital_analysis_date
-
+            
             # Derive defaults when inputs are not available
             if (is.null(selected_hospital) || is.null(selected_date)) {
               ehrbsi_df <- values$current_data$ehrbsi
@@ -4223,7 +4236,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                   if (length(h) > 0) selected_hospital <- h[1]
                 }
               }
-
+              
               # Date default from EHRBSI DateUsedForStatistics or Episodes year
               if (is.null(selected_date)) {
                 if (!is.null(ehrbsi_df) && "DateUsedForStatistics" %in% names(ehrbsi_df)) {
@@ -4242,7 +4255,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 }
               }
             }
-
+            
             # Build snapshot using the same rules as hospital_filtered_data(),
             # with robust year normalization to match Patient admissions
             selected_year <- tryCatch({
@@ -4256,7 +4269,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 format(as.Date(selected_date), "%Y")
               }
             }, error = function(e) as.character(selected_date))
-
+            
             ehrbsi_filtered <- NULL
             if (!is.null(values$current_data$ehrbsi)) {
               ehrbsi <- values$current_data$ehrbsi
@@ -4268,7 +4281,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 ]
               }
             }
-
+            
             patient_filtered <- NULL
             if (!is.null(values$current_data$patient)) {
               patient <- values$current_data$patient
@@ -4284,7 +4297,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 }
               }
             }
-
+            
             isolate_filtered <- NULL
             if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
               isolate <- values$current_data$isolate
@@ -4292,7 +4305,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 isolate_filtered <- isolate[isolate$ParentId %in% patient_filtered$RecordId, , drop = FALSE]
               }
             }
-
+            
             res_filtered <- NULL
             if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
               res <- values$current_data$res
@@ -4300,7 +4313,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 res_filtered <- res[res$ParentId %in% isolate_filtered$RecordId, , drop = FALSE]
               }
             }
-
+            
             episodes_filtered <- NULL
             if (!is.null(values$episodes) && !is.null(patient_filtered)) {
               episodes <- values$episodes
@@ -4308,7 +4321,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_filtered$RecordId, , drop = FALSE]
               }
             }
-
+            
             report_data$hospital_data <- list(
               ehrbsi = ehrbsi_filtered,
               patient = patient_filtered,
@@ -4410,5 +4423,4 @@ visual_bsi_dashboard <- function(data = NULL) {
   # Launch the app
   shiny::shinyApp(ui = ui, server = server)
 }
-
 
