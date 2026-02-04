@@ -93,20 +93,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       #                         style = "width: 100%; margin-top: 5px;")
       # ),
       
-      shiny::hr(),
-      
-      # Advanced filters - Episodes
-      shiny::conditionalPanel(
-        condition = "output.episodes_available",
-        shiny::hr(),
-        shiny::h4("Episode Filters"),
-        shiny::checkboxGroupInput("episode_origin_filter", "Episode origin:",
-                                  choices = c(), selected = c()),
-        shiny::selectInput("episode_year_filter", "Year:",
-                           choices = c(), selected = c(), multiple = TRUE),
-        shiny::selectInput("episode_hospital_filter", "Hospital:",
-                           choices = c(), selected = c(), multiple = TRUE)
-      )
+      shiny::hr()
     ),
     # Main content (no mainPanel wrapper needed with page_sidebar)
     # Status messages
@@ -245,8 +232,19 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::div(
                   shiny::h5("Monomicrobial Episodes"),
                   shiny::div(
-                    shiny::h6("Top 20 most frequent pathogens in monomicrobial episodes", 
-                              style = "text-align: center; margin-bottom: 20px;"),
+                    shiny::div(
+                      style = "display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px;",
+                      shiny::h6("Top 20 most frequent pathogens in monomicrobial episodes", 
+                                style = "margin: 0;"),
+                      shiny::selectInput("monomicrobial_episode_type_filter",
+                                         label = NULL,
+                                         choices = c("All Episode Types" = "all",
+                                                     "Community Acquired (CA)" = "CA",
+                                                     "Hospital Onset - Healthcare Associated (HO-HA)" = "HO-HA",
+                                                     "Imported - Healthcare Associated (IMP-HA)" = "IMP-HA"),
+                                         selected = "all",
+                                         width = "300px")
+                    ),
                     shiny::plotOutput("pathogens_monomicrobial", height = "400px")
                   )
                 ),
@@ -834,30 +832,6 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     
     
-    # Update advanced filter choices when episodes change
-    shiny::observe({
-      if (!is.null(values$episodes)) {
-        origins <- sort(unique(values$episodes$EpisodeClass))
-        years <- if ("episodeYear" %in% names(values$episodes)) sort(unique(values$episodes$episodeYear)) else c()
-        # Defensive check for HospitalId column
-        hospitals <- if ("HospitalId" %in% names(values$episodes)) {
-          h <- unique(values$episodes$HospitalId)
-          h[!is.na(h)]
-        } else {
-          c()
-        }
-        
-        shiny::updateCheckboxGroupInput(session, "episode_origin_filter",
-                                        choices = origins,
-                                        selected = origins)
-        shiny::updateSelectInput(session, "episode_year_filter",
-                                 choices = years,
-                                 selected = years)
-        shiny::updateSelectInput(session, "episode_hospital_filter",
-                                 choices = hospitals,
-                                 selected = hospitals)
-      }
-    })
     
     # Update hospital analysis dropdown choices when data changes
     shiny::observe({
@@ -1571,27 +1545,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       })
     })
     
-    # Episodes reactive table (filtered)
+    # Episodes reactive table
     episodes_tbl <- shiny::reactive({
       shiny::req(values$episodes)
-      ep <- values$episodes
-      # Filter by selected origins
-      if (!is.null(input$episode_origin_filter) && length(input$episode_origin_filter) > 0 &&
-          "EpisodeClass" %in% names(ep)) {
-        ep <- ep[ep$EpisodeClass %in% input$episode_origin_filter, , drop = FALSE]
-      }
-      # Filter by selected years
-      if (!is.null(input$episode_year_filter) && length(input$episode_year_filter) > 0 &&
-          "episodeYear" %in% names(ep)) {
-        ep <- ep[ep$episodeYear %in% input$episode_year_filter, , drop = FALSE]
-      }
-      # Filter by hospital (defensive check for HospitalId column)
-      if (!is.null(input$episode_hospital_filter) && length(input$episode_hospital_filter) > 0) {
-        if ("HospitalId" %in% names(ep) && !all(is.na(ep$HospitalId))) {
-          ep <- ep[ep$HospitalId %in% input$episode_hospital_filter, , drop = FALSE]
-        }
-      }
-      ep
+      values$episodes
     })
     
     # Helper function to get episode composition data
@@ -1822,9 +1779,28 @@ visual_bsi_dashboard <- function(data = NULL) {
                  ggplot2::theme_void())
       }
       
+      # Filter by episode type if specified (not "all")
+      episode_type_filter <- input$monomicrobial_episode_type_filter
+      if (!is.null(episode_type_filter) && episode_type_filter != "all" && "EpisodeClass" %in% names(mono_df)) {
+        mono_df <- mono_df[mono_df$EpisodeClass == episode_type_filter, , drop = FALSE]
+      }
+      
+      # Determine filter label for plot subtitle
+      filter_label <- if (is.null(episode_type_filter) || episode_type_filter == "all") {
+        "All Episode Types"
+      } else {
+        switch(episode_type_filter,
+               "CA" = "Community Acquired (CA)",
+               "HO-HA" = "Hospital Onset - Healthcare Associated (HO-HA)",
+               "IMP-HA" = "Imported - Healthcare Associated (IMP-HA)",
+               episode_type_filter)
+      }
+      
       if (nrow(mono_df) == 0 || !("Pathogens" %in% names(mono_df))) {
         return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No monomicrobial episodes available", size = 6) +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5, 
+                                   label = paste0("No monomicrobial episodes available\nfor ", filter_label), 
+                                   size = 5) +
                  ggplot2::theme_void())
       }
       
