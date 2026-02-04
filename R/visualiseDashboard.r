@@ -93,7 +93,19 @@ visual_bsi_dashboard <- function(data = NULL) {
       #                         style = "width: 100%; margin-top: 5px;")
       # ),
       
-      shiny::hr()
+      shiny::hr(),
+      
+      # Global filters - apply to entire app
+      shiny::conditionalPanel(
+        condition = "output.episodes_available",
+        shiny::h4("Global Filters"),
+        shiny::selectInput("global_origin_filter", "Episode Origin:",
+                           choices = c("All" = "all"),
+                           selected = "all"),
+        shiny::selectInput("global_year_filter", "Year:",
+                           choices = c("All" = "all"),
+                           selected = "all")
+      )
     ),
     # Main content (no mainPanel wrapper needed with page_sidebar)
     # Status messages
@@ -232,19 +244,8 @@ visual_bsi_dashboard <- function(data = NULL) {
                 shiny::div(
                   shiny::h5("Monomicrobial Episodes"),
                   shiny::div(
-                    shiny::div(
-                      style = "display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px;",
-                      shiny::h6("Top 20 most frequent pathogens in monomicrobial episodes", 
-                                style = "margin: 0;"),
-                      shiny::selectInput("monomicrobial_episode_type_filter",
-                                         label = NULL,
-                                         choices = c("All Episode Types" = "all",
-                                                     "Community Acquired (CA)" = "CA",
-                                                     "Hospital Onset - Healthcare Associated (HO-HA)" = "HO-HA",
-                                                     "Imported - Healthcare Associated (IMP-HA)" = "IMP-HA"),
-                                         selected = "all",
-                                         width = "300px")
-                    ),
+                    shiny::h6("Top 20 most frequent pathogens in monomicrobial episodes", 
+                              style = "text-align: center; margin-bottom: 20px;"),
                     shiny::plotOutput("pathogens_monomicrobial", height = "400px")
                   )
                 ),
@@ -831,7 +832,33 @@ visual_bsi_dashboard <- function(data = NULL) {
     }
     
     
-    
+    # Update global filter choices when episodes change
+    shiny::observe({
+      if (!is.null(values$episodes)) {
+        # Get unique origins
+        origins <- if ("EpisodeClass" %in% names(values$episodes)) {
+          sort(unique(values$episodes$EpisodeClass[!is.na(values$episodes$EpisodeClass)]))
+        } else {
+          c()
+        }
+        origin_choices <- c("All" = "all", setNames(origins, origins))
+        
+        # Get unique years
+        years <- if ("episodeYear" %in% names(values$episodes)) {
+          sort(unique(values$episodes$episodeYear[!is.na(values$episodes$episodeYear)]))
+        } else {
+          c()
+        }
+        year_choices <- c("All" = "all", setNames(as.character(years), as.character(years)))
+        
+        shiny::updateSelectInput(session, "global_origin_filter",
+                                 choices = origin_choices,
+                                 selected = "all")
+        shiny::updateSelectInput(session, "global_year_filter",
+                                 choices = year_choices,
+                                 selected = "all")
+      }
+    })
     
     # Update hospital analysis dropdown choices when data changes
     shiny::observe({
@@ -1545,10 +1572,48 @@ visual_bsi_dashboard <- function(data = NULL) {
       })
     })
     
-    # Episodes reactive table
+    # Episodes reactive table (globally filtered)
     episodes_tbl <- shiny::reactive({
       shiny::req(values$episodes)
-      values$episodes
+      ep <- values$episodes
+      
+      # Apply global origin filter
+      if (!is.null(input$global_origin_filter) && input$global_origin_filter != "all" &&
+          "EpisodeClass" %in% names(ep)) {
+        ep <- ep[ep$EpisodeClass == input$global_origin_filter, , drop = FALSE]
+      }
+      
+      # Apply global year filter
+      if (!is.null(input$global_year_filter) && input$global_year_filter != "all" &&
+          "episodeYear" %in% names(ep)) {
+        ep <- ep[as.character(ep$episodeYear) == input$global_year_filter, , drop = FALSE]
+      }
+      
+      ep
+    })
+    
+    # Episode summary reactive (globally filtered)
+    episode_summary_filtered <- shiny::reactive({
+      shiny::req(values$episode_summary)
+      ep_sum <- values$episode_summary
+      
+      # Apply global origin filter
+      if (!is.null(input$global_origin_filter) && input$global_origin_filter != "all" &&
+          "EpisodeClass" %in% names(ep_sum)) {
+        ep_sum <- ep_sum[ep_sum$EpisodeClass == input$global_origin_filter, , drop = FALSE]
+      }
+      
+      # Apply global year filter (need to extract year from EpisodeStartDate if episodeYear not present)
+      if (!is.null(input$global_year_filter) && input$global_year_filter != "all") {
+        if ("episodeYear" %in% names(ep_sum)) {
+          ep_sum <- ep_sum[as.character(ep_sum$episodeYear) == input$global_year_filter, , drop = FALSE]
+        } else if ("EpisodeStartDate" %in% names(ep_sum)) {
+          ep_sum$episodeYear <- as.integer(format(as.Date(ep_sum$EpisodeStartDate), "%Y"))
+          ep_sum <- ep_sum[as.character(ep_sum$episodeYear) == input$global_year_filter, , drop = FALSE]
+        }
+      }
+      
+      ep_sum
     })
     
     # Helper function to get episode composition data
@@ -1757,10 +1822,8 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Pathogen analysis for monomicrobial episodes
     output$pathogens_monomicrobial <- shiny::renderPlot({
-      shiny::req(values$episode_summary)
-      
-      # Use episode_summary table which has one row per episode
-      ep_sum <- values$episode_summary
+      # Use globally filtered episode_summary
+      ep_sum <- episode_summary_filtered()
       
       if (is.null(ep_sum) || nrow(ep_sum) == 0) {
         return(ggplot2::ggplot() + 
@@ -1779,27 +1842,10 @@ visual_bsi_dashboard <- function(data = NULL) {
                  ggplot2::theme_void())
       }
       
-      # Filter by episode type if specified (not "all")
-      episode_type_filter <- input$monomicrobial_episode_type_filter
-      if (!is.null(episode_type_filter) && episode_type_filter != "all" && "EpisodeClass" %in% names(mono_df)) {
-        mono_df <- mono_df[mono_df$EpisodeClass == episode_type_filter, , drop = FALSE]
-      }
-      
-      # Determine filter label for plot subtitle
-      filter_label <- if (is.null(episode_type_filter) || episode_type_filter == "all") {
-        "All Episode Types"
-      } else {
-        switch(episode_type_filter,
-               "CA" = "Community Acquired (CA)",
-               "HO-HA" = "Hospital Onset - Healthcare Associated (HO-HA)",
-               "IMP-HA" = "Imported - Healthcare Associated (IMP-HA)",
-               episode_type_filter)
-      }
-      
       if (nrow(mono_df) == 0 || !("Pathogens" %in% names(mono_df))) {
         return(ggplot2::ggplot() + 
                  ggplot2::annotate("text", x = 0.5, y = 0.5, 
-                                   label = paste0("No monomicrobial episodes available\nfor ", filter_label), 
+                                   label = "No monomicrobial episodes available", 
                                    size = 5) +
                  ggplot2::theme_void())
       }
@@ -1855,10 +1901,8 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Pathogen analysis for polymicrobial episodes - individual pathogens
     output$pathogens_polymicrobial_individual <- shiny::renderPlot({
-      shiny::req(values$episode_summary)
-      
-      # Use episode_summary table which has one row per episode
-      ep_sum <- values$episode_summary
+      # Use globally filtered episode_summary
+      ep_sum <- episode_summary_filtered()
       
       if (is.null(ep_sum) || nrow(ep_sum) == 0) {
         return(ggplot2::ggplot() + 
@@ -1937,10 +1981,8 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Pathogen combinations in polymicrobial episodes
     output$pathogens_polymicrobial_combinations <- shiny::renderPlot({
-      shiny::req(values$episode_summary)
-      
-      # Use episode_summary table which has one row per episode
-      ep_sum <- values$episode_summary
+      # Use globally filtered episode_summary
+      ep_sum <- episode_summary_filtered()
       
       if (is.null(ep_sum) || nrow(ep_sum) == 0) {
         return(ggplot2::ggplot() + 
@@ -3889,8 +3931,8 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Reactive: filtered time series data based on UI controls
     timeseries_data <- shiny::reactive({
-      shiny::req(values$episode_summary)
-      ep_sum <- values$episode_summary
+      # Start with globally filtered episode_summary
+      ep_sum <- episode_summary_filtered()
       
       if (is.null(ep_sum) || nrow(ep_sum) == 0) return(NULL)
       if (!"EpisodeStartDate" %in% names(ep_sum)) return(NULL)
@@ -3898,7 +3940,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       # Ensure EpisodeStartDate is Date type
       ep_sum$EpisodeStartDate <- as.Date(ep_sum$EpisodeStartDate)
       
-      # Filter by origin if specified
+      # Additional filter by origin if specified (time series specific)
       if (!is.null(input$ts_origin_filter) && input$ts_origin_filter != "all") {
         if ("EpisodeOrigin" %in% names(ep_sum)) {
           ep_sum <- ep_sum[ep_sum$EpisodeOrigin == input$ts_origin_filter, , drop = FALSE]
@@ -4020,8 +4062,8 @@ visual_bsi_dashboard <- function(data = NULL) {
     
     # Seasonality plot (average by month of year)
     output$seasonality_plot <- shiny::renderPlot({
-      shiny::req(values$episode_summary)
-      ep_sum <- values$episode_summary
+      # Start with globally filtered episode_summary
+      ep_sum <- episode_summary_filtered()
       
       if (is.null(ep_sum) || nrow(ep_sum) == 0 || !"EpisodeStartDate" %in% names(ep_sum)) {
         return(ggplot2::ggplot() +
@@ -4033,7 +4075,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       ep_sum$EpisodeStartDate <- as.Date(ep_sum$EpisodeStartDate)
       
-      # Apply same filters as main plot
+      # Apply additional time series specific filters
       if (!is.null(input$ts_origin_filter) && input$ts_origin_filter != "all") {
         if ("EpisodeOrigin" %in% names(ep_sum)) {
           ep_sum <- ep_sum[ep_sum$EpisodeOrigin == input$ts_origin_filter, , drop = FALSE]
