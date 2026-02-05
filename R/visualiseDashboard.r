@@ -82,7 +82,12 @@ visual_bsi_dashboard <- function(data = NULL) {
         condition = "output.data_available",
         shiny::downloadButton("download_data", "Download",
                               class = "btn-success",
-                              style = "width: 100%; margin-top: 5px;")
+                              style = "width: 100%; margin-top: 5px;"),
+        # Debug mode checkbox - includes reviewEpisodes in download
+        shiny::div(
+          style = "margin-top: 5px; font-size: 0.85em;",
+          shiny::checkboxInput("debug_mode", "Debug Mode", value = FALSE)
+        )
       ),
       
       # PDF Report download button - only shows when data is available
@@ -666,7 +671,8 @@ visual_bsi_dashboard <- function(data = NULL) {
       episode_summary = NULL,  # Episode-level summary table (one row per episode with pathogen info)
       raw_data_stats = NULL,  # Store raw data statistics before processing
       processed_data_stats = NULL,  # Store processed data statistics after processing
-      country = NULL  # Store country code for download filename
+      country = NULL,  # Store country code for download filename
+      reviewEpisodes = NULL  # Debug table mapping isolates to episodes (for debug mode download)
     )
     
     # Check if data is available
@@ -1132,6 +1138,10 @@ visual_bsi_dashboard <- function(data = NULL) {
             if (!is.null(result$episode_summary)) {
               values$episode_summary <- result$episode_summary
             }
+            # Store reviewEpisodes for debug mode download
+            if (!is.null(result$reviewEpisodes)) {
+              values$reviewEpisodes <- result$reviewEpisodes
+            }
             message("Using pre-calculated episodes from process_country_bsi (", nrow(result$episodes), " episodes)")
           } else {
             # Fallback: compute episodes if not already available
@@ -1412,6 +1422,13 @@ visual_bsi_dashboard <- function(data = NULL) {
           if (!is.null(values$current_data$res)) {
             openxlsx::addWorksheet(wb, "Res")
             openxlsx::writeData(wb, sheet = "Res", values$current_data$res)
+          }
+          
+          # Add reviewEpisodes sheet when debug mode is enabled
+          if (isTRUE(input$debug_mode) && !is.null(values$reviewEpisodes) && nrow(values$reviewEpisodes) > 0) {
+            openxlsx::addWorksheet(wb, "reviewEpisodes")
+            openxlsx::writeData(wb, sheet = "reviewEpisodes", values$reviewEpisodes)
+            message("Debug mode: Added reviewEpisodes sheet with ", nrow(values$reviewEpisodes), " rows")
           }
           
           # Save the workbook to the temporary file

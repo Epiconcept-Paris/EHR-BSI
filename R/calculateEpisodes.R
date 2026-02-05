@@ -70,7 +70,10 @@ calculateEpisodes <- function(patient_df,
     filter(org_type == "RP") %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecimenCollection),
               MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge,
-              org_type)
+              org_type,
+              # Preserve isolate identifiers for reviewEpisodes mapping
+              IsolateRecordId = RecordId,
+              IsolateId = if ("IsolateId" %in% names(iso_in_admission)) IsolateId else NA_character_)
   
   ## ---- RULE 2  – ≥2 concordant CC in 3 days ----------------------------
   rule2 <- iso_in_admission %>%
@@ -82,7 +85,10 @@ calculateEpisodes <- function(patient_df,
     filter(cluster_first) %>%
     transmute(AdmissionRecordId, PatientId, HospitalId, OnsetDate = to_date(DateOfSpecimenCollection),
               MicroorganismCode, MicroorganismCodeLabel, BSI_case = TRUE, DateOfHospitalAdmission, DateOfHospitalDischarge,
-              org_type)
+              org_type,
+              # Preserve isolate identifiers for reviewEpisodes mapping
+              IsolateRecordId = RecordId,
+              IsolateId = if ("IsolateId" %in% names(iso_in_admission)) IsolateId else NA_character_)
   
   bsi_core <- bind_rows(rule1, rule2) %>%
     distinct()
@@ -125,7 +131,22 @@ calculateEpisodes <- function(patient_df,
   message("calculateEpisodes: AllCommensal distribution in episode_chars:")
   message("  TRUE (all CC): ", sum(episode_chars$AllCommensal, na.rm = TRUE))
   message("  FALSE (has RP): ", sum(!episode_chars$AllCommensal, na.rm = TRUE))
-  
+
+  ## ── Create isolate-episode mapping BEFORE deduplication ──────────────
+  # This preserves the link between individual isolates and their episodes
+  # for the reviewEpisodes debug table
+  isolate_episode_mapping <- epi_core %>%
+    select(
+      EpisodeId,
+      PatientId,
+      IsolateRecordId,
+      IsolateId,
+      IsCommensal = org_type,  # Will be "CC" or "RP", convert to TRUE/FALSE later
+      OnsetDate
+    ) %>%
+    mutate(IsCommensal = (IsCommensal == "CC")) %>%
+    distinct()
+
   # Deduplicate episodes and add characteristics
   epi_core <- epi_core %>% 
     group_by(EpisodeId) %>% 
@@ -225,8 +246,21 @@ calculateEpisodes <- function(patient_df,
       round(((sum(calc_df$EpisodeOrigin=="Community")/length(unique(calc_df$EpisodeId)))*100),1),"%)"," \n ", 
       "VS HOSP-ACQUIRED: ", sum(calc_df$EpisodeOrigin=="Healthcare"), "(",
       round(((sum(calc_df$EpisodeOrigin=="Healthcare")/length(unique(calc_df$EpisodeId)))*100),1),"%)")
+
+  ## ── Add EpisodeOrigin to the isolate-episode mapping ──────────────
+  # Join with epi_full to get EpisodeOrigin (Healthcare/Community)
+  episode_origin_lookup <- epi_full %>%
+    select(EpisodeId, EpisodeOrigin) %>%
+    distinct()
   
-  return(list(episodes = epi_full, episode_summary = episode_summary))
+  isolate_episode_mapping <- isolate_episode_mapping %>%
+    left_join(episode_origin_lookup, by = "EpisodeId")
+
+  return(list(
+    episodes = epi_full, 
+    episode_summary = episode_summary,
+    isolate_episode_mapping = isolate_episode_mapping
+  ))
   
 }
 

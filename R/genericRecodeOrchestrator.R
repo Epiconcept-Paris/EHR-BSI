@@ -177,6 +177,37 @@ process_country_bsi <- function(country,
       eps_result
     }
     
+    # Create reviewEpisodes table for debug mode
+    # This maps each isolate to its episode with relevant flags
+    if (is.list(eps_result) && "isolate_episode_mapping" %in% names(eps_result)) {
+      isolate_episode_mapping <- eps_result$isolate_episode_mapping
+      
+      # Join with full isolate table to get Contaminant flag
+      # Note: All isolates in the mapping should have Contaminant = FALSE since
+      # contaminants were filtered out before episode calculation
+      contaminant_lookup <- isolate %>%
+        dplyr::select(RecordId, Contaminant) %>%
+        dplyr::distinct()
+      
+      reviewEpisodes <- isolate_episode_mapping %>%
+        dplyr::left_join(contaminant_lookup, by = c("IsolateRecordId" = "RecordId")) %>%
+        dplyr::select(
+          EpisodeId,
+          PatientId,
+          IsolateId = IsolateRecordId,  # Rename to IsolateId for clarity
+          IsCommensal,
+          Contaminant,
+          EpisodeOrigin
+        ) %>%
+        dplyr::mutate(
+          # Ensure Contaminant is FALSE for all (they were filtered before episode calc)
+          Contaminant = dplyr::coalesce(Contaminant, FALSE)
+        ) %>%
+        dplyr::distinct()
+      
+      result$reviewEpisodes <- reviewEpisodes
+    }
+    
     # Extract hospital-to-lab mapping BEFORE deduplication (if needed for LAB aggregation)
     hospital_lab_map <- NULL
     if (aggregation_level %in% c("LAB", "LAB-YEAR") && "LaboratoryCode" %in% names(ehrbsi)) {
@@ -249,7 +280,9 @@ process_country_bsi <- function(country,
     isolate = isolate,
     res = res,
     episodes = if (exists("eps_df") && !is.null(eps_df)) eps_df else NULL,
-    episode_summary = if (exists("eps_result") && is.list(eps_result) && "episode_summary" %in% names(eps_result)) eps_result$episode_summary else NULL
+    episode_summary = if (exists("eps_result") && is.list(eps_result) && "episode_summary" %in% names(eps_result)) eps_result$episode_summary else NULL,
+    # reviewEpisodes: maps isolates to episodes for debugging (only available in debug mode download)
+    reviewEpisodes = if (exists("reviewEpisodes") && !is.null(reviewEpisodes)) reviewEpisodes else NULL
   )
   
   # Apply final export rules (standardization + res table checks)
