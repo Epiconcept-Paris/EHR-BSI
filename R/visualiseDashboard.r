@@ -570,7 +570,159 @@ visual_bsi_dashboard <- function(data = NULL) {
             shiny::p("Time series analysis requires episode data. Please process data with patient and isolate tables first.")
           )
         ),
-        # 8) Data Table
+        # 8) Aggregate
+        shiny::tabPanel(
+          "Aggregate",
+          shiny::conditionalPanel(
+            condition = "output.aggregate_available",
+            shiny::div(
+              shiny::h3("Aggregate Data Analysis"),
+              shiny::p("Analysis of aggregate-level data from the EHRBSI table."),
+              
+              # Controls section
+              shiny::div(
+                style = "display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; align-items: flex-end;",
+                shiny::div(
+                  style = "min-width: 180px;",
+                  shiny::selectInput("agg_time_aggregation",
+                                     "Time Aggregation:",
+                                     choices = list("Yearly" = "year",
+                                                    "Quarterly" = "quarter",
+                                                    "Monthly" = "month"),
+                                     selected = "year")
+                ),
+                shiny::div(
+                  style = "min-width: 250px;",
+                  shiny::selectInput("agg_rate_metric",
+                                     "Incidence Rate Metric:",
+                                     choices = list("Per 1,000 Patient-Days" = "patient_days",
+                                                    "Per 100 Discharges" = "discharges"),
+                                     selected = "patient_days")
+                ),
+                shiny::div(
+                  style = "min-width: 180px;",
+                  shiny::checkboxInput("agg_show_trend",
+                                       "Show trend line",
+                                       value = TRUE)
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Time Trends Section
+              shiny::div(
+                shiny::h4("Time Trends"),
+                
+                # Absolute incidence plot
+                shiny::div(
+                  shiny::h5("Absolute Incidence Over Time"),
+                  shiny::p("Total BSI counts and Hospital-onset Healthcare-associated BSIs (HO-HA BSIs) over time."),
+                  shiny::plotOutput("agg_time_trend_absolute", height = "400px")
+                ),
+                
+                shiny::hr(),
+                
+                # Incidence rates plot
+                shiny::div(
+                  shiny::h5("Incidence Rates Over Time"),
+                  shiny::p("HO-HA BSI incidence rates calculated using the selected denominator."),
+                  shiny::plotOutput("agg_time_trend_rates", height = "400px")
+                ),
+                
+                shiny::hr(),
+                
+                # Denominator trends plot
+                shiny::div(
+                  shiny::h5("Denominator Trends"),
+                  shiny::p("Development of hospital patient-days and discharges over time."),
+                  shiny::plotOutput("agg_denom_trend", height = "350px")
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Distribution Section
+              shiny::div(
+                shiny::h4("Distribution of BSIs"),
+                
+                # By Hospital
+                shiny::div(
+                  shiny::h5("BSIs by Hospital"),
+                  shiny::plotOutput("agg_by_hospital", height = "400px")
+                ),
+                
+                shiny::hr(),
+                
+                # By Hospital Size and Type side by side
+                shiny::div(
+                  style = "display: flex; flex-wrap: wrap; gap: 20px;",
+                  shiny::div(
+                    style = "flex: 1; min-width: 400px;",
+                    shiny::h5("BSIs by Hospital Size"),
+                    shiny::plotOutput("agg_by_size", height = "350px")
+                  ),
+                  shiny::div(
+                    style = "flex: 1; min-width: 400px;",
+                    shiny::h5("BSIs by Hospital Type"),
+                    shiny::plotOutput("agg_by_type", height = "350px")
+                  )
+                ),
+                
+                shiny::hr(),
+                
+                # Box plots for rate distributions
+                shiny::div(
+                  style = "display: flex; flex-wrap: wrap; gap: 20px;",
+                  shiny::div(
+                    style = "flex: 1; min-width: 400px;",
+                    shiny::h5("Incidence Rate Distribution by Hospital Size"),
+                    shiny::plotOutput("agg_rate_box_size", height = "350px")
+                  ),
+                  shiny::div(
+                    style = "flex: 1; min-width: 400px;",
+                    shiny::h5("Incidence Rate Distribution by Hospital Type"),
+                    shiny::plotOutput("agg_rate_box_type", height = "350px")
+                  )
+                )
+              ),
+              
+              shiny::hr(),
+              
+              # Descriptive Statistics Section
+              shiny::div(
+                shiny::h4("Descriptive Statistics"),
+                shiny::p("Summary statistics for BSI counts and incidence rates."),
+                
+                # Overall statistics
+                shiny::div(
+                  shiny::h5("Overall Summary"),
+                  DT::DTOutput("agg_stats_overall")
+                ),
+                
+                shiny::hr(),
+                
+                # By Hospital Size
+                shiny::div(
+                  shiny::h5("By Hospital Size"),
+                  DT::DTOutput("agg_stats_by_size")
+                ),
+                
+                shiny::hr(),
+                
+                # By Hospital Type
+                shiny::div(
+                  shiny::h5("By Hospital Type"),
+                  DT::DTOutput("agg_stats_by_type")
+                )
+              )
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "!output.aggregate_available",
+            shiny::p("Aggregate analysis requires EHRBSI data. Please upload and process data first.")
+          )
+        ),
+        # 9) Data Table
         shiny::tabPanel("Data Table",
                         shiny::div(
                           style = "display: flex; flex-wrap: wrap; gap: 20px;",
@@ -759,6 +911,13 @@ visual_bsi_dashboard <- function(data = NULL) {
         "EpisodeStartDate" %in% names(values$episodes)
     })
     shiny::outputOptions(output, "timeseries_available", suspendWhenHidden = FALSE)
+    
+    # Aggregate tab available (requires EHRBSI data)
+    output$aggregate_available <- shiny::reactive({
+      !is.null(values$current_data$ehrbsi) && 
+        nrow(values$current_data$ehrbsi) > 0
+    })
+    shiny::outputOptions(output, "aggregate_available", suspendWhenHidden = FALSE)
     
     # Helper: compute episodes if possible
     compute_episodes_if_possible <- function(cur) {
@@ -4185,6 +4344,788 @@ visual_bsi_dashboard <- function(data = NULL) {
         )
       )
     })
+    
+    # ==========================
+    # Aggregate Tab Analysis
+    # ==========================
+    
+    # Reactive: base EHRBSI data for aggregate analysis
+    aggregate_ehrbsi_data <- shiny::reactive({
+      shiny::req(values$current_data$ehrbsi)
+      ehrbsi <- values$current_data$ehrbsi
+      
+      if (is.null(ehrbsi) || nrow(ehrbsi) == 0) return(NULL)
+      
+      # Ensure numeric columns are numeric
+      numeric_cols <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs",
+                        "NumberOfHospitalPatientDays", "NumberOfHospitalDischarges", 
+                        "NumberOfBloodCultureSets")
+      for (col in numeric_cols) {
+        if (col %in% names(ehrbsi)) {
+          ehrbsi[[col]] <- as.numeric(ehrbsi[[col]])
+        }
+      }
+      
+      # Calculate NumberOfTotalBSIs if empty/NA from HO-HA + Imported
+      if ("NumberOfHOHABSIs" %in% names(ehrbsi) && "NumberOfImportedHABSIs" %in% names(ehrbsi)) {
+        # Create NumberOfTotalBSIs column if it doesn't exist
+        if (!"NumberOfTotalBSIs" %in% names(ehrbsi)) {
+          ehrbsi$NumberOfTotalBSIs <- NA_real_
+        }
+        
+        # For rows where NumberOfTotalBSIs is NA or 0, calculate from components
+        needs_calc <- is.na(ehrbsi$NumberOfTotalBSIs) | ehrbsi$NumberOfTotalBSIs == 0
+        has_components <- !is.na(ehrbsi$NumberOfHOHABSIs) & !is.na(ehrbsi$NumberOfImportedHABSIs)
+        
+        ehrbsi$NumberOfTotalBSIs[needs_calc & has_components] <- 
+          ehrbsi$NumberOfHOHABSIs[needs_calc & has_components] + 
+          ehrbsi$NumberOfImportedHABSIs[needs_calc & has_components]
+      }
+      
+      # Calculate incidence rates
+      if ("NumberOfHOHABSIs" %in% names(ehrbsi) && "NumberOfHospitalPatientDays" %in% names(ehrbsi)) {
+        ehrbsi$RatePerPatientDays <- ifelse(
+          !is.na(ehrbsi$NumberOfHospitalPatientDays) & ehrbsi$NumberOfHospitalPatientDays > 0,
+          (ehrbsi$NumberOfHOHABSIs / ehrbsi$NumberOfHospitalPatientDays) * 1000,
+          NA
+        )
+      }
+      
+      if ("NumberOfHOHABSIs" %in% names(ehrbsi) && "NumberOfHospitalDischarges" %in% names(ehrbsi)) {
+        ehrbsi$RatePerDischarges <- ifelse(
+          !is.na(ehrbsi$NumberOfHospitalDischarges) & ehrbsi$NumberOfHospitalDischarges > 0,
+          (ehrbsi$NumberOfHOHABSIs / ehrbsi$NumberOfHospitalDischarges) * 100,
+          NA
+        )
+      }
+      
+      ehrbsi
+    })
+    
+    # Reactive: time-aggregated data based on UI controls
+    aggregate_time_data <- shiny::reactive({
+      ehrbsi <- aggregate_ehrbsi_data()
+      if (is.null(ehrbsi)) return(NULL)
+      
+      if (!"DateUsedForStatistics" %in% names(ehrbsi)) return(NULL)
+      
+      # Parse date - handle various formats
+      ehrbsi$DateParsed <- tryCatch({
+        if (is.numeric(ehrbsi$DateUsedForStatistics)) {
+          # Assume it's a year
+          as.Date(paste0(ehrbsi$DateUsedForStatistics, "-01-01"))
+        } else {
+          as.Date(ehrbsi$DateUsedForStatistics)
+        }
+      }, error = function(e) {
+        # Try parsing as character year
+        as.Date(paste0(as.character(ehrbsi$DateUsedForStatistics), "-01-01"))
+      })
+      
+      # Remove rows with NA dates
+      ehrbsi <- ehrbsi[!is.na(ehrbsi$DateParsed), , drop = FALSE]
+      if (nrow(ehrbsi) == 0) return(NULL)
+      
+      # Create time period based on aggregation selection
+      agg <- if (!is.null(input$agg_time_aggregation)) input$agg_time_aggregation else "year"
+      
+      ehrbsi$TimePeriod <- switch(agg,
+        "month" = as.Date(paste0(format(ehrbsi$DateParsed, "%Y-%m"), "-01")),
+        "quarter" = as.Date(paste0(
+          format(ehrbsi$DateParsed, "%Y"), "-",
+          sprintf("%02d", (as.numeric(format(ehrbsi$DateParsed, "%m")) - 1) %/% 3 * 3 + 1), "-01"
+        )),
+        "year" = as.Date(paste0(format(ehrbsi$DateParsed, "%Y"), "-01-01"))
+      )
+      
+      # Aggregate by time period
+      agg_cols <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs",
+                    "NumberOfHospitalPatientDays", "NumberOfHospitalDischarges")
+      agg_cols <- agg_cols[agg_cols %in% names(ehrbsi)]
+      
+      if (length(agg_cols) == 0) return(NULL)
+      
+      time_agg <- stats::aggregate(
+        ehrbsi[, agg_cols, drop = FALSE],
+        by = list(TimePeriod = ehrbsi$TimePeriod),
+        FUN = function(x) sum(x, na.rm = TRUE)
+      )
+      
+      # Recalculate rates on aggregated data
+      if ("NumberOfHOHABSIs" %in% names(time_agg) && "NumberOfHospitalPatientDays" %in% names(time_agg)) {
+        time_agg$RatePerPatientDays <- ifelse(
+          time_agg$NumberOfHospitalPatientDays > 0,
+          (time_agg$NumberOfHOHABSIs / time_agg$NumberOfHospitalPatientDays) * 1000,
+          NA
+        )
+      }
+      
+      if ("NumberOfHOHABSIs" %in% names(time_agg) && "NumberOfHospitalDischarges" %in% names(time_agg)) {
+        time_agg$RatePerDischarges <- ifelse(
+          time_agg$NumberOfHospitalDischarges > 0,
+          (time_agg$NumberOfHOHABSIs / time_agg$NumberOfHospitalDischarges) * 100,
+          NA
+        )
+      }
+      
+      time_agg <- time_agg[order(time_agg$TimePeriod), ]
+      time_agg
+    })
+    
+    # Reactive: hospital-aggregated data
+    aggregate_hospital_data <- shiny::reactive({
+      ehrbsi <- aggregate_ehrbsi_data()
+      if (is.null(ehrbsi) || nrow(ehrbsi) == 0) return(NULL)
+      
+      if (!"HospitalId" %in% names(ehrbsi)) return(NULL)
+      
+      # Use tryCatch for robust error handling
+      tryCatch({
+        # Determine which numeric columns are available
+        agg_cols <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs",
+                      "NumberOfHospitalPatientDays", "NumberOfHospitalDischarges")
+        agg_cols <- agg_cols[agg_cols %in% names(ehrbsi)]
+        
+        if (length(agg_cols) == 0) return(NULL)
+        
+        # Get unique hospitals with their attributes
+        hospitals <- unique(ehrbsi$HospitalId)
+        hospitals <- hospitals[!is.na(hospitals)]
+        
+        if (length(hospitals) == 0) return(NULL)
+        
+        # Build result by aggregating per hospital
+        result_list <- lapply(hospitals, function(hosp) {
+          hosp_rows <- ehrbsi[ehrbsi$HospitalId == hosp, , drop = FALSE]
+          
+          row_data <- data.frame(HospitalId = hosp, stringsAsFactors = FALSE)
+          
+          # Add HospitalSize if available (take first non-NA value)
+          if ("HospitalSize" %in% names(hosp_rows)) {
+            sizes <- hosp_rows$HospitalSize[!is.na(hosp_rows$HospitalSize)]
+            row_data$HospitalSize <- if (length(sizes) > 0) sizes[1] else NA_character_
+          }
+          
+          # Add HospitalType if available (take first non-NA value)
+          if ("HospitalType" %in% names(hosp_rows)) {
+            types <- hosp_rows$HospitalType[!is.na(hosp_rows$HospitalType)]
+            row_data$HospitalType <- if (length(types) > 0) types[1] else NA_character_
+          }
+          
+          # Sum each numeric column
+          for (col in agg_cols) {
+            row_data[[col]] <- sum(hosp_rows[[col]], na.rm = TRUE)
+          }
+          
+          row_data
+        })
+        
+        hosp_agg <- do.call(rbind, result_list)
+        
+        # Recalculate rates
+        if ("NumberOfHOHABSIs" %in% names(hosp_agg) && "NumberOfHospitalPatientDays" %in% names(hosp_agg)) {
+          hosp_agg$RatePerPatientDays <- ifelse(
+            hosp_agg$NumberOfHospitalPatientDays > 0,
+            (hosp_agg$NumberOfHOHABSIs / hosp_agg$NumberOfHospitalPatientDays) * 1000,
+            NA
+          )
+        }
+        
+        if ("NumberOfHOHABSIs" %in% names(hosp_agg) && "NumberOfHospitalDischarges" %in% names(hosp_agg)) {
+          hosp_agg$RatePerDischarges <- ifelse(
+            hosp_agg$NumberOfHospitalDischarges > 0,
+            (hosp_agg$NumberOfHOHABSIs / hosp_agg$NumberOfHospitalDischarges) * 100,
+            NA
+          )
+        }
+        
+        hosp_agg
+      }, error = function(e) {
+        message("Error in aggregate_hospital_data: ", e$message)
+        return(NULL)
+      })
+    })
+    
+    # Render: Absolute time trend plot
+    output$agg_time_trend_absolute <- shiny::renderPlot({
+      time_data <- aggregate_time_data()
+      
+      if (is.null(time_data) || nrow(time_data) == 0) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No time series data available.\nEnsure EHRBSI data contains DateUsedForStatistics.",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      has_total <- "NumberOfTotalBSIs" %in% names(time_data)
+      has_hoha <- "NumberOfHOHABSIs" %in% names(time_data)
+      
+      if (!has_total && !has_hoha) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No BSI count columns available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Build long-format data
+      plot_list <- list()
+      if (has_total) {
+        plot_list[[length(plot_list) + 1]] <- data.frame(
+          TimePeriod = time_data$TimePeriod,
+          Value = time_data$NumberOfTotalBSIs,
+          Metric = "Total BSIs"
+        )
+      }
+      if (has_hoha) {
+        plot_list[[length(plot_list) + 1]] <- data.frame(
+          TimePeriod = time_data$TimePeriod,
+          Value = time_data$NumberOfHOHABSIs,
+          Metric = "HO-HA BSIs"
+        )
+      }
+      
+      plot_df <- do.call(rbind, plot_list)
+      
+      # Determine x-axis label
+      agg <- if (!is.null(input$agg_time_aggregation)) input$agg_time_aggregation else "year"
+      x_label <- switch(agg, "month" = "Month", "quarter" = "Quarter", "year" = "Year", "Year")
+      
+      p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = TimePeriod, y = Value, color = Metric)) +
+        ggplot2::geom_line(linewidth = 1.2) +
+        ggplot2::geom_point(size = 3) +
+        ggplot2::scale_color_manual(values = c("Total BSIs" = "#0d6efd", "HO-HA BSIs" = "#dc3545")) +
+        ggplot2::labs(
+          title = "Absolute BSI Incidence Over Time",
+          x = x_label,
+          y = "Number of BSIs",
+          color = NULL
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.position = "bottom"
+        )
+      
+      # Add trend line if requested
+      if (!is.null(input$agg_show_trend) && input$agg_show_trend && nrow(time_data) >= 3) {
+        p <- p + ggplot2::geom_smooth(method = "loess", se = FALSE, linetype = "dashed", 
+                                       linewidth = 0.8, alpha = 0.7, formula = y ~ x)
+      }
+      
+      # Format x-axis
+      date_range <- as.numeric(diff(range(time_data$TimePeriod)))
+      if (date_range > 365 * 2) {
+        p <- p + ggplot2::scale_x_date(date_breaks = "1 year", date_labels = "%Y")
+      } else if (date_range > 365) {
+        p <- p + ggplot2::scale_x_date(date_breaks = "6 months", date_labels = "%b %Y")
+      } else {
+        p <- p + ggplot2::scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+      }
+      
+      p
+    })
+    
+    # Render: Incidence rates time trend plot
+    output$agg_time_trend_rates <- shiny::renderPlot({
+      time_data <- aggregate_time_data()
+      
+      if (is.null(time_data) || nrow(time_data) == 0) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No time series data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Get selected rate metric
+      rate_metric <- if (!is.null(input$agg_rate_metric)) input$agg_rate_metric else "patient_days"
+      
+      rate_col <- if (rate_metric == "patient_days") "RatePerPatientDays" else "RatePerDischarges"
+      rate_label <- if (rate_metric == "patient_days") "HO-HA BSI Rate per 1,000 Patient-Days" else "HO-HA BSI Rate per 100 Discharges"
+      
+      if (!rate_col %in% names(time_data) || all(is.na(time_data[[rate_col]]))) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = paste("Cannot calculate rate.\nMissing denominator data for", rate_label),
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      agg <- if (!is.null(input$agg_time_aggregation)) input$agg_time_aggregation else "year"
+      x_label <- switch(agg, "month" = "Month", "quarter" = "Quarter", "year" = "Year", "Year")
+      
+      p <- ggplot2::ggplot(time_data, ggplot2::aes(x = TimePeriod, y = .data[[rate_col]])) +
+        ggplot2::geom_line(color = "#198754", linewidth = 1.2) +
+        ggplot2::geom_point(color = "#198754", size = 3) +
+        ggplot2::labs(
+          title = rate_label,
+          x = x_label,
+          y = "Incidence Rate"
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          panel.grid.minor = ggplot2::element_blank()
+        )
+      
+      # Add trend line if requested
+      if (!is.null(input$agg_show_trend) && input$agg_show_trend && sum(!is.na(time_data[[rate_col]])) >= 3) {
+        p <- p + ggplot2::geom_smooth(method = "loess", se = TRUE, color = "#6c757d",
+                                       fill = "#19875420", linetype = "dashed", 
+                                       linewidth = 0.8, formula = y ~ x)
+      }
+      
+      # Format x-axis
+      date_range <- as.numeric(diff(range(time_data$TimePeriod)))
+      if (date_range > 365 * 2) {
+        p <- p + ggplot2::scale_x_date(date_breaks = "1 year", date_labels = "%Y")
+      } else if (date_range > 365) {
+        p <- p + ggplot2::scale_x_date(date_breaks = "6 months", date_labels = "%b %Y")
+      } else {
+        p <- p + ggplot2::scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+      }
+      
+      p
+    })
+    
+    # Render: Denominator trends plot
+    output$agg_denom_trend <- shiny::renderPlot({
+      time_data <- aggregate_time_data()
+      
+      if (is.null(time_data) || nrow(time_data) == 0) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No time series data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      has_pd <- "NumberOfHospitalPatientDays" %in% names(time_data)
+      has_disc <- "NumberOfHospitalDischarges" %in% names(time_data)
+      
+      if (!has_pd && !has_disc) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No denominator data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Build long-format data
+      plot_list <- list()
+      if (has_pd) {
+        plot_list[[length(plot_list) + 1]] <- data.frame(
+          TimePeriod = time_data$TimePeriod,
+          Value = time_data$NumberOfHospitalPatientDays / 1000,  # Scale to thousands
+          Metric = "Patient-Days (thousands)"
+        )
+      }
+      if (has_disc) {
+        plot_list[[length(plot_list) + 1]] <- data.frame(
+          TimePeriod = time_data$TimePeriod,
+          Value = time_data$NumberOfHospitalDischarges,
+          Metric = "Discharges"
+        )
+      }
+      
+      plot_df <- do.call(rbind, plot_list)
+      
+      agg <- if (!is.null(input$agg_time_aggregation)) input$agg_time_aggregation else "year"
+      x_label <- switch(agg, "month" = "Month", "quarter" = "Quarter", "year" = "Year", "Year")
+      
+      ggplot2::ggplot(plot_df, ggplot2::aes(x = TimePeriod, y = Value, color = Metric)) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::geom_point(size = 2.5) +
+        ggplot2::scale_color_manual(values = c("Patient-Days (thousands)" = "#6f42c1", "Discharges" = "#fd7e14")) +
+        ggplot2::labs(
+          title = "Denominator Trends Over Time",
+          x = x_label,
+          y = "Count",
+          color = NULL
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.position = "bottom"
+        ) +
+        ggplot2::scale_y_continuous(labels = scales::comma)
+    })
+    
+    # Render: BSIs by Hospital bar chart
+    output$agg_by_hospital <- shiny::renderPlot({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No hospital data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      if (!"NumberOfHOHABSIs" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No HO-HA BSI data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Sort by BSI count descending
+      hosp_data <- hosp_data[order(hosp_data$NumberOfHOHABSIs, decreasing = TRUE), ]
+      hosp_data$HospitalId <- factor(hosp_data$HospitalId, levels = hosp_data$HospitalId)
+      
+      # Limit to top 20 if many hospitals
+      if (nrow(hosp_data) > 20) {
+        hosp_data <- hosp_data[1:20, ]
+      }
+      
+      ggplot2::ggplot(hosp_data, ggplot2::aes(x = HospitalId, y = NumberOfHOHABSIs)) +
+        ggplot2::geom_col(fill = "#0d6efd", alpha = 0.85) +
+        ggplot2::labs(
+          title = "HO-HA BSIs by Hospital",
+          subtitle = if (nrow(hosp_data) == 20) "Top 20 hospitals shown" else NULL,
+          x = "Hospital",
+          y = "Number of HO-HA BSIs"
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          panel.grid.major.x = ggplot2::element_blank()
+        ) +
+        ggplot2::geom_text(ggplot2::aes(label = NumberOfHOHABSIs), vjust = -0.3, size = 3.5)
+    })
+    
+    # Render: BSIs by Hospital Size bar chart
+    output$agg_by_size <- shiny::renderPlot({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0 || !"HospitalSize" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No hospital size data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      if (!"NumberOfHOHABSIs" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No HO-HA BSI data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Aggregate by size
+      size_agg <- stats::aggregate(
+        NumberOfHOHABSIs ~ HospitalSize,
+        data = hosp_data,
+        FUN = sum
+      )
+      
+      ggplot2::ggplot(size_agg, ggplot2::aes(x = reorder(HospitalSize, NumberOfHOHABSIs), y = NumberOfHOHABSIs)) +
+        ggplot2::geom_col(fill = "#198754", alpha = 0.85) +
+        ggplot2::coord_flip() +
+        ggplot2::labs(
+          title = "HO-HA BSIs by Hospital Size",
+          x = "Hospital Size",
+          y = "Number of HO-HA BSIs"
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          panel.grid.major.y = ggplot2::element_blank()
+        ) +
+        ggplot2::geom_text(ggplot2::aes(label = NumberOfHOHABSIs), hjust = -0.2, size = 4)
+    })
+    
+    # Render: BSIs by Hospital Type bar chart
+    output$agg_by_type <- shiny::renderPlot({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0 || !"HospitalType" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No hospital type data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      if (!"NumberOfHOHABSIs" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No HO-HA BSI data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Aggregate by type
+      type_agg <- stats::aggregate(
+        NumberOfHOHABSIs ~ HospitalType,
+        data = hosp_data,
+        FUN = sum
+      )
+      
+      ggplot2::ggplot(type_agg, ggplot2::aes(x = reorder(HospitalType, NumberOfHOHABSIs), y = NumberOfHOHABSIs)) +
+        ggplot2::geom_col(fill = "#dc3545", alpha = 0.85) +
+        ggplot2::coord_flip() +
+        ggplot2::labs(
+          title = "HO-HA BSIs by Hospital Type",
+          x = "Hospital Type",
+          y = "Number of HO-HA BSIs"
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          panel.grid.major.y = ggplot2::element_blank()
+        ) +
+        ggplot2::geom_text(ggplot2::aes(label = NumberOfHOHABSIs), hjust = -0.2, size = 4)
+    })
+    
+    # Render: Rate distribution box plot by Hospital Size
+    output$agg_rate_box_size <- shiny::renderPlot({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0 || !"HospitalSize" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No hospital size data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Get selected rate metric
+      rate_metric <- if (!is.null(input$agg_rate_metric)) input$agg_rate_metric else "patient_days"
+      rate_col <- if (rate_metric == "patient_days") "RatePerPatientDays" else "RatePerDischarges"
+      rate_label <- if (rate_metric == "patient_days") "Rate per 1,000 Patient-Days" else "Rate per 100 Discharges"
+      
+      if (!rate_col %in% names(hosp_data) || all(is.na(hosp_data[[rate_col]]))) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "Rate data not available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      ggplot2::ggplot(hosp_data, ggplot2::aes(x = HospitalSize, y = .data[[rate_col]])) +
+        ggplot2::geom_boxplot(fill = "#19875430", color = "#198754", outlier.color = "#dc3545") +
+        ggplot2::geom_jitter(width = 0.2, alpha = 0.5, color = "#0d6efd") +
+        ggplot2::labs(
+          title = paste("Incidence Rate Distribution by Hospital Size"),
+          x = "Hospital Size",
+          y = rate_label
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
+        )
+    })
+    
+    # Render: Rate distribution box plot by Hospital Type
+    output$agg_rate_box_type <- shiny::renderPlot({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0 || !"HospitalType" %in% names(hosp_data)) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "No hospital type data available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      # Get selected rate metric
+      rate_metric <- if (!is.null(input$agg_rate_metric)) input$agg_rate_metric else "patient_days"
+      rate_col <- if (rate_metric == "patient_days") "RatePerPatientDays" else "RatePerDischarges"
+      rate_label <- if (rate_metric == "patient_days") "Rate per 1,000 Patient-Days" else "Rate per 100 Discharges"
+      
+      if (!rate_col %in% names(hosp_data) || all(is.na(hosp_data[[rate_col]]))) {
+        return(ggplot2::ggplot() +
+                 ggplot2::annotate("text", x = 0.5, y = 0.5,
+                                   label = "Rate data not available",
+                                   size = 5, color = "#6c757d") +
+                 ggplot2::theme_void())
+      }
+      
+      ggplot2::ggplot(hosp_data, ggplot2::aes(x = HospitalType, y = .data[[rate_col]])) +
+        ggplot2::geom_boxplot(fill = "#dc354530", color = "#dc3545", outlier.color = "#0d6efd") +
+        ggplot2::geom_jitter(width = 0.2, alpha = 0.5, color = "#198754") +
+        ggplot2::labs(
+          title = paste("Incidence Rate Distribution by Hospital Type"),
+          x = "Hospital Type",
+          y = rate_label
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
+        )
+    })
+    
+    # Render: Overall descriptive statistics table
+    output$agg_stats_overall <- DT::renderDT({
+      ehrbsi <- aggregate_ehrbsi_data()
+      
+      if (is.null(ehrbsi) || nrow(ehrbsi) == 0) {
+        return(data.frame(Message = "No data available"))
+      }
+      
+      # Calculate statistics for key metrics
+      metrics <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs",
+                   "NumberOfHospitalPatientDays", "NumberOfHospitalDischarges",
+                   "RatePerPatientDays", "RatePerDischarges")
+      metrics <- metrics[metrics %in% names(ehrbsi)]
+      
+      if (length(metrics) == 0) {
+        return(data.frame(Message = "No numeric metrics available"))
+      }
+      
+      stats_list <- lapply(metrics, function(m) {
+        x <- ehrbsi[[m]]
+        x <- x[!is.na(x)]
+        if (length(x) == 0) {
+          return(data.frame(
+            Metric = m, N = 0, Mean = NA, Median = NA, SD = NA, 
+            Min = NA, Max = NA, IQR = NA, stringsAsFactors = FALSE
+          ))
+        }
+        data.frame(
+          Metric = m,
+          N = length(x),
+          Mean = round(mean(x), 2),
+          Median = round(stats::median(x), 2),
+          SD = round(stats::sd(x), 2),
+          Min = round(min(x), 2),
+          Max = round(max(x), 2),
+          IQR = round(stats::IQR(x), 2),
+          stringsAsFactors = FALSE
+        )
+      })
+      
+      stats_df <- do.call(rbind, stats_list)
+      
+      # Clean up metric names for display
+      stats_df$Metric <- gsub("NumberOf", "", stats_df$Metric)
+      stats_df$Metric <- gsub("([a-z])([A-Z])", "\\1 \\2", stats_df$Metric)
+      
+      stats_df
+    }, options = list(scrollX = TRUE, pageLength = 10, dom = 't'), rownames = FALSE)
+    
+    # Render: Statistics by Hospital Size
+    output$agg_stats_by_size <- DT::renderDT({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0 || !"HospitalSize" %in% names(hosp_data)) {
+        return(data.frame(Message = "No hospital size data available"))
+      }
+      
+      # Get selected rate metric
+      rate_metric <- if (!is.null(input$agg_rate_metric)) input$agg_rate_metric else "patient_days"
+      rate_col <- if (rate_metric == "patient_days") "RatePerPatientDays" else "RatePerDischarges"
+      
+      metrics <- c("NumberOfHOHABSIs", rate_col)
+      metrics <- metrics[metrics %in% names(hosp_data)]
+      
+      if (length(metrics) == 0) {
+        return(data.frame(Message = "No metrics available"))
+      }
+      
+      sizes <- unique(hosp_data$HospitalSize)
+      sizes <- sizes[!is.na(sizes)]
+      
+      stats_list <- lapply(sizes, function(size) {
+        subset_data <- hosp_data[hosp_data$HospitalSize == size, , drop = FALSE]
+        
+        row_data <- data.frame(HospitalSize = size, N_Hospitals = nrow(subset_data), stringsAsFactors = FALSE)
+        
+        for (m in metrics) {
+          x <- subset_data[[m]]
+          x <- x[!is.na(x)]
+          
+          if (length(x) == 0) {
+            row_data[[paste0(m, "_Mean")]] <- NA
+            row_data[[paste0(m, "_Median")]] <- NA
+            row_data[[paste0(m, "_SD")]] <- NA
+          } else {
+            row_data[[paste0(m, "_Mean")]] <- round(mean(x), 2)
+            row_data[[paste0(m, "_Median")]] <- round(stats::median(x), 2)
+            row_data[[paste0(m, "_SD")]] <- round(stats::sd(x), 2)
+          }
+        }
+        
+        row_data
+      })
+      
+      stats_df <- do.call(rbind, stats_list)
+      
+      # Clean up column names
+      names(stats_df) <- gsub("NumberOf", "", names(stats_df))
+      names(stats_df) <- gsub("_", " ", names(stats_df))
+      
+      stats_df
+    }, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+    
+    # Render: Statistics by Hospital Type
+    output$agg_stats_by_type <- DT::renderDT({
+      hosp_data <- aggregate_hospital_data()
+      
+      if (is.null(hosp_data) || nrow(hosp_data) == 0 || !"HospitalType" %in% names(hosp_data)) {
+        return(data.frame(Message = "No hospital type data available"))
+      }
+      
+      # Get selected rate metric
+      rate_metric <- if (!is.null(input$agg_rate_metric)) input$agg_rate_metric else "patient_days"
+      rate_col <- if (rate_metric == "patient_days") "RatePerPatientDays" else "RatePerDischarges"
+      
+      metrics <- c("NumberOfHOHABSIs", rate_col)
+      metrics <- metrics[metrics %in% names(hosp_data)]
+      
+      if (length(metrics) == 0) {
+        return(data.frame(Message = "No metrics available"))
+      }
+      
+      types <- unique(hosp_data$HospitalType)
+      types <- types[!is.na(types)]
+      
+      stats_list <- lapply(types, function(type) {
+        subset_data <- hosp_data[hosp_data$HospitalType == type, , drop = FALSE]
+        
+        row_data <- data.frame(HospitalType = type, N_Hospitals = nrow(subset_data), stringsAsFactors = FALSE)
+        
+        for (m in metrics) {
+          x <- subset_data[[m]]
+          x <- x[!is.na(x)]
+          
+          if (length(x) == 0) {
+            row_data[[paste0(m, "_Mean")]] <- NA
+            row_data[[paste0(m, "_Median")]] <- NA
+            row_data[[paste0(m, "_SD")]] <- NA
+          } else {
+            row_data[[paste0(m, "_Mean")]] <- round(mean(x), 2)
+            row_data[[paste0(m, "_Median")]] <- round(stats::median(x), 2)
+            row_data[[paste0(m, "_SD")]] <- round(stats::sd(x), 2)
+          }
+        }
+        
+        row_data
+      })
+      
+      stats_df <- do.call(rbind, stats_list)
+      
+      # Clean up column names
+      names(stats_df) <- gsub("NumberOf", "", names(stats_df))
+      names(stats_df) <- gsub("_", " ", names(stats_df))
+      
+      stats_df
+    }, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
     
     # ==========================
     # PDF Report Generation
