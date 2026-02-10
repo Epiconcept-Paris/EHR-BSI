@@ -436,46 +436,22 @@ COUNTRY_R_TRANSFORMS <- list(
   
   EE = list(
     field_transforms = list(
-      PreviousAdmission = function(data) {
-        # Estonia-specific gap analysis
-        data %>%
-          dplyr::arrange(PatientId, DateOfHospitalAdmission) %>%
-          dplyr::group_by(PatientId) %>%
-          dplyr::mutate(
-            gap_days = as.numeric(
-              difftime(DateOfHospitalAdmission, dplyr::lag(DateOfHospitalAdmission), 
-                      units = "days")
-            ),
-            prev_HospitalId = dplyr::lag(HospitalId),
-            PreviousAdmission = dplyr::case_when(
-              (gap_days > 0 & gap_days <= 3) & (HospitalId == prev_HospitalId) ~ "CURR",
-              (gap_days > 0 & gap_days <= 3) & (HospitalId != prev_HospitalId) ~ "OHOSP",
-              TRUE ~ NA_character_
-            )
-          ) %>%
-          dplyr::ungroup() %>%
-          dplyr::select(-gap_days, -prev_HospitalId)
-      },
-      UnitId = function(data) {
-        if (all(c("HospitalId", "UnitSpecialtyShort") %in% names(data))) {
-          paste0(data$HospitalId, "_", data$UnitSpecialtyShort)
-        } else {
-          NA_character_
-        }
-      }
+      PreviousAdmission = function(data) compute_previous_admission(data),
+      UnitId = function(data) compute_unit_id(data)
     )
   ),
   
   CZ = list(
     field_transforms = list(
       DateOfHospitalDischarge = function(data) {
-        # Czech Republic: create dummy discharge date as admission + 1 day
-        # (data doesn't currently have discharge dates)
-        # TEMPORARY # TEMPORARY # TEMPORARY 
+        # Czech Republic: discharge dates are not available in source data.
+        # Strategy: use specimen collection date + 1 day as a proxy so that
+        # episode-origin classification (HO-HA / IMP-HA / CA) can proceed.
+        # @note This workaround should be revisited when CZ data includes
+        #   actual discharge dates. See: missing_discharge_strategy.
         if ("DateOfHospitalAdmission" %in% names(data)) {
           return(as.Date(data$DateOfSpecimenCollection) + 1)
         } else {
-          # Return a vector of NAs with the correct length
           return(rep(as.Date(NA), nrow(data)))
         }
       },
@@ -504,33 +480,8 @@ COUNTRY_R_TRANSFORMS <- list(
   ),
   GEN = list(
     field_transforms = list(
-      PreviousAdmission = function(data) {
-        # Estonia-specific gap analysis
-        data %>%
-          dplyr::arrange(PatientId, DateOfHospitalAdmission) %>%
-          dplyr::group_by(PatientId) %>%
-          dplyr::mutate(
-            gap_days = as.numeric(
-              difftime(DateOfHospitalAdmission, dplyr::lag(DateOfHospitalAdmission), 
-                       units = "days")
-            ),
-            prev_HospitalId = dplyr::lag(HospitalId),
-            PreviousAdmission = dplyr::case_when(
-              (gap_days > 0 & gap_days <= 3) & (HospitalId == prev_HospitalId) ~ "CURR",
-              (gap_days > 0 & gap_days <= 3) & (HospitalId != prev_HospitalId) ~ "OHOSP",
-              TRUE ~ NA_character_
-            )
-          ) %>%
-          dplyr::ungroup() %>%
-          dplyr::select(-gap_days, -prev_HospitalId)
-      },
-      UnitId = function(data) {
-        if (all(c("HospitalId", "UnitSpecialtyShort") %in% names(data))) {
-          paste0(data$HospitalId, "_", data$UnitSpecialtyShort)
-        } else {
-          NA_character_
-        }
-      }
+      PreviousAdmission = function(data) compute_previous_admission(data),
+      UnitId = function(data) compute_unit_id(data)
     )
   )
 )

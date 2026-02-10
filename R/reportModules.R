@@ -11,8 +11,8 @@
 #' @export
 create_age_groups <- function(ages) {
   cut(ages, 
-      breaks = c(-Inf, 20, 40, 60, 80, Inf),
-      labels = c("< 20 years", "21 - 40 years", "41 - 60 years", "61 - 80 years", "81 + years"),
+      breaks = AGE_BREAKS,
+      labels = AGE_LABELS,
       include.lowest = TRUE, right = FALSE)
 }
 
@@ -82,20 +82,27 @@ get_infection_type_data <- function(episodes_data, filter_class = NULL) {
   
   if (nrow(episodes_data) == 0) return(NULL)
   
-  # For demonstration, create infection type classification
-  # In practice, this would be based on actual episode data analysis
-  total <- nrow(episodes_data)
+  # Classify infection types from actual data using PatientId episode counts
+  if ("PatientId" %in% names(episodes_data) && "EpisodeId" %in% names(episodes_data)) {
+    # Count episodes per patient
+    patient_episode_counts <- stats::aggregate(
+      EpisodeId ~ PatientId, data = episodes_data,
+      FUN = function(x) length(unique(x))
+    )
+    names(patient_episode_counts)[2] <- "ep_count"
+    
+    single_count <- sum(patient_episode_counts$ep_count == 1)
+    multiple_count <- sum(patient_episode_counts$ep_count == 2)
+    recurrent_count <- sum(patient_episode_counts$ep_count >= 3)
+  } else {
+    # Fallback: all episodes treated as single
+    single_count <- nrow(episodes_data)
+    multiple_count <- 0
+    recurrent_count <- 0
+  }
   
-  # Simulate infection types based on typical BSI patterns
-  single_pct <- if (is.null(filter_class)) 72.1 else if (filter_class == "CA") 78.3 else if (filter_class == "HA") 66.1 else 72.1
-  multiple_pct <- if (is.null(filter_class)) 24.9 else if (filter_class == "CA") 18.3 else if (filter_class == "HA") 31.3 else 24.9
-  
-  single_count <- round(total * single_pct / 100)
-  multiple_count <- round(total * multiple_pct / 100)
-  recurrent_count <- total - single_count - multiple_count  # Ensure total adds up
-  
-  # Ensure no negative counts
-  recurrent_count <- max(0, recurrent_count)
+  total <- single_count + multiple_count + recurrent_count
+  if (total == 0) return(NULL)
   
   df <- data.frame(
     Type = c("single", "multiple", "recurrent"),
@@ -346,7 +353,7 @@ plot_age_distribution <- function(patient_data) {
   
   # Clean age data and create groups
   ages_numeric <- as.numeric(patient_data$Age)
-  ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
+  ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= MAX_AGE]
   
   if (length(ages_numeric) == 0) {
     return(ggplot2::ggplot() + ggplot2::theme_void())
@@ -439,38 +446,16 @@ plot_monomicrobial_pathogens <- function(episode_summary) {
   
   # Count episodes by pathogen
   org_counts <- sort(table(mono_df$Pathogens), decreasing = TRUE)
-  top_20 <- head(org_counts, 20)
+  top_n <- head(org_counts, TOP_N_PATHOGENS)
   
   df <- data.frame(
-    Organism = names(top_20),
-    Count = as.numeric(top_20),
+    Organism = names(top_n),
+    Count = as.numeric(top_n),
     stringsAsFactors = FALSE
   )
   
-  # Define colors for common pathogens
-  pathogen_colors <- c(
-    "E. coli" = "#8B4513", "Escherichia coli" = "#8B4513",
-    "S. aureus" = "#FFD700", "Staphylococcus aureus" = "#FFD700",
-    "S. epidermidis" = "#4F7942", "Staphylococcus epidermidis" = "#4F7942",
-    "K. pneumoniae" = "#CD5C5C", "Klebsiella pneumoniae" = "#CD5C5C",
-    "E. faecalis" = "#9ACD32", "Enterococcus faecalis" = "#9ACD32",
-    "E. faecium" = "#008B8B", "Enterococcus faecium" = "#008B8B",
-    "P. aeruginosa" = "#87CEEB", "Pseudomonas aeruginosa" = "#87CEEB",
-    "P. mirabilis" = "#483D8B", "Proteus mirabilis" = "#483D8B",
-    "S. hominis" = "#FF8C00", "Staphylococcus hominis" = "#FF8C00",
-    "Enterob. cloacae" = "#000080", "Enterobacter cloacae" = "#000080",
-    "S. pneumoniae" = "#DC143C", "Streptococcus pneumoniae" = "#DC143C",
-    "S. haemolyticus" = "#8B008B", "Staphylococcus haemolyticus" = "#8B008B",
-    "Candida albicans" = "#FF1493", "C. albicans" = "#FF1493"
-  )
-  
-  # Assign colors
-  df$Color <- pathogen_colors[df$Organism]
-  missing_colors <- which(is.na(df$Color))
-  if (length(missing_colors) > 0) {
-    additional_colors <- grDevices::rainbow(length(missing_colors), s = 0.6, v = 0.8)
-    df$Color[missing_colors] <- additional_colors
-  }
+  # Assign colors from shared palette
+  df$Color <- assign_pathogen_colors(df$Organism)
   
   # Reverse order for plotting
   df$Organism <- factor(df$Organism, levels = rev(df$Organism))
@@ -491,9 +476,7 @@ plot_monomicrobial_pathogens <- function(episode_summary) {
 #' @export
 plot_polymicrobial_individual <- function(episode_summary) {
   if (is.null(episode_summary) || nrow(episode_summary) == 0) {
-    return(ggplot2::ggplot() + 
-             ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No episode data available", size = 6) +
-             ggplot2::theme_void())
+    return(create_empty_plot("No episode data available"))
   }
   
   # Filter for polymicrobial episodes
@@ -502,15 +485,11 @@ plot_polymicrobial_individual <- function(episode_summary) {
   } else if ("PathogenCount" %in% names(episode_summary)) {
     poly_df <- episode_summary[episode_summary$PathogenCount > 1, ]
   } else {
-    return(ggplot2::ggplot() + 
-             ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial flag available", size = 6) +
-             ggplot2::theme_void())
+    return(create_empty_plot("No polymicrobial flag available"))
   }
   
   if (nrow(poly_df) == 0 || !("Pathogens" %in% names(poly_df))) {
-    return(ggplot2::ggplot() + 
-             ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No polymicrobial episodes available", size = 6) +
-             ggplot2::theme_void())
+    return(create_empty_plot("No polymicrobial episodes available"))
   }
   
   # Split pathogen combinations and count individual pathogens
@@ -519,7 +498,7 @@ plot_polymicrobial_individual <- function(episode_summary) {
   
   # Count occurrence of each pathogen
   org_counts <- sort(table(all_pathogens), decreasing = TRUE)
-  top_20 <- head(org_counts, 20)
+  top_20 <- head(org_counts, TOP_N_PATHOGENS)
   
   df <- data.frame(
     Organism = names(top_20),
@@ -527,29 +506,8 @@ plot_polymicrobial_individual <- function(episode_summary) {
     stringsAsFactors = FALSE
   )
   
-  # Use same color scheme as monomicrobial
-  pathogen_colors <- c(
-    "E. coli" = "#8B4513", "Escherichia coli" = "#8B4513",
-    "S. epidermidis" = "#4F7942", "Staphylococcus epidermidis" = "#4F7942",
-    "S. aureus" = "#FFD700", "Staphylococcus aureus" = "#FFD700",
-    "E. faecalis" = "#9ACD32", "Enterococcus faecalis" = "#9ACD32",
-    "K. pneumoniae" = "#CD5C5C", "Klebsiella pneumoniae" = "#CD5C5C",
-    "E. faecium" = "#008B8B", "Enterococcus faecium" = "#008B8B",
-    "P. aeruginosa" = "#87CEEB", "Pseudomonas aeruginosa" = "#87CEEB",
-    "P. mirabilis" = "#483D8B", "Proteus mirabilis" = "#483D8B",
-    "S. hominis" = "#FF8C00", "Staphylococcus hominis" = "#FF8C00",
-    "Cand. albicans" = "#FF1493", "Candida albicans" = "#FF1493",
-    "S. pneumoniae" = "#DC143C", "Streptococcus pneumoniae" = "#DC143C",
-    "S. haemolyticus" = "#8B008B", "Staphylococcus haemolyticus" = "#8B008B"
-  )
-  
-  # Assign colors
-  df$Color <- pathogen_colors[df$Organism]
-  missing_colors <- which(is.na(df$Color))
-  if (length(missing_colors) > 0) {
-    additional_colors <- grDevices::rainbow(length(missing_colors), s = 0.6, v = 0.8)
-    df$Color[missing_colors] <- additional_colors
-  }
+  # Assign colors from shared palette
+  df$Color <- assign_pathogen_colors(df$Organism)
   
   df$Organism <- factor(df$Organism, levels = rev(df$Organism))
   
@@ -593,7 +551,7 @@ plot_polymicrobial_combinations <- function(episode_summary) {
     combo_counts <- combo_counts[order(combo_counts$Count, decreasing = TRUE), ]
     
     # Take top 20
-    if (nrow(combo_counts) > 20) combo_counts <- head(combo_counts, 20)
+    if (nrow(combo_counts) > TOP_N_PATHOGENS) combo_counts <- head(combo_counts, TOP_N_PATHOGENS)
     
     if (nrow(combo_counts) > 0) {
       # Assign colors
@@ -830,10 +788,8 @@ plot_pathogen_specialty_distribution <- function(iso_specialty, top_n = 20, min_
     pathogen_specialty_counts <- aggregate(EpisodeId ~ organism_label + specialty_clean, 
                                            data = iso_final, FUN = length)
   } else {
-    iso_final$temp_id <- seq_len(nrow(iso_final))
-    pathogen_specialty_counts <- aggregate(temp_id ~ organism_label + specialty_clean, 
-                                           data = iso_final, FUN = length)
-    names(pathogen_specialty_counts)[names(pathogen_specialty_counts) == "temp_id"] <- "EpisodeId"
+    pathogen_specialty_counts <- count_episodes_or_isolates(iso_final, c("organism_label", "specialty_clean"))
+    min_episodes <- max(5, min_episodes / 2)  # Lower threshold for isolate counts
   }
   names(pathogen_specialty_counts) <- c("Pathogen", "Specialty", "Count")
   
@@ -841,47 +797,16 @@ plot_pathogen_specialty_distribution <- function(iso_specialty, top_n = 20, min_
   specialty_totals <- aggregate(Count ~ Specialty, data = pathogen_specialty_counts, FUN = sum)
   specialty_order <- specialty_totals$Specialty[order(specialty_totals$Count, decreasing = TRUE)]
   
-  # Create short pathogen names
-  pathogen_specialty_counts$PathogenShort <- gsub("([A-Z])[a-z]+ ([a-z]+)", "\\1. \\2", 
-                                                  pathogen_specialty_counts$Pathogen)
-  pathogen_specialty_counts$PathogenShort <- gsub("Staphylococcus", "S.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Enterococcus", "E.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Escherichia", "E.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Klebsiella", "K.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Candida", "Cand.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Pseudomonas", "P.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Enterobacter", "Enterob.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Proteus", "P.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Streptococcus", "Strep.", pathogen_specialty_counts$PathogenShort)
-  pathogen_specialty_counts$PathogenShort <- gsub("Cutibacterium", "C.", pathogen_specialty_counts$PathogenShort)
+  # Create short pathogen names and assign colors from shared palette
+  pathogen_specialty_counts$PathogenShort <- abbreviate_pathogen_name(pathogen_specialty_counts$Pathogen)
+  pathogen_colors <- get_pathogen_colors()
   
-  # Define colors
-  pathogen_colors <- c(
-    "C. acnes" = "#000000", "E. faecium" = "#008B8B", "P. aeruginosa" = "#87CEEB", 
-    "S. epidermidis" = "#4F7942", "S. spp." = "#4682B4", "Cand. albicans" = "#FF1493", 
-    "Enterob. cloacae" = "#000080", "P. mirabilis" = "#483D8B", "S. haemolyticus" = "#8B008B",
-    "Strep. pneumoniae" = "#DC143C", "E. coli" = "#8B4513", "K. oxytoca" = "#FF69B4",
-    "S. aureus" = "#FFD700", "S. hominis" = "#FF8C00", "Strep. pyogenes" = "#FF4500",
-    "E. faecalis" = "#9ACD32", "K. pneumoniae" = "#CD5C5C", "S. capitis" = "#008080",
-    "S. marcescens" = "#C0C0C0", "T. glabrata" = "#2F4F4F"
-  )
-  
-  # Set specialty order
+  # Set specialty order and create shorter specialty names
   pathogen_specialty_counts$Specialty <- factor(pathogen_specialty_counts$Specialty, 
                                                 levels = specialty_order)
-  
-  # Create shorter specialty names
-  pathogen_specialty_counts$SpecialtyShort <- gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
-                                                   pathogen_specialty_counts$Specialty)
-  pathogen_specialty_counts$SpecialtyShort <- gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines", 
-                                                   pathogen_specialty_counts$SpecialtyShort)
-  pathogen_specialty_counts$SpecialtyShort <- gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", 
-                                                   pathogen_specialty_counts$SpecialtyShort)
-  
+  pathogen_specialty_counts$SpecialtyShort <- shorten_specialty_names(as.character(pathogen_specialty_counts$Specialty))
   pathogen_specialty_counts$SpecialtyShort <- factor(pathogen_specialty_counts$SpecialtyShort, 
-                                                     levels = gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
-                                                                   gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines",
-                                                                        gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", specialty_order))))
+                                                     levels = shorten_specialty_names(specialty_order))
   
   # Create stacked bar chart
   p <- ggplot2::ggplot(pathogen_specialty_counts, ggplot2::aes(x = SpecialtyShort, y = Count, fill = PathogenShort)) +
@@ -1122,9 +1047,9 @@ generate_healthcare_facilities_summary <- function(processed_data_stats, raw_dat
   total_patients <- processed_data_stats$final_patients
   
   # Calculate rates
-  positive_rate <- if (total_patients > 0) round(positive_cultures / total_patients * 1000, 2) else 0
-  uncontaminated_rate <- if (total_patients > 0) round(final_cultures / total_patients * 1000, 2) else 0
-  bc_per_1000_days <- if (patient_days > 0) round(bc_count / patient_days * 1000, 2) else 0
+  positive_rate <- if (total_patients > 0) round(positive_cultures / total_patients * RATE_PER_N, 2) else 0
+  uncontaminated_rate <- if (total_patients > 0) round(final_cultures / total_patients * RATE_PER_N, 2) else 0
+  bc_per_1000_days <- if (patient_days > 0) round(bc_count / patient_days * RATE_PER_N, 2) else 0
   uncontaminated_positive_rate <- if (bc_count > 0) round(final_cultures / bc_count, 3) else 0
   
   # Build text
@@ -1204,7 +1129,7 @@ generate_age_statistics <- function(patient_data, for_markdown = FALSE) {
   
   # Clean age data
   ages_numeric <- as.numeric(patient_data$Age)
-  ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
+  ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= MAX_AGE]
   
   if (length(ages_numeric) == 0) {
     if (for_markdown) {

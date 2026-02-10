@@ -59,9 +59,9 @@ visual_bsi_dashboard <- function(data = NULL) {
       ),
       
       shiny::numericInput("episode_duration", "Epi. Days:",
-                          value = 14,
+                          value = EPISODE_DURATION_DEFAULT,
                           min = 1,
-                          max = 365,
+                          max = EPISODE_DURATION_MAX,
                           step = 1),
       
       shiny::selectInput("aggregation_level", "Aggregation:",
@@ -84,14 +84,6 @@ visual_bsi_dashboard <- function(data = NULL) {
                               class = "btn-success",
                               style = "width: 100%; margin-top: 5px;")
       ),
-      
-      # PDF Report download button - only shows when data is available
-      # shiny::conditionalPanel(
-      #   condition = "output.data_available",
-      #   shiny::downloadButton("download_pdf_report", "Download PDF Report",
-      #                         class = "btn-info",
-      #                         style = "width: 100%; margin-top: 5px;")
-      # ),
       
       shiny::hr(),
       
@@ -933,8 +925,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       }, error = function(e) NULL)
       if (is.null(comm_df)) return(NULL)
       # Calculate episodes
-      # Use episode_duration from input, default to 14 if not available
-      epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
+      epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else EPISODE_DURATION_DEFAULT
       eps <- tryCatch({
         # Prefer non-contaminant isolates table if available, else filter by Contaminant column
         iso_df <- cur$isolate
@@ -1105,9 +1096,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       epi <- episodes_tbl()  # Use filtered episodes instead of values$episodes
       keep_epi <- epi[, intersect(c("EpisodeId", "AdmissionRecordId", "EpisodeStartDate", "EpisodeClass", "EpisodeOrigin", "episodeYear"), names(epi)), drop = FALSE]
       merged <- merge(merged, keep_epi, by = "AdmissionRecordId", all.x = TRUE)
-      # restrict to isolates falling within episode 14-day window
+      # restrict to isolates falling within episode window
       if ("EpisodeStartDate" %in% names(merged)) {
-        merged$EpisodeEndDate <- merged$EpisodeStartDate + 13
+        epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else EPISODE_DURATION_DEFAULT
+        merged$EpisodeEndDate <- merged$EpisodeStartDate + (epi_dur - 1)
         in_episode <- !is.na(merged$EpisodeStartDate) & merged$DateOfSpecimenCollection >= merged$EpisodeStartDate & merged$DateOfSpecimenCollection <= merged$EpisodeEndDate
         merged <- merged[which(in_episode), , drop = FALSE]
       }
@@ -1250,8 +1242,7 @@ visual_bsi_dashboard <- function(data = NULL) {
           }
           
           # Process the data
-          # Use episode_duration from input, default to 14 if not available
-          epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else 14
+          epi_dur <- if (!is.null(input$episode_duration)) as.integer(input$episode_duration) else EPISODE_DURATION_DEFAULT
           # Use aggregation_level from input, default to HOSP if not available
           agg_level <- if (!is.null(input$aggregation_level)) input$aggregation_level else "HOSP"
           result <- process_country_bsi(
@@ -1344,7 +1335,7 @@ visual_bsi_dashboard <- function(data = NULL) {
             total_bc_sets = if (!is.null(result$ehrbsi) && "NumberOfBloodCultureSets" %in% names(result$ehrbsi)) 
               sum(result$ehrbsi$NumberOfBloodCultureSets, na.rm = TRUE) else 0,
             patient_days = if (!is.null(result$ehrbsi) && "NumberOfHospitalPatientDays" %in% names(result$ehrbsi)) 
-              sum(result$ehrbsi$NumberOfHospitalPatientDays, na.rm = TRUE) * 5 else 0  # Estimate patient days
+              sum(result$ehrbsi$NumberOfHospitalPatientDays, na.rm = TRUE) * PATIENT_DAYS_MULTIPLIER else 0
           )
           
           shiny::removeNotification("processing")
@@ -1494,7 +1485,7 @@ visual_bsi_dashboard <- function(data = NULL) {
                 total_bc_sets = if ("NumberOfBloodCultureSets" %in% names(ehrbsi)) 
                   sum(ehrbsi$NumberOfBloodCultureSets, na.rm = TRUE) else 0,
                 patient_days = if ("NumberOfHospitalPatientDays" %in% names(ehrbsi)) 
-                  sum(ehrbsi$NumberOfHospitalPatientDays, na.rm = TRUE) * 5 else 0
+                  sum(ehrbsi$NumberOfHospitalPatientDays, na.rm = TRUE) * PATIENT_DAYS_MULTIPLIER else 0
               )
               
               # Try to infer country from filename or default to "DATA"
@@ -1742,13 +1733,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ep <- ep[ep$EpisodeClass == input$global_origin_filter, , drop = FALSE]
       }
       
-      # Apply global year filter
-      if (!is.null(input$global_year_filter) && input$global_year_filter != "all" &&
-          "episodeYear" %in% names(ep)) {
-        ep <- ep[as.character(ep$episodeYear) == input$global_year_filter, , drop = FALSE]
-      }
-      
-      ep
+      apply_year_filter(ep, input$global_year_filter)
     })
     
     # Episode summary reactive (globally filtered)
@@ -1762,17 +1747,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         ep_sum <- ep_sum[ep_sum$EpisodeClass == input$global_origin_filter, , drop = FALSE]
       }
       
-      # Apply global year filter (need to extract year from EpisodeStartDate if episodeYear not present)
-      if (!is.null(input$global_year_filter) && input$global_year_filter != "all") {
-        if ("episodeYear" %in% names(ep_sum)) {
-          ep_sum <- ep_sum[as.character(ep_sum$episodeYear) == input$global_year_filter, , drop = FALSE]
-        } else if ("EpisodeStartDate" %in% names(ep_sum)) {
-          ep_sum$episodeYear <- as.integer(format(as.Date(ep_sum$EpisodeStartDate), "%Y"))
-          ep_sum <- ep_sum[as.character(ep_sum$episodeYear) == input$global_year_filter, , drop = FALSE]
-        }
-      }
-      
-      ep_sum
+      apply_year_filter(ep_sum, input$global_year_filter, date_col = "EpisodeStartDate")
     })
     
     # Helper function to get episode composition data
@@ -1841,7 +1816,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       total_episodes <- length(unique(ep$EpisodeId))
       
       # Calculate episodes per 1000 patient days (approximate)
-      ep_per_1000 <- round(total_episodes / as.numeric(total_patients) * 1000, 1)
+      ep_per_1000 <- round(total_episodes / as.numeric(total_patients) * RATE_PER_N, 1)
       
       shiny::div(
         style = "background: #f8f9fa; 
@@ -2011,7 +1986,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Count episodes by pathogen (Pathogens column contains single pathogen for monomicrobial)
       org_counts <- sort(table(mono_df$Pathogens), decreasing = TRUE)
-      top_20 <- head(org_counts, 20)
+      top_20 <- head(org_counts, TOP_N_PATHOGENS)
       
       df <- data.frame(
         Organism = names(top_20),
@@ -2019,31 +1994,8 @@ visual_bsi_dashboard <- function(data = NULL) {
         stringsAsFactors = FALSE
       )
       
-      # Define colors for common pathogens - expanded palette with distinct colors
-      pathogen_colors <- c(
-        "E. coli" = "#8B4513", "Escherichia coli" = "#8B4513",
-        "S. aureus" = "#FFD700", "Staphylococcus aureus" = "#FFD700",
-        "S. epidermidis" = "#4F7942", "Staphylococcus epidermidis" = "#4F7942",
-        "K. pneumoniae" = "#CD5C5C", "Klebsiella pneumoniae" = "#CD5C5C",
-        "E. faecalis" = "#9ACD32", "Enterococcus faecalis" = "#9ACD32",
-        "E. faecium" = "#008B8B", "Enterococcus faecium" = "#008B8B",
-        "P. aeruginosa" = "#87CEEB", "Pseudomonas aeruginosa" = "#87CEEB",
-        "P. mirabilis" = "#483D8B", "Proteus mirabilis" = "#483D8B",
-        "S. hominis" = "#FF8C00", "Staphylococcus hominis" = "#FF8C00",
-        "Enterob. cloacae" = "#000080", "Enterobacter cloacae" = "#000080",
-        "S. pneumoniae" = "#DC143C", "Streptococcus pneumoniae" = "#DC143C",
-        "S. haemolyticus" = "#8B008B", "Staphylococcus haemolyticus" = "#8B008B",
-        "Candida albicans" = "#FF1493", "C. albicans" = "#FF1493"
-      )
-      
-      # Assign colors - use predefined colors first, generate distinct colors for the rest
-      df$Color <- pathogen_colors[df$Organism]
-      missing_colors <- which(is.na(df$Color))
-      if (length(missing_colors) > 0) {
-        # Generate distinct colors for organisms without predefined colors
-        additional_colors <- grDevices::rainbow(length(missing_colors), s = 0.6, v = 0.8)
-        df$Color[missing_colors] <- additional_colors
-      }
+      # Assign colors from shared palette
+      df$Color <- assign_pathogen_colors(df$Organism)
       
       # Reverse order for plotting (top organism at top)
       df$Organism <- factor(df$Organism, levels = rev(df$Organism))
@@ -2093,7 +2045,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Count occurrence of each pathogen in polymicrobial episodes
       org_counts <- sort(table(all_pathogens), decreasing = TRUE)
-      top_20 <- head(org_counts, 20)
+      top_20 <- head(org_counts, TOP_N_PATHOGENS)
       
       df <- data.frame(
         Organism = names(top_20),
@@ -2557,7 +2509,6 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       dat <- dat[!is.na(dat$OriginGroup), , drop = FALSE]
       if (!("organism_label" %in% names(dat))) dat$organism_label <- dat$MicroorganismCode
-      # Note: Organism and antibiotic filtering removed per user request
       if (nrow(dat) == 0) return(data.frame())
       # aggregate counts
       dat$is_resistant <- dat$sir_value == "R"
@@ -2959,7 +2910,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Get top 20 pathogens overall
       pathogen_counts <- sort(table(iso_specialty$organism_label), decreasing = TRUE)
-      top_20_pathogens <- names(head(pathogen_counts, 20))
+      top_20_pathogens <- names(head(pathogen_counts, TOP_N_PATHOGENS))
       
       # Filter to top 20 pathogens
       iso_filtered <- iso_specialty[iso_specialty$organism_label %in% top_20_pathogens, ]
@@ -2990,68 +2941,23 @@ visual_bsi_dashboard <- function(data = NULL) {
       }
       
       # Count pathogen-specialty combinations
-      if ("EpisodeId" %in% names(iso_final)) {
-        pathogen_specialty_counts <- aggregate(EpisodeId ~ organism_label + specialty_clean, 
-                                               data = iso_final, FUN = length)
-      } else {
-        # Fallback: count isolates instead of episodes by creating a temporary ID column
-        iso_final$temp_id <- seq_len(nrow(iso_final))
-        pathogen_specialty_counts <- aggregate(temp_id ~ organism_label + specialty_clean, 
-                                               data = iso_final, FUN = length)
-        names(pathogen_specialty_counts)[names(pathogen_specialty_counts) == "temp_id"] <- "EpisodeId"
-      }
+      pathogen_specialty_counts <- count_episodes_or_isolates(iso_final, c("organism_label", "specialty_clean"))
       names(pathogen_specialty_counts) <- c("Pathogen", "Specialty", "Count")
       
       # Order specialties by total episode count
       specialty_totals <- aggregate(Count ~ Specialty, data = pathogen_specialty_counts, FUN = sum)
       specialty_order <- specialty_totals$Specialty[order(specialty_totals$Count, decreasing = TRUE)]
       
-      # Create short pathogen names for display
-      pathogen_specialty_counts$PathogenShort <- gsub("([A-Z])[a-z]+ ([a-z]+)", "\\1. \\2", 
-                                                      pathogen_specialty_counts$Pathogen)
-      pathogen_specialty_counts$PathogenShort <- gsub("Staphylococcus", "S.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Enterococcus", "E.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Escherichia", "E.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Klebsiella", "K.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Candida", "Cand.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Pseudomonas", "P.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Enterobacter", "Enterob.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Proteus", "P.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Streptococcus", "Strep.", pathogen_specialty_counts$PathogenShort)
-      pathogen_specialty_counts$PathogenShort <- gsub("Cutibacterium", "C.", pathogen_specialty_counts$PathogenShort)
-      
-      # Define colors for pathogens
-      pathogen_colors <- c(
-        "C. acnes" = "#000000", "E. faecium" = "#008B8B", "P. aeruginosa" = "#87CEEB", 
-        "S. epidermidis" = "#4F7942", "S. spp." = "#4682B4", "Cand. albicans" = "#FF1493", 
-        "Enterob. cloacae" = "#000080", "P. mirabilis" = "#483D8B", "S. haemolyticus" = "#8B008B",
-        "Strep. pneumoniae" = "#DC143C", "E. coli" = "#8B4513", "K. oxytoca" = "#FF69B4",
-        "S. aureus" = "#FFD700", "S. hominis" = "#FF8C00", "Strep. pyogenes" = "#FF4500",
-        "E. faecalis" = "#9ACD32", "K. pneumoniae" = "#CD5C5C", "S. capitis" = "#008080",
-        "S. marcescens" = "#C0C0C0", "T. glabrata" = "#2F4F4F"
-      )
-      
-      # Assign colors to pathogens in the data
-      pathogen_specialty_counts$Color <- pathogen_colors[pathogen_specialty_counts$PathogenShort]
+      # Create short pathogen names and assign colors from shared palette
+      pathogen_specialty_counts$PathogenShort <- abbreviate_pathogen_name(pathogen_specialty_counts$Pathogen)
+      pathogen_colors <- get_pathogen_colors()
       
       # Set specialty order and create shorter specialty names
       pathogen_specialty_counts$Specialty <- factor(pathogen_specialty_counts$Specialty, 
                                                     levels = specialty_order)
-      
-      # Create shorter specialty names for x-axis
-      pathogen_specialty_counts$SpecialtyShort <- gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
-                                                       pathogen_specialty_counts$Specialty)
-      pathogen_specialty_counts$SpecialtyShort <- gsub("Internal Medicine", "Internal Medicine", 
-                                                       pathogen_specialty_counts$SpecialtyShort)
-      pathogen_specialty_counts$SpecialtyShort <- gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines", 
-                                                       pathogen_specialty_counts$SpecialtyShort)
-      pathogen_specialty_counts$SpecialtyShort <- gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", 
-                                                       pathogen_specialty_counts$SpecialtyShort)
-      
+      pathogen_specialty_counts$SpecialtyShort <- shorten_specialty_names(as.character(pathogen_specialty_counts$Specialty))
       pathogen_specialty_counts$SpecialtyShort <- factor(pathogen_specialty_counts$SpecialtyShort, 
-                                                         levels = gsub("Interdisciplinary or unknown", "Interdisciplinary\\nor unknown", 
-                                                                       gsub("Surgery/operative disciplines", "Surgery/operative\\ndisciplines",
-                                                                            gsub("Neurology and Neurosurgery", "Neurology and\\nNeurosurgery", specialty_order))))
+                                                         levels = shorten_specialty_names(specialty_order))
       
       # Create the stacked bar chart
       p <- ggplot2::ggplot(pathogen_specialty_counts, ggplot2::aes(x = SpecialtyShort, y = Count, fill = PathogenShort)) +
@@ -3074,13 +2980,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       return(p)
     })
     
-    # Demographics helper functions
-    create_age_groups <- function(ages) {
-      cut(ages, 
-          breaks = c(-Inf, 20, 40, 60, 80, Inf),
-          labels = c("< 20 years", "21 - 40 years", "41 - 60 years", "61 - 80 years", "81 + years"),
-          include.lowest = TRUE, right = FALSE)
-    }
+    # Demographics: create_age_groups() is defined in reportModules.R
     
     # Demographics summary
     output$demographics_summary <- shiny::renderUI({
@@ -3166,7 +3066,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Clean age data and create groups
       ages_numeric <- as.numeric(pat$Age)
-      ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
+      ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= MAX_AGE]
       
       if (length(ages_numeric) == 0) return(data.frame())
       
@@ -3233,7 +3133,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Clean age data and create groups
       ages_numeric <- as.numeric(pat$Age)
-      ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
+      ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= MAX_AGE]
       
       if (length(ages_numeric) == 0) {
         return(ggplot2::ggplot() + ggplot2::theme_void())
@@ -3296,7 +3196,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Clean age data
       ages_numeric <- as.numeric(pat$Age)
-      ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= 120]
+      ages_numeric <- ages_numeric[!is.na(ages_numeric) & ages_numeric >= 0 & ages_numeric <= MAX_AGE]
       
       if (length(ages_numeric) == 0) {
         return(shiny::div(
@@ -3388,13 +3288,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(values$current_data, values$current_data$ehrbsi)
       ehrbsi_data <- values$current_data$ehrbsi
       
-      # Debug: Check if data exists before filtering
       if (is.null(ehrbsi_data) || nrow(ehrbsi_data) == 0) {
         return(data.frame(Message = "No EHRBSI data available"))
       }
       
-      # Temporarily disable filtering to test if data loads
-      # Just return the raw data for now
       ehrbsi_data
     }, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
     
@@ -3650,9 +3547,9 @@ visual_bsi_dashboard <- function(data = NULL) {
       total_patients <- values$processed_data_stats$final_patients
       
       # Calculate rates with safe division
-      positive_rate <- if (total_patients > 0) round(positive_cultures / total_patients * 1000, 2) else 0
-      uncontaminated_rate <- if (total_patients > 0) round(final_cultures / total_patients * 1000, 2) else 0
-      bc_per_1000_days <- if (patient_days > 0) round(bc_count / patient_days * 1000, 2) else 0
+      positive_rate <- if (total_patients > 0) round(positive_cultures / total_patients * RATE_PER_N, 2) else 0
+      uncontaminated_rate <- if (total_patients > 0) round(final_cultures / total_patients * RATE_PER_N, 2) else 0
+      bc_per_1000_days <- if (patient_days > 0) round(bc_count / patient_days * RATE_PER_N, 2) else 0
       uncontaminated_positive_rate <- if (bc_count > 0) round(final_cultures / bc_count, 3) else 0
       
       # Build informative summary
@@ -3717,87 +3614,10 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       selected_hospital <- input$hospital_analysis_hospital
       selected_date <- input$hospital_analysis_date
+      selected_year <- normalize_date_to_year(selected_date)
       
-      # Normalize selected date to a year string for consistent filtering
-      selected_year <- tryCatch({
-        if (inherits(selected_date, "Date")) {
-          format(selected_date, "%Y")
-        } else if (is.numeric(selected_date)) {
-          as.character(selected_date)
-        } else if (!is.null(selected_date) && grepl("^\\d{4}$", as.character(selected_date))) {
-          as.character(selected_date)
-        } else {
-          format(as.Date(selected_date), "%Y")
-        }
-      }, error = function(e) as.character(selected_date))
-      
-      # Filter EHRBSI table
-      ehrbsi_filtered <- NULL
-      if (!is.null(values$current_data$ehrbsi)) {
-        ehrbsi <- values$current_data$ehrbsi
-        if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi)) {
-          ehrbsi_filtered <- ehrbsi[
-            ehrbsi$HospitalId == selected_hospital & 
-              ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
-          ]
-        }
-      }
-      
-      # Filter patient table
-      patient_filtered <- NULL
-      if (!is.null(values$current_data$patient)) {
-        patient <- values$current_data$patient
-        if ("HospitalId" %in% names(patient)) {
-          # Get year from DateOfHospitalAdmission if available, otherwise use all patients from hospital
-          if ("DateOfHospitalAdmission" %in% names(patient)) {
-            patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-            patient_filtered <- patient[
-              patient$HospitalId == selected_hospital & 
-                patient$admission_year == selected_year, , drop = FALSE
-            ]
-          } else {
-            patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
-          }
-        }
-      }
-      
-      # Filter isolate table based on patient records
-      isolate_filtered <- NULL
-      if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
-        isolate <- values$current_data$isolate
-        if ("ParentId" %in% names(isolate) && "RecordId" %in% names(patient_filtered)) {
-          patient_record_ids <- patient_filtered$RecordId
-          isolate_filtered <- isolate[isolate$ParentId %in% patient_record_ids, , drop = FALSE]
-        }
-      }
-      
-      # Filter res table based on isolate records
-      res_filtered <- NULL
-      if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
-        res <- values$current_data$res
-        if ("ParentId" %in% names(res) && "RecordId" %in% names(isolate_filtered)) {
-          isolate_record_ids <- isolate_filtered$RecordId
-          res_filtered <- res[res$ParentId %in% isolate_record_ids, , drop = FALSE]
-        }
-      }
-      
-      # Filter episodes based on patient records
-      episodes_filtered <- NULL
-      if (!is.null(values$episodes) && !is.null(patient_filtered)) {
-        episodes <- values$episodes
-        if ("AdmissionRecordId" %in% names(episodes) && "RecordId" %in% names(patient_filtered)) {
-          patient_record_ids <- patient_filtered$RecordId
-          episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_record_ids, , drop = FALSE]
-        }
-      }
-      
-      list(
-        ehrbsi = ehrbsi_filtered,
-        patient = patient_filtered,
-        isolate = isolate_filtered,
-        res = res_filtered,
-        episodes = episodes_filtered
-      )
+      filter_hospital_data(values$current_data, values$episodes,
+                           selected_hospital, selected_date, selected_year)
     })
     
     # Output: Hospital analysis summary
@@ -4119,16 +3939,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Create time period column based on aggregation selection
       agg <- if (!is.null(input$ts_aggregation)) input$ts_aggregation else "month"
-      
-      ep_sum$TimePeriod <- switch(agg,
-                                  "week" = as.Date(cut(ep_sum$EpisodeStartDate, breaks = "week")),
-                                  "month" = as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01")),
-                                  "quarter" = as.Date(paste0(
-                                    format(ep_sum$EpisodeStartDate, "%Y"), "-",
-                                    sprintf("%02d", (as.numeric(format(ep_sum$EpisodeStartDate, "%m")) - 1) %/% 3 * 3 + 1), "-01"
-                                  )),
-                                  as.Date(paste0(format(ep_sum$EpisodeStartDate, "%Y-%m"), "-01"))  # default to month
-      )
+      ep_sum$TimePeriod <- create_time_period(ep_sum$EpisodeStartDate, agg)
       
       # Aggregate by time period
       ts_agg <- stats::aggregate(
@@ -4386,7 +4197,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       if ("NumberOfHOHABSIs" %in% names(ehrbsi) && "NumberOfHospitalPatientDays" %in% names(ehrbsi)) {
         ehrbsi$RatePerPatientDays <- ifelse(
           !is.na(ehrbsi$NumberOfHospitalPatientDays) & ehrbsi$NumberOfHospitalPatientDays > 0,
-          (ehrbsi$NumberOfHOHABSIs / ehrbsi$NumberOfHospitalPatientDays) * 1000,
+          (ehrbsi$NumberOfHOHABSIs / ehrbsi$NumberOfHospitalPatientDays) * RATE_PER_N,
           NA
         )
       }
@@ -4410,17 +4221,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       if (!"DateUsedForStatistics" %in% names(ehrbsi)) return(NULL)
       
       # Parse date - handle various formats
-      ehrbsi$DateParsed <- tryCatch({
-        if (is.numeric(ehrbsi$DateUsedForStatistics)) {
-          # Assume it's a year
-          as.Date(paste0(ehrbsi$DateUsedForStatistics, "-01-01"))
-        } else {
-          as.Date(ehrbsi$DateUsedForStatistics)
-        }
-      }, error = function(e) {
-        # Try parsing as character year
-        as.Date(paste0(as.character(ehrbsi$DateUsedForStatistics), "-01-01"))
-      })
+      ehrbsi$DateParsed <- parse_date_to_year_start(ehrbsi$DateUsedForStatistics)
       
       # Remove rows with NA dates
       ehrbsi <- ehrbsi[!is.na(ehrbsi$DateParsed), , drop = FALSE]
@@ -4428,15 +4229,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       
       # Create time period based on aggregation selection
       agg <- if (!is.null(input$agg_time_aggregation)) input$agg_time_aggregation else "year"
-      
-      ehrbsi$TimePeriod <- switch(agg,
-        "month" = as.Date(paste0(format(ehrbsi$DateParsed, "%Y-%m"), "-01")),
-        "quarter" = as.Date(paste0(
-          format(ehrbsi$DateParsed, "%Y"), "-",
-          sprintf("%02d", (as.numeric(format(ehrbsi$DateParsed, "%m")) - 1) %/% 3 * 3 + 1), "-01"
-        )),
-        "year" = as.Date(paste0(format(ehrbsi$DateParsed, "%Y"), "-01-01"))
-      )
+      ehrbsi$TimePeriod <- create_time_period(ehrbsi$DateParsed, agg)
       
       # Aggregate by time period
       agg_cols <- c("NumberOfTotalBSIs", "NumberOfHOHABSIs", "NumberOfImportedHABSIs",
@@ -4455,7 +4248,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       if ("NumberOfHOHABSIs" %in% names(time_agg) && "NumberOfHospitalPatientDays" %in% names(time_agg)) {
         time_agg$RatePerPatientDays <- ifelse(
           time_agg$NumberOfHospitalPatientDays > 0,
-          (time_agg$NumberOfHOHABSIs / time_agg$NumberOfHospitalPatientDays) * 1000,
+          (time_agg$NumberOfHOHABSIs / time_agg$NumberOfHospitalPatientDays) * RATE_PER_N,
           NA
         )
       }
@@ -4526,7 +4319,7 @@ visual_bsi_dashboard <- function(data = NULL) {
         if ("NumberOfHOHABSIs" %in% names(hosp_agg) && "NumberOfHospitalPatientDays" %in% names(hosp_agg)) {
           hosp_agg$RatePerPatientDays <- ifelse(
             hosp_agg$NumberOfHospitalPatientDays > 0,
-            (hosp_agg$NumberOfHOHABSIs / hosp_agg$NumberOfHospitalPatientDays) * 1000,
+            (hosp_agg$NumberOfHOHABSIs / hosp_agg$NumberOfHospitalPatientDays) * RATE_PER_N,
             NA
           )
         }
@@ -5215,79 +5008,15 @@ visual_bsi_dashboard <- function(data = NULL) {
               }
             }
             
-            # Build snapshot using the same rules as hospital_filtered_data(),
-            # with robust year normalization to match Patient admissions
-            selected_year <- tryCatch({
-              if (inherits(selected_date, "Date")) {
-                format(selected_date, "%Y")
-              } else if (is.numeric(selected_date)) {
-                as.character(selected_date)
-              } else if (!is.null(selected_date) && grepl("^\\d{4}$", as.character(selected_date))) {
-                as.character(selected_date)
-              } else {
-                format(as.Date(selected_date), "%Y")
-              }
-            }, error = function(e) as.character(selected_date))
+            # Build snapshot using the same rules as hospital_filtered_data()
+            selected_year <- normalize_date_to_year(selected_date)
             
-            ehrbsi_filtered <- NULL
-            if (!is.null(values$current_data$ehrbsi)) {
-              ehrbsi <- values$current_data$ehrbsi
-              if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi) &&
-                  !is.null(selected_hospital) && !is.null(selected_date)) {
-                ehrbsi_filtered <- ehrbsi[
-                  ehrbsi$HospitalId == selected_hospital &
-                    ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
-                ]
-              }
-            }
-            
-            patient_filtered <- NULL
-            if (!is.null(values$current_data$patient)) {
-              patient <- values$current_data$patient
-              if ("HospitalId" %in% names(patient)) {
-                if ("DateOfHospitalAdmission" %in% names(patient)) {
-                  patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-                  patient_filtered <- patient[
-                    patient$HospitalId == selected_hospital &
-                      patient$admission_year == selected_year, , drop = FALSE
-                  ]
-                } else {
-                  patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
-                }
-              }
-            }
-            
-            isolate_filtered <- NULL
-            if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
-              isolate <- values$current_data$isolate
-              if ("ParentId" %in% names(isolate) && "RecordId" %in% names(patient_filtered)) {
-                isolate_filtered <- isolate[isolate$ParentId %in% patient_filtered$RecordId, , drop = FALSE]
-              }
-            }
-            
-            res_filtered <- NULL
-            if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
-              res <- values$current_data$res
-              if ("ParentId" %in% names(res) && "RecordId" %in% names(isolate_filtered)) {
-                res_filtered <- res[res$ParentId %in% isolate_filtered$RecordId, , drop = FALSE]
-              }
-            }
-            
-            episodes_filtered <- NULL
-            if (!is.null(values$episodes) && !is.null(patient_filtered)) {
-              episodes <- values$episodes
-              if ("AdmissionRecordId" %in% names(episodes) && "RecordId" %in% names(patient_filtered)) {
-                episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_filtered$RecordId, , drop = FALSE]
-              }
-            }
-            
-            report_data$hospital_data <- list(
-              ehrbsi = ehrbsi_filtered,
-              patient = patient_filtered,
-              isolate = isolate_filtered,
-              res = res_filtered,
-              episodes = episodes_filtered
+            hospital_snapshot <- filter_hospital_data(
+              values$current_data, values$episodes,
+              selected_hospital, selected_date, selected_year
             )
+            
+            report_data$hospital_data <- hospital_snapshot
             report_data$hospital_id <- selected_hospital
             report_data$date_filter <- selected_date
           }, error = function(e) {

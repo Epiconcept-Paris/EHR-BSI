@@ -1646,7 +1646,7 @@ detect_contaminants <- function(isolate_df, patient_df, commensal_path = "refere
   to_date <- function(x) {
     if (inherits(x, "Date")) return(x)
     if (inherits(x, "POSIXt")) return(as.Date(x))
-    if (is.numeric(x)) return(as.Date(x, origin = "1899-12-30"))
+    if (is.numeric(x)) return(as.Date(x, origin = EXCEL_DATE_ORIGIN))
     as.Date(x)
   }
   
@@ -1691,7 +1691,7 @@ detect_contaminants <- function(isolate_df, patient_df, commensal_path = "refere
     # Differences in days to neighbours
     lead_diff <- c(as.numeric(diff(d)), NA)
     lag_diff  <- c(NA, as.numeric(diff(d)))
-    pair_vec <- (!is.na(lead_diff) & lead_diff <= 2) | (!is.na(lag_diff) & lag_diff <= 2)
+    pair_vec <- (!is.na(lead_diff) & lead_diff <= CONTAMINANT_WINDOW_DAYS) | (!is.na(lag_diff) & lag_diff <= CONTAMINANT_WINDOW_DAYS)
     has_pair[ii] <- pair_vec | has_pair[ii]
   }
   
@@ -1741,15 +1741,7 @@ standardize_date_format <- function(data) {
 #' @return List with all date columns in all tables converted to 'yyyy-mm-dd' format
 #' @export
 standardize_all_table_dates <- function(result_list) {
-  table_names <- c("ehrbsi", "patient", "isolate", "res")
-  
-  for (tbl_name in table_names) {
-    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
-      result_list[[tbl_name]] <- standardize_date_format(result_list[[tbl_name]])
-    }
-  }
-  
-  return(result_list)
+  apply_to_all_tables(result_list, standardize_date_format)
 }
 
 #' Standardize Sex column values
@@ -1787,15 +1779,7 @@ standardize_sex_values <- function(data) {
 #' @return List with Sex values standardized to 'F', 'M', or 'OTH'
 #' @export
 standardize_all_table_sex <- function(result_list) {
-  table_names <- c("ehrbsi", "patient", "isolate", "res")
-  
-  for (tbl_name in table_names) {
-    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
-      result_list[[tbl_name]] <- standardize_sex_values(result_list[[tbl_name]])
-    }
-  }
-  
-  return(result_list)
+  apply_to_all_tables(result_list, standardize_sex_values)
 }
 
 #' Standardize MICSusceptibilitySign column values
@@ -1831,15 +1815,7 @@ standardize_mic_susceptibility_sign <- function(data) {
 #' @return List with MICSusceptibilitySign '<' values changed to '<='
 #' @export
 standardize_all_table_mic_sign <- function(result_list) {
-  table_names <- c("ehrbsi", "patient", "isolate", "res")
-  
-  for (tbl_name in table_names) {
-    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
-      result_list[[tbl_name]] <- standardize_mic_susceptibility_sign(result_list[[tbl_name]])
-    }
-  }
-  
-  return(result_list)
+  apply_to_all_tables(result_list, standardize_mic_susceptibility_sign)
 }
 
 #' Standardize UnitSpecialtyShort column values
@@ -1855,7 +1831,7 @@ standardize_unit_specialty_short <- function(data) {
     return(data)
   }
   
-  valid_specialties <- c("GO", "ICU", "LTC", "MED", "OTH", "PED", "PSY", "RHB", "SUR")
+  valid_specialties <- VALID_UNIT_SPECIALTIES
   
   if ("UnitSpecialtyShort" %in% names(data)) {
     data$UnitSpecialtyShort <- ifelse(
@@ -1877,13 +1853,5 @@ standardize_unit_specialty_short <- function(data) {
 #' @return List with UnitSpecialtyShort '0' and 'O' values changed to 'OTH'
 #' @export
 standardize_all_table_unit_specialty <- function(result_list) {
-  table_names <- c("ehrbsi", "patient", "isolate", "res")
-  
-  for (tbl_name in table_names) {
-    if (tbl_name %in% names(result_list) && !is.null(result_list[[tbl_name]])) {
-      result_list[[tbl_name]] <- standardize_unit_specialty_short(result_list[[tbl_name]])
-    }
-  }
-  
-  return(result_list)
+  apply_to_all_tables(result_list, standardize_unit_specialty_short)
 }
