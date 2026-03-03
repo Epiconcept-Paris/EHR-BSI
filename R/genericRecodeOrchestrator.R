@@ -252,17 +252,8 @@ process_country_bsi <- function(country,
     episode_summary = if (exists("eps_result") && is.list(eps_result) && "episode_summary" %in% names(eps_result)) eps_result$episode_summary else NULL
   )
   
-  # Standardize all date columns to yyyy-mm-dd format across all tables
-  result <- standardize_all_table_dates(result)
-  
-  # Standardize Sex values: 'Female' -> 'F', 'Male' -> 'M', anything else -> 'OTH'
-  result <- standardize_all_table_sex(result)
-  
-  # Standardize MICSusceptibilitySign: '<' -> '<=', '>' -> '>='
-  result <- standardize_all_table_mic_sign(result)
-  
-  # Standardize UnitSpecialtyShort: '0' or 'O' -> 'OTH'
-  result <- standardize_all_table_unit_specialty(result)
+  # Apply final export rules (standardization + res table checks)
+  result <- apply_export_data_rules(result)
   
   # Write files if requested using country-specific function
   if (write_to_file) {

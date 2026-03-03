@@ -1855,11 +1855,13 @@ standardize_unit_specialty_short <- function(data) {
     return(data)
   }
   
+  valid_specialties <- c("GO", "ICU", "LTC", "MED", "OTH", "PED", "PSY", "RHB", "SUR")
+  
   if ("UnitSpecialtyShort" %in% names(data)) {
     data$UnitSpecialtyShort <- ifelse(
-      data$UnitSpecialtyShort %in% c("0", "O"),
-      "OTH",
-      data$UnitSpecialtyShort
+      data$UnitSpecialtyShort %in% valid_specialties,
+      data$UnitSpecialtyShort,
+      "OTH"
     )
   }
   
