@@ -2,7 +2,20 @@ calculateEpisodes <- function(patient_df,
                               isolate_df,
                               commensal_df, 
                               episodeDuration = 14){
-  comm_codes <- unique(commensal_df$SNOMED.Code)
+  to_chr <- function(x) {
+    if (is.null(x)) return(character(0))
+    if (is.numeric(x)) return(format(x, scientific = FALSE, trim = TRUE))
+    as.character(x)
+  }
+
+  code_col <- if ("SNOMED.Code" %in% names(commensal_df)) "SNOMED.Code" else "SNOMED Code"
+  term_col <- if ("SNOMED.Preferred.Term" %in% names(commensal_df)) "SNOMED.Preferred.Term" else "SNOMED Preferred Term"
+  comm_codes <- tolower(trimws(to_chr(commensal_df[[code_col]])))
+  comm_terms <- if (term_col %in% names(commensal_df)) {
+    tolower(trimws(to_chr(commensal_df[[term_col]])))
+  } else {
+    character(0)
+  }
   
   # Robust date coercion: supports Date/POSIX, ISO, EU/US, with/without time, and Excel serials
   to_date <- function(x) {
@@ -41,15 +54,35 @@ calculateEpisodes <- function(patient_df,
     as.Date(parsed)
   }
   
+  iso_codes <- tolower(trimws(to_chr(isolate_df$MicroorganismCode)))
+  iso_labels <- if ("MicroorganismCodeLabel" %in% names(isolate_df)) {
+    tolower(trimws(to_chr(isolate_df$MicroorganismCodeLabel)))
+  } else {
+    rep("", nrow(isolate_df))
+  }
+  is_commensal <- (iso_codes %in% comm_codes) | (iso_labels %in% comm_terms)
+
+
   isolates_flagged <- isolate_df %>%
-    mutate(org_type = if_else(MicroorganismCode %in% comm_codes,
-                              "CC", "RP"))
+    mutate(org_type = if_else(is_commensal, "CC", "RP"))
 
   ## ------------------------------------------------------------------
   ## 2.  Attach admission dates so we know which isolates belong where
   ## ------------------------------------------------------------------
+  message("calculateEpisodes: BEFORE admission join — ",
+          nrow(isolates_flagged), " isolates (",
+          sum(isolates_flagged$org_type == "CC"), " CC, ",
+          sum(isolates_flagged$org_type == "RP"), " RP)")
+  message("  isolate ParentIds (sample): ",
+          paste(head(unique(isolates_flagged$ParentId), 5), collapse = ", "))
+  message("  patient RecordIds (sample): ",
+          paste(head(unique(patient_df$RecordId), 5), collapse = ", "))
+  message("  ParentIds matching a patient RecordId: ",
+          sum(isolates_flagged$ParentId %in% patient_df$RecordId), " of ",
+          nrow(isolates_flagged))
+
   # ParentId in isolate now links to patient's RecordId (not PatientId)
-  iso_in_admission <- isolates_flagged %>%
+  iso_after_join <- isolates_flagged %>%
     inner_join(patient_df %>%
                  select(AdmissionRecordId = RecordId,
                         PatientId,
@@ -57,13 +90,44 @@ calculateEpisodes <- function(patient_df,
                         DateOfHospitalAdmission,
                         DateOfHospitalDischarge),
                by = c("ParentId" = "AdmissionRecordId"),
-               relationship = "many-to-many"  ) %>%
+               relationship = "many-to-many"  )
+
+  message("calculateEpisodes: AFTER inner_join, BEFORE date filter — ",
+          nrow(iso_after_join), " rows (",
+          sum(iso_after_join$org_type == "CC"), " CC, ",
+          sum(iso_after_join$org_type == "RP"), " RP)")
+
+  iso_in_admission <- iso_after_join %>%
     # Rename ParentId to AdmissionRecordId for downstream use
     rename(AdmissionRecordId = ParentId) %>%
     # Convert dates to Date class for consistent comparison (handles POSIXct/character)
     filter(to_date(DateOfSpecimenCollection) >= to_date(DateOfHospitalAdmission),
            is.na(DateOfHospitalDischarge) |
              to_date(DateOfSpecimenCollection) <= to_date(DateOfHospitalDischarge))
+
+  message("calculateEpisodes: AFTER date filter — ",
+          nrow(iso_in_admission), " rows (",
+          sum(iso_in_admission$org_type == "CC"), " CC, ",
+          sum(iso_in_admission$org_type == "RP"), " RP)")
+  if (nrow(iso_after_join) > nrow(iso_in_admission)) {
+    lost <- nrow(iso_after_join) - nrow(iso_in_admission)
+    message("  Date filter removed ", lost, " isolates")
+    # Show a few examples of filtered-out rows
+    kept_keys <- paste(iso_in_admission$AdmissionRecordId,
+                       iso_in_admission$DateOfSpecimenCollection, sep = "|")
+    rejected <- iso_after_join %>%
+      mutate(.key = paste(ParentId, DateOfSpecimenCollection, sep = "|")) %>%
+      filter(!.key %in% kept_keys)
+    if (nrow(rejected) > 0) {
+      sample_rej <- head(rejected, 5)
+      message("  Sample rejected rows (specimen vs admission-discharge):")
+      for (i in seq_len(nrow(sample_rej))) {
+        message("    Specimen: ", sample_rej$DateOfSpecimenCollection[i],
+                "  Admission: ", sample_rej$DateOfHospitalAdmission[i],
+                "  Discharge: ", sample_rej$DateOfHospitalDischarge[i])
+      }
+    }
+  }
   
   ## ---- RULE 1  – recognised pathogens (one pos = onset) ----------------
   rule1 <- iso_in_admission %>%
