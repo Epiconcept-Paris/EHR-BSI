@@ -104,7 +104,10 @@ visual_bsi_dashboard <- function(data = NULL) {
                            selected = "all"),
         shiny::selectInput("global_year_filter", "Year:",
                            choices = c("All" = "all"),
-                           selected = "all")
+                           selected = "all"),
+        shiny::checkboxInput("global_exclude_commensals",
+                             "Exclude commensal-only episodes",
+                             value = FALSE)
       )
     ),
     # Main content (no mainPanel wrapper needed with page_sidebar)
@@ -1589,6 +1592,11 @@ visual_bsi_dashboard <- function(data = NULL) {
         ep <- ep[as.character(ep$episodeYear) == input$global_year_filter, , drop = FALSE]
       }
       
+      # Exclude commensal-only episodes (those with no recognized pathogens)
+      if (isTRUE(input$global_exclude_commensals) && "AllCommensal" %in% names(ep)) {
+        ep <- ep[!ep$AllCommensal | is.na(ep$AllCommensal), , drop = FALSE]
+      }
+      
       ep
     })
     
@@ -1611,6 +1619,11 @@ visual_bsi_dashboard <- function(data = NULL) {
           ep_sum$episodeYear <- as.integer(format(as.Date(ep_sum$EpisodeStartDate), "%Y"))
           ep_sum <- ep_sum[as.character(ep_sum$episodeYear) == input$global_year_filter, , drop = FALSE]
         }
+      }
+      
+      # Exclude commensal-only episodes (those with no recognized pathogens)
+      if (isTRUE(input$global_exclude_commensals) && "AllCommensal" %in% names(ep_sum)) {
+        ep_sum <- ep_sum[!ep_sum$AllCommensal | is.na(ep_sum$AllCommensal), , drop = FALSE]
       }
       
       ep_sum
