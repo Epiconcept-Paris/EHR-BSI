@@ -86,12 +86,12 @@ visual_bsi_dashboard <- function(data = NULL) {
       ),
       
       # PDF Report download button - only shows when data is available
-      # shiny::conditionalPanel(
-      #   condition = "output.data_available",
-      #   shiny::downloadButton("download_pdf_report", "Download PDF Report",
-      #                         class = "btn-info",
-      #                         style = "width: 100%; margin-top: 5px;")
-      # ),
+      shiny::conditionalPanel(
+        condition = "output.data_available",
+        shiny::downloadButton("download_pdf_report", "Download PDF Report",
+                              class = "btn-info",
+                              style = "width: 100%; margin-top: 5px;")
+      ),
       
       shiny::hr(),
       
@@ -2217,44 +2217,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       create_infection_type_pie(ep, "CA")
     })
     
-    # Common commensal analysis
-    get_commensal_data <- function(episodes_data, filter_class = NULL) {
-      if (is.null(episodes_data) || nrow(episodes_data) == 0) return(NULL)
-      
-      # Filter by episode class if specified
-      if (!is.null(filter_class)) {
-        if ("EpisodeClass" %in% names(episodes_data)) {
-          if (filter_class == "HA") {
-            episodes_data <- episodes_data[episodes_data$EpisodeClass %in% c("HO-HA", "IMP-HA"), ]
-          } else {
-            episodes_data <- episodes_data[episodes_data$EpisodeClass == filter_class, ]
-          }
-        }
-      }
-      
-      if (nrow(episodes_data) == 0) return(NULL)
-      
-      # Check if AllCommensal column exists
-      if (!"AllCommensal" %in% names(episodes_data)) {
-        # If column doesn't exist, return NULL
-        return(NULL)
-      }
-      
-      total <- nrow(episodes_data)
-      commensal_count <- sum(episodes_data$AllCommensal, na.rm = TRUE)
-      non_commensal_count <- total - commensal_count
-      
-      df <- data.frame(
-        Type = c("Common Commensal", "Recognized Pathogen"),
-        Count = c(commensal_count, non_commensal_count),
-        Percentage = round(c(commensal_count, non_commensal_count) / total * 100, 1),
-        stringsAsFactors = FALSE
-      )
-      
-      return(df)
-    }
-    
-    # Common commensal summary
+    # Common commensal summary (uses get_commensal_data / generate_commensal_summary from reportModules.R)
     output$commensal_summary <- shiny::renderUI({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
@@ -2277,40 +2240,9 @@ visual_bsi_dashboard <- function(data = NULL) {
           )
         ))
       }
-      
-      comm_data <- get_commensal_data(ep)
-      if (is.null(comm_data) || nrow(comm_data) == 0) {
-        return(shiny::div(
-          style = "background: #f8f9fa; 
-                   color: #495057; 
-                   padding: 18px 22px; 
-                   border-left: 4px solid #17a2b8;
-                   border-radius: 4px;
-                   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                   line-height: 1.7;",
-          shiny::div(
-            style = "font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #495057;",
-            "Common Commensal Episodes"
-          ),
-          shiny::div(
-            style = "font-size: 14px; color: #6c757d;",
-            "Common commensal data not available"
-          )
-        ))
-      }
-      
-      # Safe extraction of counts with fallback
-      cc <- if ("Common Commensal" %in% comm_data$Type) comm_data[comm_data$Type == "Common Commensal", "Count"] else 0
-      rp <- if ("Recognized Pathogen" %in% comm_data$Type) comm_data[comm_data$Type == "Recognized Pathogen", "Count"] else 0
-      cc_pct <- if ("Common Commensal" %in% comm_data$Type) comm_data[comm_data$Type == "Common Commensal", "Percentage"] else 0
-      rp_pct <- if ("Recognized Pathogen" %in% comm_data$Type) comm_data[comm_data$Type == "Recognized Pathogen", "Percentage"] else 0
-      
-      # Handle case where extraction returns empty vector
-      cc <- if (length(cc) == 0) 0 else cc
-      rp <- if (length(rp) == 0) 0 else rp
-      cc_pct <- if (length(cc_pct) == 0) 0 else cc_pct
-      rp_pct <- if (length(rp_pct) == 0) 0 else rp_pct
-      
+
+      summary_html <- generate_commensal_summary(ep, for_markdown = FALSE)
+
       shiny::div(
         style = "background: #f8f9fa; 
                  color: #495057; 
@@ -2325,59 +2257,28 @@ visual_bsi_dashboard <- function(data = NULL) {
         ),
         shiny::div(
           style = "font-size: 14px; color: #495057;",
-          shiny::HTML(paste0(
-            "<strong>", format(cc, big.mark = ","), 
-            "</strong> episodes (<strong>", cc_pct, 
-            "%</strong>) involved only common commensal organisms, while <strong>",
-            format(rp, big.mark = ","), 
-            "</strong> episodes (<strong>", rp_pct, 
-            "%</strong>) involved recognized pathogens (or mixed infections with both types)."
-          ))
+          shiny::HTML(summary_html)
         )
       )
     })
-    
-    # Common commensal pie charts
-    create_commensal_pie <- function(episodes_data, filter_class = NULL) {
-      comm_data <- get_commensal_data(episodes_data, filter_class)
-      if (is.null(comm_data) || nrow(comm_data) == 0) {
-        return(ggplot2::ggplot() + 
-                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
-                 ggplot2::theme_void())
-      }
-      
-      colors <- c("Common Commensal" = "#87CEEB", "Recognized Pathogen" = "#FF6347")
-      
-      # Only use colors for types that exist in the data
-      used_colors <- colors[names(colors) %in% comm_data$Type]
-      
-      ggplot2::ggplot(comm_data, ggplot2::aes(x = "", y = Count, fill = Type)) +
-        ggplot2::geom_bar(stat = "identity", width = 1) +
-        ggplot2::coord_polar("y", start = 0) +
-        ggplot2::scale_fill_manual(values = used_colors) +
-        ggplot2::theme_void() +
-        ggplot2::theme(legend.position = "bottom") +
-        ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")), 
-                           position = ggplot2::position_stack(vjust = 0.5),
-                           size = 3, fontface = "bold")
-    }
-    
+
+    # Common commensal pie charts (uses plot_commensal_pie from reportModules.R)
     output$commensal_all <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
-      create_commensal_pie(ep)
+      plot_commensal_pie(ep)
     })
     
     output$commensal_ha <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
-      create_commensal_pie(ep, "HA")
+      plot_commensal_pie(ep, "HA")
     })
     
     output$commensal_ca <- shiny::renderPlot({
       shiny::req(values$episodes)
       ep <- episodes_tbl()
-      create_commensal_pie(ep, "CA")
+      plot_commensal_pie(ep, "CA")
     })
     
     
@@ -4399,6 +4300,11 @@ visual_bsi_dashboard <- function(data = NULL) {
           # Copy template to temp location
           file.copy(template_path, temp_qmd, overwrite = TRUE)
           
+          # Save report data to RDS to avoid YAML serialization issues with NA values
+          temp_rds <- file.path(temp_dir, "report_data.rds")
+          saveRDS(report_data, temp_rds)
+          temp_rds <- normalizePath(temp_rds, winslash = "/")
+          
           # Set working directory to temp for rendering
           old_wd <- getwd()
           setwd(temp_dir)
@@ -4409,12 +4315,12 @@ visual_bsi_dashboard <- function(data = NULL) {
               input = temp_qmd,
               output_format = "pdf",
               execute_params = list(
-                report_data = report_data,
+                report_data_path = temp_rds,
                 country = if (!is.null(values$country)) values$country else "DATA",
                 report_date = as.character(Sys.time()),
                 module_path = module_path
               ),
-              quiet = FALSE  # Set to FALSE for debugging
+              quiet = FALSE
             )
             
             # Find the generated PDF (Quarto creates .pdf from .qmd)
@@ -4433,10 +4339,9 @@ visual_bsi_dashboard <- function(data = NULL) {
             setwd(old_wd)
           })
           
-          # Clean up temp file
-          if (file.exists(temp_qmd)) {
-            unlink(temp_qmd)
-          }
+          # Clean up temp files
+          if (file.exists(temp_qmd)) unlink(temp_qmd)
+          if (file.exists(temp_rds)) unlink(temp_rds)
           
           shiny::removeNotification("pdf_gen")
           shiny::showNotification("PDF report generated successfully!", type = "message", duration = 3)

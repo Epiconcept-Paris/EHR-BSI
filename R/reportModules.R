@@ -1428,3 +1428,291 @@ generate_hospital_summary <- function(episodes_data, patient_data, hospital_id, 
   return(text)
 }
 
+# =============================================================================
+# COMMENSAL ANALYSIS
+# =============================================================================
+
+#' Get commensal vs recognised pathogen breakdown
+#' @param episodes_data Data frame with episodes (must contain AllCommensal column)
+#' @param filter_class Optional episode class filter ("HA", "CA", or NULL for all)
+#' @return Data frame with Type, Count, Percentage columns or NULL
+#' @export
+get_commensal_data <- function(episodes_data, filter_class = NULL) {
+  if (is.null(episodes_data) || nrow(episodes_data) == 0) return(NULL)
+
+  if (!is.null(filter_class)) {
+    if ("EpisodeClass" %in% names(episodes_data)) {
+      if (filter_class == "HA") {
+        episodes_data <- episodes_data[episodes_data$EpisodeClass %in% c("HO-HA", "IMP-HA"), ]
+      } else {
+        episodes_data <- episodes_data[episodes_data$EpisodeClass == filter_class, ]
+      }
+    }
+  }
+
+  if (nrow(episodes_data) == 0) return(NULL)
+  if (!"AllCommensal" %in% names(episodes_data)) return(NULL)
+
+  total <- nrow(episodes_data)
+  commensal_count <- sum(episodes_data$AllCommensal, na.rm = TRUE)
+  non_commensal_count <- total - commensal_count
+
+  data.frame(
+    Type = c("Common Commensal", "Recognized Pathogen"),
+    Count = c(commensal_count, non_commensal_count),
+    Percentage = round(c(commensal_count, non_commensal_count) / total * 100, 1),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Plot commensal pie chart
+#' @param episodes_data Data frame with episodes data
+#' @param filter_class Optional episode class filter ("HA", "CA", or NULL for all)
+#' @return ggplot2 object
+#' @export
+plot_commensal_pie <- function(episodes_data, filter_class = NULL) {
+  comm_data <- get_commensal_data(episodes_data, filter_class)
+  if (is.null(comm_data) || nrow(comm_data) == 0) {
+    return(ggplot2::ggplot() +
+             ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
+             ggplot2::theme_void())
+  }
+
+  colors <- c("Common Commensal" = "#87CEEB", "Recognized Pathogen" = "#FF6347")
+  used_colors <- colors[names(colors) %in% comm_data$Type]
+
+  ggplot2::ggplot(comm_data, ggplot2::aes(x = "", y = Count, fill = Type)) +
+    ggplot2::geom_bar(stat = "identity", width = 1) +
+    ggplot2::coord_polar("y", start = 0) +
+    ggplot2::scale_fill_manual(values = used_colors) +
+    ggplot2::theme_void() +
+    ggplot2::theme(legend.position = "bottom") +
+    ggplot2::geom_text(ggplot2::aes(label = paste0(Type, "\n", Count, " (", Percentage, "%)")),
+                       position = ggplot2::position_stack(vjust = 0.5),
+                       size = 3, fontface = "bold")
+}
+
+#' Generate commensal summary text
+#' @param episodes_data Data frame with episodes data
+#' @param for_markdown If TRUE return markdown, otherwise HTML
+#' @return Character string
+#' @export
+generate_commensal_summary <- function(episodes_data, for_markdown = FALSE) {
+  comm_data <- get_commensal_data(episodes_data)
+  if (is.null(comm_data) || nrow(comm_data) == 0) {
+    if (for_markdown) return("Common commensal data not available.")
+    return("<p>Common commensal data not available.</p>")
+  }
+
+  cc <- if ("Common Commensal" %in% comm_data$Type) comm_data[comm_data$Type == "Common Commensal", "Count"] else 0
+  rp <- if ("Recognized Pathogen" %in% comm_data$Type) comm_data[comm_data$Type == "Recognized Pathogen", "Count"] else 0
+  cc_pct <- if ("Common Commensal" %in% comm_data$Type) comm_data[comm_data$Type == "Common Commensal", "Percentage"] else 0
+  rp_pct <- if ("Recognized Pathogen" %in% comm_data$Type) comm_data[comm_data$Type == "Recognized Pathogen", "Percentage"] else 0
+
+  cc <- if (length(cc) == 0) 0 else cc
+  rp <- if (length(rp) == 0) 0 else rp
+  cc_pct <- if (length(cc_pct) == 0) 0 else cc_pct
+  rp_pct <- if (length(rp_pct) == 0) 0 else rp_pct
+
+  text <- paste0(
+    "**", format(cc, big.mark = ","),
+    "** episodes (**", cc_pct,
+    "%**) involved only common commensal organisms, while **",
+    format(rp, big.mark = ","),
+    "** episodes (**", rp_pct,
+    "%**) involved recognized pathogens (or mixed infections with both types)."
+  )
+
+  if (!for_markdown) {
+    text <- gsub("\\*\\*", "<strong>", text)
+    text <- gsub("\\*\\*", "</strong>", text)
+  }
+
+  return(text)
+}
+
+# =============================================================================
+# TIME SERIES ANALYSIS
+# =============================================================================
+
+#' Aggregate episode summary into a time series data frame
+#' @param episode_summary Data frame with EpisodeStartDate and EpisodeId columns
+#' @param aggregation One of "month", "week", "quarter"
+#' @return Data frame with TimePeriod (Date) and Episodes columns, or NULL
+#' @export
+build_timeseries_data <- function(episode_summary, aggregation = "month") {
+  if (is.null(episode_summary) || nrow(episode_summary) == 0) return(NULL)
+  if (!"EpisodeStartDate" %in% names(episode_summary)) return(NULL)
+
+  ep <- episode_summary
+  ep$EpisodeStartDate <- as.Date(ep$EpisodeStartDate)
+
+  ep$TimePeriod <- switch(aggregation,
+    "week" = as.Date(cut(ep$EpisodeStartDate, breaks = "week")),
+    "quarter" = as.Date(paste0(
+      format(ep$EpisodeStartDate, "%Y"), "-",
+      sprintf("%02d", (as.numeric(format(ep$EpisodeStartDate, "%m")) - 1) %/% 3 * 3 + 1), "-01"
+    )),
+    as.Date(paste0(format(ep$EpisodeStartDate, "%Y-%m"), "-01"))
+  )
+
+  ts_agg <- stats::aggregate(
+    EpisodeId ~ TimePeriod,
+    data = ep,
+    FUN = function(x) length(unique(x))
+  )
+  names(ts_agg) <- c("TimePeriod", "Episodes")
+  ts_agg[order(ts_agg$TimePeriod), ]
+}
+
+#' Plot episodes over time
+#' @param episode_summary Data frame with EpisodeStartDate and EpisodeId
+#' @param aggregation Time aggregation level (default "month")
+#' @param show_trend Whether to overlay a LOESS trend line
+#' @return ggplot2 object
+#' @export
+plot_timeseries <- function(episode_summary, aggregation = "month", show_trend = TRUE) {
+  ts_data <- build_timeseries_data(episode_summary, aggregation)
+  if (is.null(ts_data) || nrow(ts_data) == 0) {
+    return(ggplot2::ggplot() +
+             ggplot2::annotate("text", x = 0.5, y = 0.5,
+                               label = "No time series data available",
+                               size = 6, color = "#6c757d") +
+             ggplot2::theme_void())
+  }
+
+  x_label <- switch(aggregation,
+                     "week" = "Week", "quarter" = "Quarter", "Month")
+
+  p <- ggplot2::ggplot(ts_data, ggplot2::aes(x = TimePeriod, y = Episodes)) +
+    ggplot2::geom_line(ggplot2::aes(color = "Episodes"), linewidth = 1) +
+    ggplot2::geom_point(ggplot2::aes(color = "Episodes"), size = 2.5) +
+    ggplot2::labs(
+      title = "BSI Episodes Over Time",
+      x = x_label,
+      y = "Number of Episodes",
+      color = NULL
+    ) +
+    ggplot2::scale_color_manual(values = c(
+      "Episodes" = "#0d6efd",
+      "Trend (LOESS)" = "#999999"
+    )) +
+    ggplot2::theme_minimal(base_size = 14) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom"
+    )
+
+  if (show_trend && nrow(ts_data) >= 3) {
+    p <- p + ggplot2::geom_smooth(ggplot2::aes(color = "Trend (LOESS)"),
+                                  method = "loess", se = FALSE,
+                                  linewidth = 1, linetype = "dashed",
+                                  formula = y ~ x)
+  }
+
+  date_range <- as.numeric(diff(range(ts_data$TimePeriod)))
+  if (date_range > 365 * 2) {
+    p <- p + ggplot2::scale_x_date(date_breaks = "6 months", date_labels = "%b %Y")
+  } else if (date_range > 180) {
+    p <- p + ggplot2::scale_x_date(date_breaks = "3 months", date_labels = "%b %Y")
+  } else {
+    p <- p + ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+  }
+
+  p
+}
+
+#' Plot seasonal pattern (average episodes by month of year)
+#' @param episode_summary Data frame with EpisodeStartDate and EpisodeId
+#' @return ggplot2 object
+#' @export
+plot_seasonality <- function(episode_summary) {
+  if (is.null(episode_summary) || nrow(episode_summary) == 0 ||
+      !"EpisodeStartDate" %in% names(episode_summary)) {
+    return(ggplot2::ggplot() +
+             ggplot2::annotate("text", x = 0.5, y = 0.5,
+                               label = "No data available for seasonality analysis",
+                               size = 6, color = "#6c757d") +
+             ggplot2::theme_void())
+  }
+
+  ep <- episode_summary
+  ep$EpisodeStartDate <- as.Date(ep$EpisodeStartDate)
+  ep$Month <- as.numeric(format(ep$EpisodeStartDate, "%m"))
+  ep$Year <- format(ep$EpisodeStartDate, "%Y")
+
+  monthly_counts <- stats::aggregate(
+    EpisodeId ~ Month + Year,
+    data = ep,
+    FUN = function(x) length(unique(x))
+  )
+  names(monthly_counts) <- c("Month", "Year", "Episodes")
+
+  avg_by_month <- stats::aggregate(Episodes ~ Month, data = monthly_counts, FUN = mean)
+  names(avg_by_month) <- c("Month", "AvgEpisodes")
+
+  month_labels <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+  avg_by_month$MonthLabel <- factor(month_labels[avg_by_month$Month], levels = month_labels)
+
+  ggplot2::ggplot(avg_by_month, ggplot2::aes(x = MonthLabel, y = AvgEpisodes, fill = AvgEpisodes)) +
+    ggplot2::geom_col(width = 0.7) +
+    ggplot2::scale_fill_gradient(low = "#a8dadc", high = "#1d3557", guide = "none") +
+    ggplot2::labs(
+      title = "Average Monthly Episodes (Seasonality)",
+      x = "Month",
+      y = "Average Number of Episodes"
+    ) +
+    ggplot2::theme_minimal(base_size = 14) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5, size = 16),
+      axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
+      panel.grid.major.x = ggplot2::element_blank()
+    ) +
+    ggplot2::geom_text(ggplot2::aes(label = round(AvgEpisodes, 1)),
+                       vjust = -0.5, size = 3.5, color = "#495057")
+}
+
+#' Generate time series summary text
+#' @param episode_summary Data frame with EpisodeStartDate and EpisodeId
+#' @param aggregation Time aggregation level (default "month")
+#' @param for_markdown If TRUE return markdown, otherwise HTML
+#' @return Character string
+#' @export
+generate_timeseries_summary <- function(episode_summary, aggregation = "month", for_markdown = FALSE) {
+  ts_data <- build_timeseries_data(episode_summary, aggregation)
+  if (is.null(ts_data) || nrow(ts_data) == 0) {
+    if (for_markdown) return("No data available for time series summary.")
+    return("<p>No data available for time series summary.</p>")
+  }
+
+  total_episodes <- sum(ts_data$Episodes)
+  total_periods <- nrow(ts_data)
+  avg_per_period <- round(mean(ts_data$Episodes), 1)
+  min_episodes <- min(ts_data$Episodes)
+  max_episodes <- max(ts_data$Episodes)
+  min_period <- format(ts_data$TimePeriod[which.min(ts_data$Episodes)], "%B %Y")
+  max_period <- format(ts_data$TimePeriod[which.max(ts_data$Episodes)], "%B %Y")
+  date_range <- paste(format(min(ts_data$TimePeriod), "%B %Y"), "to",
+                      format(max(ts_data$TimePeriod), "%B %Y"))
+
+  text <- paste0(
+    "**Date Range:** ", date_range, "   \n",
+    "**Total Episodes:** ", format(total_episodes, big.mark = ","), "   \n",
+    "**Number of Time Periods:** ", total_periods, "   \n",
+    "**Average per Period:** ", avg_per_period, "   \n",
+    "**Minimum:** ", min_episodes, " (", min_period, ")   \n",
+    "**Maximum:** ", max_episodes, " (", max_period, ")"
+  )
+
+  if (!for_markdown) {
+    text <- gsub("\\*\\*", "<strong>", text)
+    text <- gsub("\\*\\*", "</strong>", text)
+    text <- gsub("   \n", "<br>", text)
+  }
+
+  return(text)
+}
+
