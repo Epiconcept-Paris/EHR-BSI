@@ -1128,11 +1128,30 @@ visual_bsi_dashboard <- function(data = NULL) {
           # This is important because episodes are calculated BEFORE deduplication
           # and CC episodes require 2+ concordant isolates which may be removed during dedup
           if (!is.null(result$episodes) && nrow(result$episodes) > 0) {
-            values$episodes <- result$episodes
+            episodes_df <- result$episodes
             if (!is.null(result$episode_summary)) {
               values$episode_summary <- result$episode_summary
+              
+              if (!("EpisodeType" %in% names(episodes_df)) &&
+                  "EpisodeId" %in% names(episodes_df) &&
+                  "EpisodeId" %in% names(result$episode_summary)) {
+                ep_sum <- result$episode_summary
+                if ("Polymicrobial" %in% names(ep_sum)) {
+                  ep_sum$EpisodeType <- ifelse(ep_sum$Polymicrobial, "Polymicrobial", "Monomicrobial")
+                } else if ("PathogenCount" %in% names(ep_sum)) {
+                  ep_sum$EpisodeType <- ifelse(ep_sum$PathogenCount == 1, "Monomicrobial",
+                                               ifelse(ep_sum$PathogenCount > 1, "Polymicrobial", "Unspecified"))
+                } else {
+                  ep_sum$EpisodeType <- "Unspecified"
+                }
+                episodes_df <- merge(episodes_df,
+                                     ep_sum[, c("EpisodeId", "EpisodeType"), drop = FALSE],
+                                     by = "EpisodeId", all.x = TRUE)
+                episodes_df$EpisodeType[is.na(episodes_df$EpisodeType)] <- "Unspecified"
+              }
             }
-            message("Using pre-calculated episodes from process_country_bsi (", nrow(result$episodes), " episodes)")
+            values$episodes <- episodes_df
+            message("Using pre-calculated episodes from process_country_bsi (", nrow(episodes_df), " episodes)")
           } else {
             # Fallback: compute episodes if not already available
             values$episodes <- compute_episodes_if_possible(result)
@@ -3572,32 +3591,31 @@ visual_bsi_dashboard <- function(data = NULL) {
         }
       }, error = function(e) as.character(selected_date))
       
-      # Filter EHRBSI table
+      # Filter EHRBSI table (use which() to safely handle NAs)
       ehrbsi_filtered <- NULL
       if (!is.null(values$current_data$ehrbsi)) {
         ehrbsi <- values$current_data$ehrbsi
         if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi)) {
-          ehrbsi_filtered <- ehrbsi[
+          ehrbsi_filtered <- ehrbsi[which(
             ehrbsi$HospitalId == selected_hospital & 
-              ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
+              ehrbsi$DateUsedForStatistics == selected_date), , drop = FALSE
           ]
         }
       }
       
-      # Filter patient table
+      # Filter patient table (use which() to safely handle NAs)
       patient_filtered <- NULL
       if (!is.null(values$current_data$patient)) {
         patient <- values$current_data$patient
         if ("HospitalId" %in% names(patient)) {
-          # Get year from DateOfHospitalAdmission if available, otherwise use all patients from hospital
           if ("DateOfHospitalAdmission" %in% names(patient)) {
             patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-            patient_filtered <- patient[
+            patient_filtered <- patient[which(
               patient$HospitalId == selected_hospital & 
-                patient$admission_year == selected_year, , drop = FALSE
+                patient$admission_year == selected_year), , drop = FALSE
             ]
           } else {
-            patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
+            patient_filtered <- patient[which(patient$HospitalId == selected_hospital), , drop = FALSE]
           }
         }
       }
@@ -4293,9 +4311,9 @@ visual_bsi_dashboard <- function(data = NULL) {
               ehrbsi <- values$current_data$ehrbsi
               if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi) &&
                   !is.null(selected_hospital) && !is.null(selected_date)) {
-                ehrbsi_filtered <- ehrbsi[
+                ehrbsi_filtered <- ehrbsi[which(
                   ehrbsi$HospitalId == selected_hospital &
-                    ehrbsi$DateUsedForStatistics == selected_date, , drop = FALSE
+                    ehrbsi$DateUsedForStatistics == selected_date), , drop = FALSE
                 ]
               }
             }
@@ -4306,12 +4324,12 @@ visual_bsi_dashboard <- function(data = NULL) {
               if ("HospitalId" %in% names(patient)) {
                 if ("DateOfHospitalAdmission" %in% names(patient)) {
                   patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-                  patient_filtered <- patient[
+                  patient_filtered <- patient[which(
                     patient$HospitalId == selected_hospital &
-                      patient$admission_year == selected_year, , drop = FALSE
+                      patient$admission_year == selected_year), , drop = FALSE
                   ]
                 } else {
-                  patient_filtered <- patient[patient$HospitalId == selected_hospital, , drop = FALSE]
+                  patient_filtered <- patient[which(patient$HospitalId == selected_hospital), , drop = FALSE]
                 }
               }
             }

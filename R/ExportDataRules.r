@@ -23,7 +23,7 @@ apply_export_data_rules <- function(result_list) {
       "NumberOfImportedHABSIs", "NumberOfTotalBSIs"
     ),
     patient = c(
-      "RecordId", "ParentId", "RecordType", "UnitId", "UnitSpecialtyShort",
+      "RecordId", "ParentId", "RecordType", "HospitalId", "UnitId", "UnitSpecialtyShort",
       "PatientSpecialty", "DateOfAdmissionCurrentWard", "PatientId", "Age",
       "Sex", "patientType", "DateOfHospitalAdmission",
       "DateOfHospitalDischarge", "OutcomeOfCase", "HospitalisationCode",
