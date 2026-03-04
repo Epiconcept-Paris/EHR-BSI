@@ -16,6 +16,7 @@ format:
     fig-width: 10
     fig-height: 5.5
 params:
+  report_data_path: NULL
   report_data: NULL
   country: "DATA"
   report_date: NULL
@@ -41,28 +42,22 @@ library(knitr)
 if (is.null(params$report_date) || params$report_date == "") {
   report_date <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
 } else if (is.character(params$report_date)) {
-  # Already formatted as character
   report_date <- params$report_date
 } else {
-  # Convert to character if it's a Date or POSIXct object
   report_date <- format(params$report_date, "%Y-%m-%d %H:%M:%S")
 }
 
 # Load report modules using provided path or search for it
 if (!is.null(params$module_path) && file.exists(params$module_path)) {
-  # Use provided path (from Shiny app)
   source(params$module_path)
 } else {
-  # Try to find it (for standalone rendering)
   module_path <- NULL
   
-  # Try installed package path first
   module_path_pkg <- system.file("R", "reportModules.R", package = "EHRBSI", mustWork = FALSE)
   if (file.exists(module_path_pkg) && nchar(module_path_pkg) > 0) {
     module_path <- module_path_pkg
   }
   
-  # Try relative path from inst/reports
   if (is.null(module_path) || !file.exists(module_path)) {
     rel_path <- "../../R/reportModules.R"
     if (file.exists(rel_path)) {
@@ -70,7 +65,6 @@ if (!is.null(params$module_path) && file.exists(params$module_path)) {
     }
   }
   
-  # Load the modules
   if (!is.null(module_path) && file.exists(module_path)) {
     source(module_path)
   } else {
@@ -81,6 +75,18 @@ if (!is.null(params$module_path) && file.exists(params$module_path)) {
                 "3) relative path: ../../R/reportModules.R"))
   }
 }
+
+# Load report data from RDS file (avoids YAML serialization issues with NA values).
+# Falls back to params$report_data for backwards compatibility with direct parameter passing.
+if (!is.null(params$report_data_path) && file.exists(params$report_data_path)) {
+  report_data_loaded <- readRDS(params$report_data_path)
+} else if (!is.null(params$report_data)) {
+  report_data_loaded <- params$report_data
+} else {
+  report_data_loaded <- list()
+}
+# Alias so the rest of the document can keep using params$report_data syntax
+params_report_data <- report_data_loaded
 
 # Helper: Coerce list-like inputs to data.frames to guard against class loss in param transport
 as_df_safe <- function(x) {
@@ -102,9 +108,9 @@ as_df_safe <- function(x) {
 ## Data cleaning and pre-processing
 
 ```{r data-cleaning-summary}
-# Get data from params
-raw_stats <- params$report_data$raw_stats
-processed_stats <- params$report_data$processed_stats
+# Get data from loaded report data
+raw_stats <- params_report_data$raw_stats
+processed_stats <- params_report_data$processed_stats
 
 # Display raw data summary
 cat(generate_raw_data_summary(raw_stats, for_markdown = TRUE))
@@ -133,13 +139,13 @@ cat(generate_healthcare_facilities_summary(processed_stats, raw_stats, for_markd
 
 ```{r demographics-check, include=FALSE}
 has_demographics <- FALSE
-if (!is.null(params$report_data$patient)) {
-  has_demographics <- all(c("Age", "Sex") %in% names(params$report_data$patient))
+if (!is.null(params_report_data$patient)) {
+  has_demographics <- all(c("Age", "Sex") %in% names(params_report_data$patient))
 }
 ```
 
 ```{r demographics-content, eval=has_demographics}
-patient_data <- params$report_data$patient
+patient_data <- params_report_data$patient
 
 # Display demographics summary
 cat(generate_demographics_summary(patient_data, for_markdown = TRUE))
@@ -205,7 +211,7 @@ cat("Patient demographics require patient data with Age and Sex columns.")
 
 ```{r episodes-check, include=FALSE}
 # Coerce report_data inputs locally (can't mutate params - use local copies)
-rd <- params$report_data
+rd <- params_report_data
 as_df_safe <- function(x) {
   if (is.null(x)) return(x)
   if (is.data.frame(x)) return(x)
@@ -232,7 +238,7 @@ if (!is.null(rd)) {
   }
 }
 
-has_episodes <- !is.null(params$report_data$episodes)
+has_episodes <- !is.null(params_report_data$episodes)
 if (has_episodes) {
   ep_nrows <- nrow(rd$episodes)
   has_episodes <- !is.null(ep_nrows) && ep_nrows > 0
@@ -275,7 +281,7 @@ if (has_summary) {
 }
 ```
 
-```{r monomicrobial-unavailable, eval=has_episodes && is.null(params$report_data$episode_summary)}
+```{r monomicrobial-unavailable, eval=has_episodes && is.null(params_report_data$episode_summary)}
 cat("**Note:** Detailed pathogen analysis requires episode summary data which is not currently available.\n")
 ```
 
@@ -292,7 +298,7 @@ if (has_summary) {
 }
 ```
 
-```{r polymicrobial-unavailable, eval=has_episodes && is.null(params$report_data$episode_summary)}
+```{r polymicrobial-unavailable, eval=has_episodes && is.null(params_report_data$episode_summary)}
 cat("**Note:** Detailed pathogen analysis requires episode summary data which is not currently available.\n")
 ```
 
@@ -307,6 +313,18 @@ cat(generate_infection_type_summary(episodes_data, for_markdown = TRUE))
 print(plot_infection_type(episodes_data, filter_class = NULL))
 print(plot_infection_type(episodes_data, filter_class = "HA"))
 print(plot_infection_type(episodes_data, filter_class = "CA"))
+```
+
+## Common Commensal Episodes
+
+```{r commensal-summary, eval=has_episodes}
+cat(generate_commensal_summary(episodes_data, for_markdown = TRUE))
+```
+
+```{r commensal-pies, eval=has_episodes, fig.show='hold', out.width='32%', fig.width=3.5, fig.height=4}
+print(plot_commensal_pie(episodes_data, filter_class = NULL))
+print(plot_commensal_pie(episodes_data, filter_class = "HA"))
+print(plot_commensal_pie(episodes_data, filter_class = "CA"))
 ```
 
 ```{r episodes-unavailable, eval=!has_episodes}
@@ -439,6 +457,46 @@ cat("Context view requires ward/specialty columns (e.g., UnitSpecialtyShort or P
 
 \newpage
 
+# Time Series
+
+```{r timeseries-check, include=FALSE}
+has_timeseries <- FALSE
+if (!is.null(rd$episode_summary)) {
+  es <- as_df_safe(rd$episode_summary)
+  if (!is.null(es) && nrow(es) > 0 && "EpisodeStartDate" %in% names(es)) {
+    has_timeseries <- TRUE
+  }
+}
+```
+
+```{r timeseries-content, eval=has_timeseries, include=FALSE}
+episode_summary_ts <- as_df_safe(rd$episode_summary)
+```
+
+## Episodes Over Time
+
+```{r timeseries-plot, eval=has_timeseries, fig.width=10, fig.height=5.5}
+print(plot_timeseries(episode_summary_ts, aggregation = "month", show_trend = TRUE))
+```
+
+## Seasonal Pattern
+
+```{r seasonality-plot, eval=has_timeseries, fig.width=10, fig.height=5}
+print(plot_seasonality(episode_summary_ts))
+```
+
+## Summary Statistics
+
+```{r timeseries-summary, eval=has_timeseries}
+cat(generate_timeseries_summary(episode_summary_ts, aggregation = "month", for_markdown = TRUE))
+```
+
+```{r timeseries-unavailable, eval=!has_timeseries}
+cat("Time series analysis requires episode summary data with EpisodeStartDate.")
+```
+
+\newpage
+
 # Antibiograms
 
 ```{r antibiograms-check, include=FALSE}
@@ -489,7 +547,7 @@ cat("Antibiograms require resistance results (Res) data. Episode-level summaries
 
 ```{r hospital-check, include=FALSE}
 # Use locally coerced copy if present
-rd_h <- if (exists("rd")) rd else params$report_data
+rd_h <- if (exists("rd")) rd else params_report_data
 
 has_hospital_analysis <- FALSE
 if (!is.null(rd_h$hospital_data)) {
