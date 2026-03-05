@@ -1399,6 +1399,21 @@ visual_bsi_dashboard <- function(data = NULL) {
               
               isolate[["DateOfSpecimenCollection"]] <- as.Date(isolate$DateOfSpecimenCollection)
               
+              # Normalize DateUsedForStatistics to character year (readxl may infer numeric or date)
+              if ("DateUsedForStatistics" %in% names(ehrbsi)) {
+                dus <- ehrbsi$DateUsedForStatistics
+                if (inherits(dus, c("Date", "POSIXct", "POSIXlt"))) {
+                  ehrbsi$DateUsedForStatistics <- format(dus, "%Y")
+                } else {
+                  ehrbsi$DateUsedForStatistics <- as.character(dus)
+                }
+              }
+              
+              # Normalize HospitalId to character across all tables for consistent filtering
+              if ("HospitalId" %in% names(ehrbsi)) {
+                ehrbsi$HospitalId <- as.character(ehrbsi$HospitalId)
+              }
+              
               # Ensure required patient columns exist
               if(!("RecordId" %in% names(patient))) {
                 stop("Patient table must have RecordId column")
@@ -1438,6 +1453,23 @@ visual_bsi_dashboard <- function(data = NULL) {
                   patient[["HospitalId"]] <- NA_character_
                 }
               }
+              # If HospitalId exists but is missing, infer from RecordId prefix (e.g., 2063_...)
+              if ("HospitalId" %in% names(patient) && "RecordId" %in% names(patient)) {
+                missing_hosp <- is.na(patient$HospitalId) | trimws(as.character(patient$HospitalId)) == ""
+                if (any(missing_hosp)) {
+                  rec_prefix <- sub("_.*$", "", as.character(patient$RecordId))
+                  valid_prefix <- !is.na(rec_prefix) & rec_prefix != "" & rec_prefix != as.character(patient$RecordId)
+                  fill_idx <- missing_hosp & valid_prefix
+                  if (any(fill_idx)) {
+                    patient$HospitalId[fill_idx] <- rec_prefix[fill_idx]
+                    message("Template upload: inferred HospitalId from patient RecordId for ", sum(fill_idx), " rows")
+                  }
+                }
+              }
+              # Normalize patient HospitalId to character (matches EHRBSI normalization above)
+              if ("HospitalId" %in% names(patient)) {
+                patient$HospitalId <- as.character(patient$HospitalId)
+              }
               
               values$current_data <- list(
                 ehrbsi = as.data.frame(ehrbsi),
@@ -1473,9 +1505,7 @@ visual_bsi_dashboard <- function(data = NULL) {
               }
               
               if (!"Contaminant" %in% names(isolate)) {
-                # Detect contaminants using the centralized function
                 isolate <- detect_contaminants(isolate, patient, comm_path)
-                values$current_data$isolate <- isolate
               }
               
               # Calculate contamination statistics
@@ -1487,20 +1517,71 @@ visual_bsi_dashboard <- function(data = NULL) {
               }
               
               values$contaminant_isolate_ids <- contaminant_isolate_ids
-              # Build non-contaminant isolates table for template flow
-              values$current_data$isolate_noncontaminant <- isolate[which(is.na(isolate$Contaminant) | isolate$Contaminant == FALSE), , drop = FALSE]
+              isolate_noncontaminant <- isolate[which(is.na(isolate$Contaminant) | isolate$Contaminant == FALSE), , drop = FALSE]
               
-              # NOTE: For template uploads, episodes are NOT automatically calculated
-              # Users can manually trigger episode calculation using the "Recalculate Episodes" 
-              # button in the Data Table tab. This allows users to review/edit the data first.
+              # Auto-compute episodes from template data (matches raw upload behaviour)
+              tryCatch({
+                cd <- values$current_data
+                cd$isolate <- isolate
+                cd$isolate_noncontaminant <- isolate_noncontaminant
+                template_episodes <- compute_episodes_if_possible(cd)
+                if (!is.null(template_episodes) && nrow(template_episodes) > 0) {
+                  # Backfill episode HospitalId from patient admission mapping when missing
+                  if ("AdmissionRecordId" %in% names(template_episodes) &&
+                      "RecordId" %in% names(patient) &&
+                      "HospitalId" %in% names(patient)) {
+                    hosp_map <- patient[, c("RecordId", "HospitalId"), drop = FALSE]
+                    names(hosp_map) <- c("AdmissionRecordId", "HospitalId")
+                    
+                    if (!"HospitalId" %in% names(template_episodes)) {
+                      template_episodes <- merge(
+                        template_episodes,
+                        hosp_map,
+                        by = "AdmissionRecordId",
+                        all.x = TRUE
+                      )
+                    } else if (all(is.na(template_episodes$HospitalId) |
+                                   trimws(as.character(template_episodes$HospitalId)) == "")) {
+                      tmp_hid <- hosp_map$HospitalId[match(
+                        as.character(template_episodes$AdmissionRecordId),
+                        as.character(hosp_map$AdmissionRecordId)
+                      )]
+                      template_episodes$HospitalId <- tmp_hid
+                    }
+                  }
+                  values$episodes <- template_episodes
+                  
+                  agg_level <- if (!is.null(input$aggregation_level)) input$aggregation_level else "HOSP"
+                  tryCatch({
+                    ehrbsi <- aggregateEpisodes(template_episodes, as.data.frame(ehrbsi), agg_level)
+                    ehrbsi <- as.data.frame(ehrbsi)
+                  }, error = function(e) {
+                    message("Template upload: could not aggregate episodes to EHRBSI: ", e$message)
+                  })
+                  
+                  cd$ehrbsi <- as.data.frame(ehrbsi)
+                  values$current_data <- cd
+                  message("Template upload: auto-computed ", length(unique(template_episodes$EpisodeId)), " episodes")
+                } else {
+                  cd$ehrbsi <- as.data.frame(ehrbsi)
+                  values$current_data <- cd
+                  message("Template upload: episode computation produced no episodes")
+                }
+              }, error = function(e) {
+                cd <- values$current_data
+                cd$isolate <- isolate
+                cd$isolate_noncontaminant <- isolate_noncontaminant
+                cd$ehrbsi <- as.data.frame(ehrbsi)
+                values$current_data <- cd
+                message("Template upload: episode computation failed: ", e$message)
+              })
               
               # Calculate final_patients from non-contaminant isolates
               final_patients_count <- total_patients
-              if (!is.null(values$current_data$isolate_noncontaminant) && nrow(values$current_data$isolate_noncontaminant) > 0 && 
-                  "ParentId" %in% names(values$current_data$isolate_noncontaminant) && 
+              if (nrow(isolate_noncontaminant) > 0 && 
+                  "ParentId" %in% names(isolate_noncontaminant) && 
                   "RecordId" %in% names(patient) && "PatientId" %in% names(patient)) {
-                # Get unique patient IDs from non-contaminant isolates
-                iso_parents <- unique(values$current_data$isolate_noncontaminant$ParentId)
+                iso_parents <- unique(isolate_noncontaminant$ParentId)
                 patients_with_noncontam <- patient[patient$RecordId %in% iso_parents, ]
                 if ("PatientId" %in% names(patients_with_noncontam)) {
                   final_patients_count <- length(unique(patients_with_noncontam$PatientId))
@@ -1714,13 +1795,15 @@ visual_bsi_dashboard <- function(data = NULL) {
         
         # Also aggregate episodes into the EHRBSI table if it exists
         if (!is.null(values$current_data$ehrbsi) && nrow(values$current_data$ehrbsi) > 0) {
-          # Use aggregation_level from input, default to HOSP
           agg_level <- if (!is.null(input$aggregation_level)) input$aggregation_level else "HOSP"
           
           tryCatch({
             ehrbsi <- values$current_data$ehrbsi
             ehrbsi <- aggregateEpisodes(new_episodes, ehrbsi, agg_level)
-            values$current_data$ehrbsi <- as.data.frame(ehrbsi)
+            # Reassign the full list to trigger Shiny reactivity
+            cd <- values$current_data
+            cd$ehrbsi <- as.data.frame(ehrbsi)
+            values$current_data <- cd
             message("Updated EHRBSI table with aggregated episode counts")
           }, error = function(e) {
             message("Warning: Could not aggregate episodes to EHRBSI: ", e$message)
@@ -3648,7 +3731,7 @@ visual_bsi_dashboard <- function(data = NULL) {
       shiny::req(input$hospital_analysis_hospital, input$hospital_analysis_date)
       shiny::req(values$current_data)
       
-      selected_hospital <- input$hospital_analysis_hospital
+      selected_hospital <- as.character(input$hospital_analysis_hospital)
       selected_date <- input$hospital_analysis_date
       
       # Normalize selected date to a year string for consistent filtering
@@ -3656,13 +3739,13 @@ visual_bsi_dashboard <- function(data = NULL) {
         if (inherits(selected_date, "Date")) {
           format(selected_date, "%Y")
         } else if (is.numeric(selected_date)) {
-          as.character(selected_date)
-        } else if (!is.null(selected_date) && grepl("^\\d{4}$", as.character(selected_date))) {
-          as.character(selected_date)
+          as.character(as.integer(selected_date))
+        } else if (!is.null(selected_date) && grepl("^\\d{4}$", trimws(as.character(selected_date)))) {
+          trimws(as.character(selected_date))
         } else {
           format(as.Date(selected_date), "%Y")
         }
-      }, error = function(e) as.character(selected_date))
+      }, error = function(e) trimws(as.character(selected_date)))
       
       # Filter EHRBSI table (use which() to safely handle NAs)
       ehrbsi_filtered <- NULL
@@ -3670,56 +3753,100 @@ visual_bsi_dashboard <- function(data = NULL) {
         ehrbsi <- values$current_data$ehrbsi
         if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi)) {
           ehrbsi_filtered <- ehrbsi[which(
-            ehrbsi$HospitalId == selected_hospital & 
-              ehrbsi$DateUsedForStatistics == selected_date), , drop = FALSE
+            as.character(ehrbsi$HospitalId) == selected_hospital & 
+              as.character(ehrbsi$DateUsedForStatistics) == as.character(selected_date)), , drop = FALSE
           ]
         }
       }
       
-      # Filter patient table (use which() to safely handle NAs)
+      # Pre-filter episodes for selected hospital/year when possible
+      episodes_hosp_year <- NULL
+      if (!is.null(values$episodes) &&
+          "HospitalId" %in% names(values$episodes) &&
+          "episodeYear" %in% names(values$episodes)) {
+        episodes_hosp_year <- values$episodes[which(
+          as.character(values$episodes$HospitalId) == selected_hospital &
+            as.character(values$episodes$episodeYear) == selected_year
+        ), , drop = FALSE]
+      }
+      
+      # Filter patient table
       patient_filtered <- NULL
       if (!is.null(values$current_data$patient)) {
         patient <- values$current_data$patient
         if ("HospitalId" %in% names(patient)) {
-          if ("DateOfHospitalAdmission" %in% names(patient)) {
-            patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-            patient_filtered <- patient[which(
-              patient$HospitalId == selected_hospital & 
-                patient$admission_year == selected_year), , drop = FALSE
-            ]
+          hosp_match <- as.character(patient$HospitalId) == selected_hospital
+          
+          # Prefer episode-linked admissions for hospital/year (most reliable)
+          if (!is.null(episodes_hosp_year) && nrow(episodes_hosp_year) > 0 &&
+              "AdmissionRecordId" %in% names(episodes_hosp_year) &&
+              "RecordId" %in% names(patient)) {
+            episode_admission_ids <- unique(as.character(episodes_hosp_year$AdmissionRecordId))
+            patient_filtered <- patient[which(hosp_match &
+                                                as.character(patient$RecordId) %in% episode_admission_ids), , drop = FALSE]
+          } else if ("DateOfHospitalAdmission" %in% names(patient)) {
+            # Fallback: admission interval overlaps selected year window
+            year_start <- suppressWarnings(as.Date(paste0(selected_year, "-01-01")))
+            year_end <- suppressWarnings(as.Date(paste0(selected_year, "-12-31")))
+            
+            adm_date <- as.Date(patient$DateOfHospitalAdmission)
+            disch_date <- if ("DateOfHospitalDischarge" %in% names(patient)) {
+              as.Date(patient$DateOfHospitalDischarge)
+            } else {
+              rep(as.Date(NA), nrow(patient))
+            }
+            
+            if (!is.na(year_start) && !is.na(year_end)) {
+              year_match <- !is.na(adm_date) &
+                adm_date <= year_end &
+                (is.na(disch_date) | disch_date >= year_start)
+            } else {
+              adm_year <- format(adm_date, "%Y")
+              disch_year <- format(disch_date, "%Y")
+              year_match <- (!is.na(adm_year) & adm_year == selected_year) |
+                (!is.na(disch_year) & disch_year == selected_year)
+            }
+            
+            patient_filtered <- patient[which(hosp_match & year_match), , drop = FALSE]
           } else {
-            patient_filtered <- patient[which(patient$HospitalId == selected_hospital), , drop = FALSE]
+            patient_filtered <- patient[which(hosp_match), , drop = FALSE]
           }
         }
       }
       
       # Filter isolate table based on patient records
       isolate_filtered <- NULL
-      if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
+      if (!is.null(values$current_data$isolate) && !is.null(patient_filtered) && nrow(patient_filtered) > 0) {
         isolate <- values$current_data$isolate
         if ("ParentId" %in% names(isolate) && "RecordId" %in% names(patient_filtered)) {
-          patient_record_ids <- patient_filtered$RecordId
-          isolate_filtered <- isolate[isolate$ParentId %in% patient_record_ids, , drop = FALSE]
+          patient_record_ids <- as.character(patient_filtered$RecordId)
+          isolate_filtered <- isolate[as.character(isolate$ParentId) %in% patient_record_ids, , drop = FALSE]
         }
       }
       
       # Filter res table based on isolate records
       res_filtered <- NULL
-      if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
+      if (!is.null(values$current_data$res) && !is.null(isolate_filtered) && nrow(isolate_filtered) > 0) {
         res <- values$current_data$res
         if ("ParentId" %in% names(res) && "RecordId" %in% names(isolate_filtered)) {
-          isolate_record_ids <- isolate_filtered$RecordId
-          res_filtered <- res[res$ParentId %in% isolate_record_ids, , drop = FALSE]
+          isolate_record_ids <- as.character(isolate_filtered$RecordId)
+          res_filtered <- res[as.character(res$ParentId) %in% isolate_record_ids, , drop = FALSE]
         }
       }
       
       # Filter episodes based on patient records
       episodes_filtered <- NULL
-      if (!is.null(values$episodes) && !is.null(patient_filtered)) {
+      if (!is.null(values$episodes) && !is.null(patient_filtered) && nrow(patient_filtered) > 0) {
         episodes <- values$episodes
         if ("AdmissionRecordId" %in% names(episodes) && "RecordId" %in% names(patient_filtered)) {
-          patient_record_ids <- patient_filtered$RecordId
-          episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_record_ids, , drop = FALSE]
+          patient_record_ids <- as.character(patient_filtered$RecordId)
+          episodes_filtered <- episodes[as.character(episodes$AdmissionRecordId) %in% patient_record_ids, , drop = FALSE]
+          if ("HospitalId" %in% names(episodes_filtered)) {
+            episodes_filtered <- episodes_filtered[which(as.character(episodes_filtered$HospitalId) == selected_hospital), , drop = FALSE]
+          }
+          if ("episodeYear" %in% names(episodes_filtered)) {
+            episodes_filtered <- episodes_filtered[which(as.character(episodes_filtered$episodeYear) == selected_year), , drop = FALSE]
+          }
         }
       }
       
@@ -5149,17 +5276,18 @@ visual_bsi_dashboard <- function(data = NULL) {
             
             # Build snapshot using the same rules as hospital_filtered_data(),
             # with robust year normalization to match Patient admissions
+            selected_hospital <- as.character(selected_hospital)
             selected_year <- tryCatch({
               if (inherits(selected_date, "Date")) {
                 format(selected_date, "%Y")
               } else if (is.numeric(selected_date)) {
-                as.character(selected_date)
-              } else if (!is.null(selected_date) && grepl("^\\d{4}$", as.character(selected_date))) {
-                as.character(selected_date)
+                as.character(as.integer(selected_date))
+              } else if (!is.null(selected_date) && grepl("^\\d{4}$", trimws(as.character(selected_date)))) {
+                trimws(as.character(selected_date))
               } else {
                 format(as.Date(selected_date), "%Y")
               }
-            }, error = function(e) as.character(selected_date))
+            }, error = function(e) trimws(as.character(selected_date)))
             
             ehrbsi_filtered <- NULL
             if (!is.null(values$current_data$ehrbsi)) {
@@ -5167,49 +5295,92 @@ visual_bsi_dashboard <- function(data = NULL) {
               if ("HospitalId" %in% names(ehrbsi) && "DateUsedForStatistics" %in% names(ehrbsi) &&
                   !is.null(selected_hospital) && !is.null(selected_date)) {
                 ehrbsi_filtered <- ehrbsi[which(
-                  ehrbsi$HospitalId == selected_hospital &
-                    ehrbsi$DateUsedForStatistics == selected_date), , drop = FALSE
+                  as.character(ehrbsi$HospitalId) == selected_hospital &
+                    as.character(ehrbsi$DateUsedForStatistics) == as.character(selected_date)), , drop = FALSE
                 ]
               }
+            }
+            
+            episodes_hosp_year <- NULL
+            if (!is.null(values$episodes) &&
+                "HospitalId" %in% names(values$episodes) &&
+                "episodeYear" %in% names(values$episodes)) {
+              episodes_hosp_year <- values$episodes[which(
+                as.character(values$episodes$HospitalId) == selected_hospital &
+                  as.character(values$episodes$episodeYear) == selected_year
+              ), , drop = FALSE]
             }
             
             patient_filtered <- NULL
             if (!is.null(values$current_data$patient)) {
               patient <- values$current_data$patient
               if ("HospitalId" %in% names(patient)) {
-                if ("DateOfHospitalAdmission" %in% names(patient)) {
-                  patient$admission_year <- format(as.Date(patient$DateOfHospitalAdmission), "%Y")
-                  patient_filtered <- patient[which(
-                    patient$HospitalId == selected_hospital &
-                      patient$admission_year == selected_year), , drop = FALSE
-                  ]
+                hosp_match <- as.character(patient$HospitalId) == selected_hospital
+                if (!is.null(episodes_hosp_year) && nrow(episodes_hosp_year) > 0 &&
+                    "AdmissionRecordId" %in% names(episodes_hosp_year) &&
+                    "RecordId" %in% names(patient)) {
+                  episode_admission_ids <- unique(as.character(episodes_hosp_year$AdmissionRecordId))
+                  patient_filtered <- patient[which(hosp_match &
+                                                      as.character(patient$RecordId) %in% episode_admission_ids), , drop = FALSE]
+                } else if ("DateOfHospitalAdmission" %in% names(patient)) {
+                  year_start <- suppressWarnings(as.Date(paste0(selected_year, "-01-01")))
+                  year_end <- suppressWarnings(as.Date(paste0(selected_year, "-12-31")))
+                  
+                  adm_date <- as.Date(patient$DateOfHospitalAdmission)
+                  disch_date <- if ("DateOfHospitalDischarge" %in% names(patient)) {
+                    as.Date(patient$DateOfHospitalDischarge)
+                  } else {
+                    rep(as.Date(NA), nrow(patient))
+                  }
+                  
+                  if (!is.na(year_start) && !is.na(year_end)) {
+                    year_match <- !is.na(adm_date) &
+                      adm_date <= year_end &
+                      (is.na(disch_date) | disch_date >= year_start)
+                  } else {
+                    adm_year <- format(adm_date, "%Y")
+                    disch_year <- format(disch_date, "%Y")
+                    year_match <- (!is.na(adm_year) & adm_year == selected_year) |
+                      (!is.na(disch_year) & disch_year == selected_year)
+                  }
+                  
+                  patient_filtered <- patient[which(hosp_match & year_match), , drop = FALSE]
                 } else {
-                  patient_filtered <- patient[which(patient$HospitalId == selected_hospital), , drop = FALSE]
+                  patient_filtered <- patient[which(hosp_match), , drop = FALSE]
                 }
               }
             }
             
             isolate_filtered <- NULL
-            if (!is.null(values$current_data$isolate) && !is.null(patient_filtered)) {
+            if (!is.null(values$current_data$isolate) && !is.null(patient_filtered) && nrow(patient_filtered) > 0) {
               isolate <- values$current_data$isolate
               if ("ParentId" %in% names(isolate) && "RecordId" %in% names(patient_filtered)) {
-                isolate_filtered <- isolate[isolate$ParentId %in% patient_filtered$RecordId, , drop = FALSE]
+                patient_record_ids <- as.character(patient_filtered$RecordId)
+                isolate_filtered <- isolate[as.character(isolate$ParentId) %in% patient_record_ids, , drop = FALSE]
               }
             }
             
             res_filtered <- NULL
-            if (!is.null(values$current_data$res) && !is.null(isolate_filtered)) {
+            if (!is.null(values$current_data$res) && !is.null(isolate_filtered) && nrow(isolate_filtered) > 0) {
               res <- values$current_data$res
               if ("ParentId" %in% names(res) && "RecordId" %in% names(isolate_filtered)) {
-                res_filtered <- res[res$ParentId %in% isolate_filtered$RecordId, , drop = FALSE]
+                isolate_record_ids <- as.character(isolate_filtered$RecordId)
+                res_filtered <- res[as.character(res$ParentId) %in% isolate_record_ids, , drop = FALSE]
               }
             }
             
             episodes_filtered <- NULL
-            if (!is.null(values$episodes) && !is.null(patient_filtered)) {
+            if (!is.null(values$episodes) && !is.null(patient_filtered) && nrow(patient_filtered) > 0) {
               episodes <- values$episodes
               if ("AdmissionRecordId" %in% names(episodes) && "RecordId" %in% names(patient_filtered)) {
-                episodes_filtered <- episodes[episodes$AdmissionRecordId %in% patient_filtered$RecordId, , drop = FALSE]
+                patient_record_ids <- as.character(patient_filtered$RecordId)
+                episodes_filtered <- episodes[as.character(episodes$AdmissionRecordId) %in% patient_record_ids, , drop = FALSE]
+                if ("HospitalId" %in% names(episodes_filtered)) {
+                  episodes_filtered <- episodes_filtered[which(as.character(episodes_filtered$HospitalId) == selected_hospital), , drop = FALSE]
+                }
+                if ("episodeYear" %in% names(episodes_filtered)) {
+                  episodes_filtered <- episodes_filtered[which(as.character(episodes_filtered$episodeYear) == selected_year), , drop = FALSE]
+                }
               }
             }
             
