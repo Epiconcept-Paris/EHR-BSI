@@ -129,6 +129,30 @@ calculateEpisodes <- function(patient_df,
     }
   }
   
+  ## ------------------------------------------------------------------
+  ## 2b. Specimen-level deduplication
+  ##     EHR-BSI protocol v1.0 defines a CC case as ≥2 positive blood
+  ##     cultures "from 2 separate blood samples."  Multiple isolate
+  ##     rows that share the same patient, specimen date and organism
+  ##     (differing only in AST / antibiogram) represent the same blood
+  ##     culture, not separate samples.  Collapsing them here prevents
+  ##     flag_cc_clusters from counting one blood culture as multiple
+  ##     concordant positives.
+  ## ------------------------------------------------------------------
+  n_before_specimen_dedup <- nrow(iso_in_admission)
+  iso_in_admission <- iso_in_admission %>%
+    group_by(AdmissionRecordId, PatientId,
+             DateOfSpecimenCollection, MicroorganismCode) %>%
+    slice(1) %>%
+    ungroup()
+  n_removed <- n_before_specimen_dedup - nrow(iso_in_admission)
+  if (n_removed > 0) {
+    message("calculateEpisodes: specimen-level dedup removed ",
+            n_removed, " rows where the same organism appeared >1x ",
+            "in the same blood culture (", nrow(iso_in_admission),
+            " isolate-events remain)")
+  }
+  
   ## ---- RULE 1  – recognised pathogens (one pos = onset) ----------------
   rule1 <- iso_in_admission %>%
     filter(org_type == "RP") %>%
